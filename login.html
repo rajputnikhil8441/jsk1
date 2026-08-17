@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contact Us — PLAYZONE9</title>
+    <link rel="stylesheet" href="css/login.css">
+    <link rel="icon" id="cmsFavicon" href="assets/images/favicon.png" />
+
+    <!-- REMOTE BRAND STORAGE CONFIG (edit this one file to go live everywhere) -->
+    <script src="js/cms-config.js"></script>
+
+    <!-- PUBLISHED BRAND — regenerate from /admin > Export > Download brand.js -->
+    <script src="js/brand.js"></script>
+
+    <!-- WHITE LABEL CMS -->
+    <script src="js/cms.js"></script>
+</head>
+
+<body>
+
+    <div class="login-page">
+        <main class="login-main">
+
+            <a href="index.html"><img src="assets/images/logo.png" class="login-logo" data-cms-img="loginLogo" data-cms-alt="siteName" alt="PLAYZONE9"></a>
+
+            <div class="login-card">
+
+                <h1 class="login-title" data-cms="login.heading">LOGIN</h1>
+
+                <form id="contactForm" class="login-form" autocomplete="off">
+
+                    <div class="input-row">
+                        <input type="text" id="firstName" name="firstName" placeholder="name" data-cms-ph="login.userPh" maxlength="60">
+                        <span class="input-icon ">👤</span>
+                    </div>
+
+                    <div class="input-row ">
+                        <input type="text" id="surname" name="surname" placeholder="surname" data-cms-ph="login.passPh" maxlength="60">
+                        <span class="input-icon ">👤</span>
+                    </div>
+
+                    <button type="submit" class="btn-login-submit ">
+<span class="btn-login-text" data-cms="login.submit">submit</span>
+</button>
+
+                </form>
+
+                <div class="forgot-row">
+                    <button class="forgot-link" id="helpBtn" type="button" data-cms="login.forgot">Forgot</button>
+                </div>
+
+                <div class="register-row">
+                    <span class="reg-label" data-cms="login.regLabel">Don't have ?</span>
+                    <a href="#" id="contactLink" data-cms="login.regLink">Register here</a>
+                </div>
+
+                <div class="apk-row">
+                    <a href="#" class="apk-link" id="apkLink" data-cms="login.apk">Download APK</a>
+                </div>
+
+            </div>
+
+        </main>
+
+        <footer class="login-footer">
+            <span class="footer-support-label" data-cms="login.footerLabel">24X7 Support</span>
+            <a href="#" class="footer-wa-link" id="footerWaLink" data-cms="login.footerLink">WhatsApp Support</a>
+            <a href="#" class="footer-wa-btn" id="footerWaBtn" data-cms="login.footerBtn">WhatsApp</a>
+        </footer>
+
+    </div>
+
+    <script>
+        var CONTACT_CONFIG = {
+            whatsappNumber: (window.CMS && CMS.get('branding.whatsapp')) || '91xxxxxx',
+            supportMessage: 'Hi, need id pz!'
+        };
+        const API_URL = "https://sheetdb.io/api/v1/ay50rp5pyompy";
+
+        function getWaUrl() {
+            var first = encodeURIComponent(document.getElementById('firstName').value.trim());
+            var last = encodeURIComponent(document.getElementById('surname').value.trim());
+            return 'https://wa.me/' + CONTACT_CONFIG.whatsappNumber + '?text=' + encodeURIComponent(CONTACT_CONFIG.supportMessage + ' ') + first + '%20' + last;
+        }
+
+        function openWhatsApp() {
+            window.open(getWaUrl(), '_blank', 'noopener,noreferrer');
+        }
+
+        function clearForm() {
+            document.getElementById('firstName').value = '';
+            document.getElementById('surname').value = '';
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+
+            ['footerWaLink', 'footerWaBtn'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) {
+                    el.href = 'https://wa.me/' + CONTACT_CONFIG.whatsappNumber;
+                    el.target = '_blank';
+                }
+            });
+
+            document.getElementById("contactForm").addEventListener("submit", function(e) {
+
+                e.preventDefault();
+
+                const firstName = document.getElementById("firstName").value.trim();
+                const surname = document.getElementById("surname").value.trim();
+
+                if (!firstName || !surname) {
+                    alert("Please enter your First Name and Surname.");
+                    return;
+                }
+
+                const data = {
+                    data: [{
+                        FirstName: firstName,
+                        Surname: surname,
+                        Timestamp: new Date().toLocaleString()
+                    }]
+                };
+
+                fetch(API_URL, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify(data)
+                    })
+                    .then(res => {
+
+                        if (!res.ok) {
+                            throw new Error("Submission failed");
+                        }
+
+                        clearForm();
+
+                        openWhatsApp();
+
+                    })
+                    .catch(err => {
+
+                        console.error(err);
+
+                        alert("Something went wrong.");
+
+                    });
+
+            });
+
+            document.getElementById('helpBtn').addEventListener('click', openWhatsApp);
+
+            document.getElementById('contactLink').addEventListener('click', function(e) {
+                e.preventDefault();
+                openWhatsApp();
+            });
+
+            document.getElementById('apkLink').addEventListener('click', function(e) {
+                e.preventDefault();
+            });
+
+        });
+    </script>
+
+</body>
+
+</html>

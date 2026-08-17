@@ -1,0 +1,374 @@
+/* =========================
+   LOGIN PAGE — login.css
+========================= */
+
+@font-face {
+    font-family: "dfont";
+    src: url("../assets/fonts/dfont.ttf") format("truetype");
+    font-display: swap;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+:root {
+    /* Overridden at runtime by js/cms.js (see /admin > Login & Register) */
+    --brand: #0088cc;
+    --login-bg: linear-gradient( 168deg, #00b8ec 0%, #0088cc 22%, #005f99 52%, #003d66 78%, #002244 100%);
+    --login-card-bg: #ffffff;
+    --login-card-border: #cdd6df;
+    --login-title: #0088cc;
+    --login-text: #222222;
+    --login-input-bg: #ffffff;
+    --login-input-text: #333333;
+    --login-input-border: #c0cdd8;
+    --login-icon-bg: #e8ecf0;
+    --login-btn-bg: #0088cc;
+    --login-btn-text: #ffffff;
+    --login-footer-bg: #0088cc;
+    --login-footer-text: #ffffff;
+    --wa-green: #25d366;
+    --card-w: 340px;
+    --in-h: 48px;
+    --radius: 4px;
+}
+
+html {
+    min-height: 100%;
+}
+
+body {
+    font-family: "dfont", Arial, sans-serif;
+    font-size: 14px;
+    color: var(--login-text);
+}
+
+
+/* Full-height column so footer pins to bottom */
+
+.login-page {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    min-height: 100dvh;
+    background: var(--login-bg);
+    background-attachment: fixed;
+}
+
+
+/* ---- MAIN ---- */
+
+.login-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 36px 16px 28px;
+}
+
+
+/* ---- LOGO ---- */
+
+.login-logo {
+    display: block;
+    max-height: 80px;
+    max-width: 300px;
+    width: auto;
+    object-fit: contain;
+    margin-bottom: 22px;
+}
+
+
+/* ---- CARD ---- */
+
+.login-card {
+    background: var(--login-card-bg);
+    border: 1px solid var(--login-card-border);
+    border-radius: 6px;
+    box-shadow: 0 6px 32px rgba(255, 255, 255, 0.28);
+    width: var(--card-w);
+    padding: 28px 24px 22px;
+}
+
+
+/* ---- TITLE ---- */
+
+.login-title {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--login-title);
+    margin-bottom: 22px;
+    letter-spacing: 0.4px;
+}
+
+.login-title .t-icon {
+    display: inline-flex;
+    align-items: center;
+    width: 20px;
+    height: 20px;
+    fill: var(--brand);
+    flex-shrink: 0;
+}
+
+
+/* ---- FORM ---- */
+
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+
+/* Input row: field + icon box */
+
+.input-row {
+    display: flex;
+    border: 1px solid var(--login-input-border);
+    border-radius: 0px;
+    overflow: hidden;
+    height: var(--in-h);
+}
+
+.input-row input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    outline: none;
+    padding: 0 12px;
+    font-size: 14px;
+    color: var(--login-input-text);
+    background: var(--login-input-bg);
+    font-family: inherit;
+}
+
+.input-row input::placeholder {
+    color: #aab4be;
+    font-size: 13px;
+}
+
+.input-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    flex-shrink: 0;
+    background: var(--login-icon-bg);
+    border-left: 1px solid var(--login-input-border);
+}
+
+.input-icon svg {
+    width: 18px;
+    height: 18px;
+    fill: #445566;
+}
+
+
+/* ---- LOGIN BUTTON ---- */
+
+.btn-login-submit {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: var(--in-h);
+    background: var(--login-btn-bg);
+    color: var(--login-btn-text);
+    border: none;
+    border-radius: 0px;
+    font-size: 15px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    margin-top: 4px;
+    padding: 0 14px;
+    transition: background 0.15s;
+}
+
+.btn-login-submit:hover {
+    background: #006fa8;
+}
+
+.btn-login-text {
+    flex: 1;
+    text-align: center;
+}
+
+.btn-login-icon {
+    display: flex;
+    align-items: center;
+    width: 20px;
+}
+
+.btn-login-icon svg {
+    width: 18px;
+    height: 18px;
+    fill: #fff;
+}
+
+
+/* ---- FORGOT PASSWORD ---- */
+
+.forgot-row {
+    text-align: right;
+    margin-top: 7px;
+}
+
+.forgot-link {
+    font-size: 12px;
+    color: var(--brand);
+    text-decoration: underline;
+    cursor: pointer;
+    background: none;
+    border: none;
+    font-family: inherit;
+    padding: 0;
+}
+
+.forgot-link:hover {
+    color: #005f99;
+}
+
+
+/* ---- REGISTER ---- */
+
+.register-row {
+    text-align: center;
+    font-size: 12.5px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid #eaeef2;
+}
+
+.register-row .reg-label {
+    color: var(--login-text);
+    font-weight: 700;
+}
+
+.register-row a {
+    color: var(--brand);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.register-row a:hover {
+    text-decoration: underline;
+}
+
+
+/* ---- DOWNLOAD APK (desktop-only plain link) ---- */
+
+.apk-row {
+    text-align: center;
+    margin-top: 11px;
+}
+
+.apk-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--brand);
+    text-decoration: none;
+}
+
+.apk-link:hover {
+    text-decoration: underline;
+}
+
+.apk-link svg {
+    width: 16px;
+    height: 16px;
+    fill: var(--brand);
+}
+
+
+/* ---- FOOTER — always centered column ---- */
+
+.login-footer {
+    flex-shrink: 0;
+    background: var(--login-footer-bg);
+    padding: 14px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 4px;
+}
+
+.footer-support-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--login-footer-text);
+    letter-spacing: 0.4px;
+}
+
+.footer-wa-link {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.9);
+    text-decoration: none;
+    margin-bottom: 6px;
+}
+
+.footer-wa-link:hover {
+    color: #fff;
+    text-decoration: underline;
+}
+
+.footer-wa-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--wa-green);
+    text-decoration: none;
+    transition: background 0.15s;
+}
+
+.footer-wa-btn:hover {
+    background: #1da850;
+}
+
+.footer-wa-btn svg {
+    width: 24px;
+    height: 24px;
+    fill: #fff;
+}
+
+
+/* =========================
+   MOBILE ≤ 480px
+========================= */
+
+@media (max-width: 480px) {
+    .login-main {
+        padding: 26px 14px 20px;
+    }
+    .login-logo {
+        max-height: 70px;
+        max-width: 250px;
+        margin-bottom: 18px;
+    }
+    .login-card {
+        width: calc(100% - 28px);
+        max-width: 300px;
+        padding: 22px 18px 18px;
+    }
+    /* Hide APK on mobile */
+    .apk-row {
+        display: none;
+    }
+}

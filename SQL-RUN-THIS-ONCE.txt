@@ -1,0 +1,55 @@
+=================================================================
+ RUN THIS ONCE IN SUPABASE  —  then you are finished forever
+=================================================================
+
+WHERE:
+  supabase.com  ->  your playzone9 project
+  ->  left sidebar  ->  SQL Editor  ->  New query
+  ->  paste everything below  ->  click RUN
+
+Expected result: "Success. No rows returned."  That is correct.
+
+-----------------------------------------------------------------
+
+create table if not exists public.site_brand (
+  id          text primary key,
+  data        jsonb       not null default '{}'::jsonb,
+  updated_at  timestamptz not null default now()
+);
+
+alter table public.site_brand enable row level security;
+
+drop policy if exists "brand public read"  on public.site_brand;
+drop policy if exists "brand admin insert" on public.site_brand;
+drop policy if exists "brand admin update" on public.site_brand;
+
+create policy "brand public read"
+  on public.site_brand for select
+  to anon, authenticated
+  using (true);
+
+create policy "brand admin insert"
+  on public.site_brand for insert
+  to authenticated
+  with check (true);
+
+create policy "brand admin update"
+  on public.site_brand for update
+  to authenticated
+  using (true) with check (true);
+
+insert into public.site_brand (id, data)
+values ('playzone9', '{}'::jsonb)
+on conflict (id) do nothing;
+
+-----------------------------------------------------------------
+
+WHAT IT DOES
+  line 1-5    makes the table that stores your brand
+  line 7      turns on row level security
+  policy 1    anyone can READ the brand   (visitors need this)
+  policy 2-3  only a signed in admin can WRITE it
+  last insert creates the empty row for your site
+
+js/cms-config.js is already filled in with your project URL and
+anon key. Nothing else to configure.

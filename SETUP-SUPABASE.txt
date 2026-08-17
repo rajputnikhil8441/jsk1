@@ -1,0 +1,173 @@
+=================================================================
+ LIVE PUBLISHING SETUP  —  15 minutes, one time only
+ After this: Save changes in /admin = live on every device.
+=================================================================
+
+WHY
+---
+localStorage lives inside one browser on one device. To make your
+edits reach real visitors the brand has to sit on a server. This
+setup puts it in a free Supabase table. Your site stays a normal
+static Netlify site.
+
+
+-----------------------------------------------------------------
+STEP 1  CREATE THE PROJECT                          (5 min)
+-----------------------------------------------------------------
+1. Go to supabase.com and sign up (free).
+2. Click "New project".
+3. Name it anything, e.g. playzone9.
+4. Set a database password and SAVE IT SOMEWHERE.
+5. Pick the region closest to your users (Mumbai / South Asia).
+6. Click "Create new project" and wait ~2 minutes.
+
+
+-----------------------------------------------------------------
+STEP 2  CREATE THE TABLE                            (2 min)
+-----------------------------------------------------------------
+1. In the left menu click "SQL Editor".
+2. Click "New query".
+3. Paste EVERYTHING between the lines below, then click "Run".
+
+--------------------------- copy from here ----------------------
+create table if not exists public.site_brand (
+  id          text primary key,
+  data        jsonb       not null default '{}'::jsonb,
+  updated_at  timestamptz not null default now()
+);
+
+alter table public.site_brand enable row level security;
+
+drop policy if exists "brand public read"  on public.site_brand;
+drop policy if exists "brand admin insert" on public.site_brand;
+drop policy if exists "brand admin update" on public.site_brand;
+
+-- anyone can READ the brand (that is the whole point)
+create policy "brand public read"
+  on public.site_brand for select
+  to anon, authenticated
+  using (true);
+
+-- only a signed-in admin can WRITE it
+create policy "brand admin insert"
+  on public.site_brand for insert
+  to authenticated
+  with check (true);
+
+create policy "brand admin update"
+  on public.site_brand for update
+  to authenticated
+  using (true) with check (true);
+
+insert into public.site_brand (id, data)
+values ('playzone9', '{}'::jsonb)
+on conflict (id) do nothing;
+---------------------------- to here -----------------------------
+
+You should see "Success. No rows returned". That is correct.
+
+
+-----------------------------------------------------------------
+STEP 3  CREATE YOUR ADMIN LOGIN                     (2 min)
+-----------------------------------------------------------------
+1. Left menu -> "Authentication" -> "Users".
+2. Click "Add user" -> "Create new user".
+3. Enter your email and a strong password.
+4. Tick "Auto Confirm User" so you can log in immediately.
+5. Click Create.
+
+This email + password is what you will use at /admin.
+Do not share it. Anyone with it can rebrand your live site.
+
+
+-----------------------------------------------------------------
+STEP 4  COPY YOUR TWO KEYS                          (1 min)
+-----------------------------------------------------------------
+1. Left menu -> "Project Settings" (gear) -> "Data API".
+2. Copy "Project URL"       e.g. https://abcdefgh.supabase.co
+3. Copy the "anon public" key (a very long string).
+
+The anon key is SAFE to put in your website code. It only allows
+what your policies allow, which is: read the brand, and nothing
+else without a login.
+NEVER use the "service_role" key. That one bypasses all security.
+
+
+-----------------------------------------------------------------
+STEP 5  FILL IN js/cms-config.js                    (1 min)
+-----------------------------------------------------------------
+Open js/cms-config.js in VS Code and edit four lines:
+
+    enabled: true,
+    url: 'https://abcdefgh.supabase.co',
+    anonKey: 'paste-the-long-anon-key-here',
+    table: 'site_brand',
+    siteId: 'playzone9'
+
+Save the file.
+
+
+-----------------------------------------------------------------
+STEP 6  TEST LOCALLY                                (2 min)
+-----------------------------------------------------------------
+1. Live Server on index.html, let it load.
+2. Go to /admin/  ->  you now get a sign in box.
+3. Sign in with the email + password from Step 3.
+4. Apply a theme, change something, click "Save changes".
+5. You should see "Published. Every device sees this now."
+6. Open the site in Incognito -> your change is there.
+
+
+-----------------------------------------------------------------
+STEP 7  DEPLOY                                      (1 min)
+-----------------------------------------------------------------
+Drag the project folder onto Netlify one final time.
+
+From now on you never redeploy for a branding change:
+
+    /admin  ->  edit  ->  Save changes  ->  done, everywhere.
+
+
+=================================================================
+ RUNNING A SECOND WEBSITE FROM THE SAME DATABASE
+=================================================================
+Deploy the code again as a second Netlify site, and in that copy
+set a different siteId in js/cms-config.js, e.g. 'gin247'.
+Add the row once in the SQL editor:
+
+    insert into public.site_brand (id, data)
+    values ('gin247', '{}'::jsonb) on conflict (id) do nothing;
+
+Two sites, two brands, one database, one admin login.
+
+
+=================================================================
+ TROUBLESHOOTING
+=================================================================
+"Live publishing: error" in Export / Import
+    -> url or anonKey is wrong, or the table name does not match.
+
+Sign in fails with "Invalid login credentials"
+    -> wrong password, or you did not tick Auto Confirm in Step 3.
+
+"Saved locally but NOT published"
+    -> your session expired. Sign out and back in.
+
+Site shows old brand on other devices
+    -> hard refresh. The brand is cached for speed and replaced as
+       soon as the server responds.
+
+Admin loads but shows no sign in box
+    -> enabled is still false in js/cms-config.js.
+
+
+=================================================================
+ IMPORTANT
+=================================================================
+/admin is publicly reachable, but without your email and password
+nobody can change anything. The sign in is the real protection,
+not the URL being secret. Use a strong password.
+
+Images uploaded through the Image Manager are stored inside the
+brand row as base64 and every visitor downloads them. Keep logos
+small; for casino art use real files in assets/images/ instead.
