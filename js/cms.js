@@ -184,7 +184,9 @@
             loginBg: '',
             registerLogo: '',
             registerBg: '',
-            banner: ''
+            banner: '',
+            whatsappIcon: '',
+            crashIcon: ''
         },
 
         /* Repeatable home content. Empty arrays are auto-filled from the
@@ -199,6 +201,10 @@
         /* Saved white labels. Seeded on first run by the admin panel;
            each entry is { id, name, brand:{}, colors:{}, images:{} }. */
         themes: {},
+
+
+        /* Per-section typography. Empty string = inherit existing CSS. */
+        typography: {},
 
         settings: {
             preset: 'playzone',
@@ -285,6 +291,78 @@
     ======================================================== */
     var previewColors = null;   /* set by CMS.preview(), never saved */
 
+
+    /* ========================================================
+       TYPOGRAPHY  — per-section font controls
+       Each section maps to real selectors on the site. Only
+       properties with a value are emitted, so anything left
+       blank keeps whatever the stylesheet already does.
+    ======================================================== */
+
+    var TYPO_TARGETS = {
+        base:         'body',
+        headerBtns:   '.btn-demo, .btn-login, .btn-register, .btn-apk',
+        marquee:      '.header-ticker, .header-ticker *',
+        nav:          '.nav-link, .nav-link span',
+        mobileNav:    '.mob-cat-item',
+        liveStrip:    '.live-strip-inner, .live-match-item, .match-name',
+        sportTabs:    '.sport-tab-label',
+        groupHeader:  '.match-group-header',
+        matchTitle:   '.match-title',
+        matchMeta:    '.match-meta, .match-datetime',
+        odds:         '.odds-btn',
+        casinoLabels: '.casino-ph-label',
+        sidebar:      '.sidebar-heading, .sidebar-list a',
+        support:      '.support-section, .support-link',
+        footer:       '.site-footer, .footer-copy, .footer-safe'
+    };
+
+    var TYPO_PROPS = {
+        fontFamily:    'font-family',
+        fontSize:      'font-size',
+        fontWeight:    'font-weight',
+        fontStyle:     'font-style',
+        letterSpacing: 'letter-spacing',
+        lineHeight:    'line-height',
+        textTransform: 'text-transform'
+    };
+
+    /* px suffix only where a bare number was typed */
+    function typoValue(prop, raw) {
+        var v = String(raw == null ? '' : raw).trim();
+        if (!v) return '';
+        if ((prop === 'fontSize' || prop === 'letterSpacing') && /^-?[0-9.]+$/.test(v)) v += 'px';
+        return v;
+    }
+
+    function buildTypographyCSS() {
+        var typo = (load().typography) || {};
+        var css = '';
+        for (var section in TYPO_TARGETS) {
+            if (!TYPO_TARGETS.hasOwnProperty(section)) continue;
+            var conf = typo[section];
+            if (!conf) continue;
+            var decls = '';
+            for (var key in TYPO_PROPS) {
+                if (!TYPO_PROPS.hasOwnProperty(key)) continue;
+                var val = typoValue(key, conf[key]);
+                if (val) decls += TYPO_PROPS[key] + ':' + val + ' !important;';
+            }
+            if (decls) css += TYPO_TARGETS[section] + '{' + decls + '}\n';
+        }
+        return css;
+    }
+
+    function paintTypography() {
+        var tag = document.getElementById('cmsTypography');
+        if (!tag) {
+            tag = document.createElement('style');
+            tag.id = 'cmsTypography';
+            (document.head || document.documentElement).appendChild(tag);
+        }
+        tag.textContent = buildTypographyCSS();
+    }
+
     function paintVars() {
         var c = load().colors, css = ':root{', k;
         if (previewColors) {
@@ -311,6 +389,8 @@
             (document.head || document.documentElement).appendChild(tag);
         }
         tag.textContent = css;
+
+        paintTypography();
     }
 
     /* ========================================================
@@ -845,6 +925,9 @@
         applyHead: applyHead,
         applyBody: applyBody,
         paintVars: paintVars,
+        paintTypography: paintTypography,
+        TYPO_TARGETS: TYPO_TARGETS,
+        TYPO_PROPS: TYPO_PROPS,
         reload: function () { state = null; return load(); },
         replace: function (obj) { state = merge(DEFAULTS, obj); return save(); },
         reset: function (section) {
