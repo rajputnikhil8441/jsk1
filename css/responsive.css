@@ -300,7 +300,7 @@ body {
 /* ---- NAV — full-screen overlay on mobile ---- */
 
 .nav-hamburger {
-    display: none;
+    display: none !important;
 }
 
 .nav-list {
@@ -473,6 +473,10 @@ body {
     width: 36px;
     height: 36px;
     font-size: 1.1rem;
+    top: 50%;
+    right: 8px;
+    bottom: auto;
+    transform: translateY(-50%);
 }
 
 
