@@ -470,8 +470,8 @@ body {
 /* WhatsApp float: reduce size on mobile */
 
 .whatsapp-float {
-    width: 36px;
-    height: 36px;
+    width: 50px;
+    height: 500px;
     font-size: 1.1rem;
     top: 50%;
     right: 8px;
