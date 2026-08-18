@@ -156,7 +156,9 @@
         ['loginBg', 'Login background image'],
         ['registerLogo', 'Register logo'],
         ['registerBg', 'Register background image'],
-        ['banner', 'Banner image']
+        ['banner', 'Banner image'],
+        ['whatsappIcon', 'WhatsApp button icon'],
+        ['crashIcon', 'Crash / Aviator icon']
     ];
 
     var PRESETS = {
@@ -412,6 +414,134 @@
         CMS.paintVars();      /* repaints the admin preview instantly */
         renderPreview();
         markDirty();
+    }
+
+
+    /* ========================================================
+       TYPOGRAPHY PANEL
+    ======================================================== */
+
+    var TYPO_SECTIONS = [
+        ['base',         'Base / body text'],
+        ['headerBtns',   'Header buttons'],
+        ['marquee',      'Marquee ticker'],
+        ['nav',          'Main navigation'],
+        ['mobileNav',    'Mobile category strip'],
+        ['liveStrip',    'Live events strip'],
+        ['sportTabs',    'Sport tabs'],
+        ['groupHeader',  'Match group headers'],
+        ['matchTitle',   'Match titles'],
+        ['matchMeta',    'Match date / meta'],
+        ['odds',         'Odds buttons'],
+        ['casinoLabels', 'Casino card labels'],
+        ['sidebar',      'Left sidebar'],
+        ['support',      'Support section'],
+        ['footer',       'Footer']
+    ];
+
+    var FONT_STACKS = [
+        ['', 'Inherit (no change)'],
+        ["'Roboto', Arial, sans-serif", 'Roboto'],
+        ["'Poppins', Arial, sans-serif", 'Poppins'],
+        ["'Montserrat', Arial, sans-serif", 'Montserrat'],
+        ["'Open Sans', Arial, sans-serif", 'Open Sans'],
+        ["'Lato', Arial, sans-serif", 'Lato'],
+        ["'Oswald', Arial, sans-serif", 'Oswald'],
+        ["Arial, Helvetica, sans-serif", 'Arial'],
+        ["'Times New Roman', serif", 'Times New Roman'],
+        ["Georgia, serif", 'Georgia'],
+        ["'Courier New', monospace", 'Courier New']
+    ];
+
+    var TYPO_FIELDS = [
+        { key: 'fontFamily',    label: 'Font family',    type: 'select', opts: FONT_STACKS },
+        { key: 'fontSize',      label: 'Font size (px)', type: 'text',   ph: 'e.g. 14' },
+        { key: 'fontWeight',    label: 'Font weight',    type: 'select',
+          opts: [['', 'Inherit'], ['300', 'Light 300'], ['400', 'Normal 400'], ['500', 'Medium 500'],
+                 ['600', 'Semibold 600'], ['700', 'Bold 700'], ['800', 'Extra bold 800'], ['900', 'Black 900']] },
+        { key: 'fontStyle',     label: 'Font style',     type: 'select',
+          opts: [['', 'Inherit'], ['normal', 'Normal'], ['italic', 'Italic']] },
+        { key: 'letterSpacing', label: 'Letter spacing (px)', type: 'text', ph: 'e.g. 0.5' },
+        { key: 'lineHeight',    label: 'Line height',    type: 'text',   ph: 'e.g. 1.4' },
+        { key: 'textTransform', label: 'Text transform', type: 'select',
+          opts: [['', 'Inherit'], ['none', 'None'], ['uppercase', 'UPPERCASE'],
+                 ['lowercase', 'lowercase'], ['capitalize', 'Capitalize']] }
+    ];
+
+    function typoGet(section, key) {
+        var t = CMS.data().typography || {};
+        return (t[section] && t[section][key]) || '';
+    }
+
+    function typoSet(section, key, val) {
+        var data = CMS.data();
+        if (!data.typography) data.typography = {};
+        if (!data.typography[section]) data.typography[section] = {};
+        data.typography[section][key] = val;
+        CMS.paintTypography();
+        markDirty();
+    }
+
+    function buildTypography() {
+        var wrap = $('#typoGroups');
+        if (!wrap) return;
+        wrap.innerHTML = '';
+
+        TYPO_SECTIONS.forEach(function (sec) {
+            var card = document.createElement('div');
+            card.className = 'card';
+            card.innerHTML = '<h2>' + esc(sec[1]) + '</h2>' +
+                '<p class="hint">Leave a field blank to keep the current design.</p>';
+
+            var grid = document.createElement('div');
+            grid.className = 'typo-grid';
+
+            TYPO_FIELDS.forEach(function (f) {
+                var row = document.createElement('label');
+                row.className = 'typo-field';
+                row.innerHTML = '<span>' + esc(f.label) + '</span>';
+
+                var input;
+                if (f.type === 'select') {
+                    input = document.createElement('select');
+                    f.opts.forEach(function (o) {
+                        var op = document.createElement('option');
+                        op.value = o[0];
+                        op.textContent = o[1];
+                        input.appendChild(op);
+                    });
+                } else {
+                    input = document.createElement('input');
+                    input.type = 'text';
+                    if (f.ph) input.placeholder = f.ph;
+                }
+                input.value = typoGet(sec[0], f.key);
+                input.addEventListener('input', function () {
+                    typoSet(sec[0], f.key, input.value);
+                });
+                input.addEventListener('change', function () {
+                    typoSet(sec[0], f.key, input.value);
+                });
+                row.appendChild(input);
+                grid.appendChild(row);
+            });
+
+            var clear = document.createElement('button');
+            clear.className = 'adm-btn';
+            clear.type = 'button';
+            clear.textContent = 'Clear this section';
+            clear.addEventListener('click', function () {
+                var data = CMS.data();
+                if (data.typography) delete data.typography[sec[0]];
+                CMS.paintTypography();
+                markDirty();
+                buildTypography();
+            });
+
+            card.appendChild(grid);
+            card.appendChild(clear);
+            wrap.appendChild(card);
+        });
     }
 
     function buildColors() {
@@ -1046,6 +1176,7 @@
         CMS.paintVars();
         hydrateBindings();
         buildColors();
+        buildTypography();
         buildText();
         buildImages();
         buildAllLists();
