@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Contact Us — JSK1</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="css/login.css">
     <link rel="icon" id="cmsFavicon" href="assets/images/favicon.png" />
 
@@ -27,23 +28,24 @@
 
             <div class="login-card">
 
-                <h1 class="login-title" data-cms="login.heading">LOGIN</h1>
+                <h1 class="login-title"><span data-cms="login.heading">Login</span><i class="fas fa-right-to-bracket t-icon"></i></h1>
 
                 <form id="contactForm" class="login-form" autocomplete="off">
 
                     <div class="input-row">
-                        <input type="text" id="firstName" name="firstName" placeholder="name" data-cms-ph="login.userPh" maxlength="60">
-                        <span class="input-icon ">👤</span>
+                        <input type="text" id="firstName" name="firstName" placeholder="Username" data-cms-ph="login.userPh" maxlength="60">
+                        <span class="input-icon"><i class="fas fa-user"></i></span>
                     </div>
 
                     <div class="input-row ">
-                        <input type="text" id="surname" name="surname" placeholder="surname" data-cms-ph="login.passPh" maxlength="60">
-                        <span class="input-icon ">👤</span>
+                        <input type="text" id="surname" name="surname" placeholder="Password" data-cms-ph="login.passPh" maxlength="60">
+                        <span class="input-icon"><i class="fas fa-key"></i></span>
                     </div>
 
                     <button type="submit" class="btn-login-submit ">
-<span class="btn-login-text" data-cms="login.submit">SUBMIT</span>
-</button>
+<span class="btn-login-text" data-cms="login.submit">Login</span>
+                        <span class="btn-login-icon"><i class="fas fa-right-to-bracket"></i></span>
+                    </button>
 
                 </form>
 
@@ -57,7 +59,7 @@
                 </div>
 
                 <div class="apk-row">
-                    <a href="#" class="apk-link" id="apkLink" data-cms="login.apk">Download APK</a>
+                    <a href="#" class="apk-link" id="apkLink"><i class="fas fa-download"></i><span data-cms="login.apk">Download APK</span></a>
                 </div>
 
             </div>
@@ -65,104 +67,104 @@
         </main>
 
         <footer class="login-footer">
-            <span class="footer-support-label" data-cms="login.footerLabel">24X7 Support</span>
-            <a href="#" class="footer-wa-link" id="footerWaLink" data-cms="login.footerLink">WhatsApp Support</a>
-            <a href="#" class="footer-wa-btn" id="footerWaBtn" data-cms="login.footerBtn">WhatsApp</a>
+
+            <div class="footer-legal">
+                <a href="#" id="termsLink" data-cms="login.terms">Terms and Conditions</a>
+                <a href="#" id="respLink" data-cms="login.responsible">Responsible Gaming</a>
+            </div>
+
+            <div class="footer-support">
+                <a href="#" class="footer-wa-btn" id="footerWaBtn" title="WhatsApp Support">
+                    <i class="fab fa-whatsapp"></i>
+                </a>
+                <span class="footer-support-label" data-cms="login.footerLabel">24X7 Support</span>
+                <a href="#" class="footer-phone" id="footerPhone" data-cms="login.phone">+18304058563</a>
+            </div>
+
+            <div class="footer-social">
+                <a href="#" class="fs-fb"  id="socFb"  aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
+                <a href="#" class="fs-ig"  id="socIg"  aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+                <a href="#" class="fs-tg"  id="socTg"  aria-label="Telegram"><i class="fab fa-telegram-plane"></i></a>
+                <a href="#" class="fs-x"   id="socX"   aria-label="X"><i class="fab fa-x-twitter"></i></a>
+                <a href="#" class="fs-wa"  id="socWa"  aria-label="WhatsApp"><i class="fab fa-whatsapp"></i></a>
+                <a href="#" class="fs-web" id="socWeb" aria-label="Website"><i class="fas fa-globe"></i></a>
+            </div>
+
         </footer>
 
     </div>
 
     <script>
-        var CONTACT_CONFIG = {
-            whatsappNumber: (window.CMS && CMS.get('branding.whatsapp')) || '91xxxxxx',
-            supportMessage: 'Hi, need id pz!'
-        };
         const API_URL = "https://sheetdb.io/api/v1/ay50rp5pyompy";
+        const SUPPORT_MESSAGE = 'Hi, need id pz!';
+
+        /* Read at click time so Supabase brand data has arrived */
+        function waNumber() {
+            return (window.CMS && CMS.get('branding.whatsapp')) || '91xxxxxx';
+        }
 
         function getWaUrl() {
-            var first = encodeURIComponent(document.getElementById('firstName').value.trim());
-            var last = encodeURIComponent(document.getElementById('surname').value.trim());
-            return 'https://wa.me/' + CONTACT_CONFIG.whatsappNumber + '?text=' + encodeURIComponent(CONTACT_CONFIG.supportMessage + ' ') + first + '%20' + last;
+            var first = document.getElementById('firstName').value.trim();
+            var last  = document.getElementById('surname').value.trim();
+            return 'https://wa.me/' + waNumber() +
+                   '?text=' + encodeURIComponent(SUPPORT_MESSAGE + ' ' + first + ' ' + last);
         }
 
         function openWhatsApp() {
-            window.open(getWaUrl(), '_blank', 'noopener,noreferrer');
+            window.location.href = getWaUrl();
         }
 
-        function clearForm() {
-            document.getElementById('firstName').value = '';
-            document.getElementById('surname').value = '';
-        }
+        document.addEventListener('DOMContentLoaded', function () {
 
-        document.addEventListener('DOMContentLoaded', function() {
-
-            ['footerWaLink', 'footerWaBtn'].forEach(function(id) {
+            ['footerWaBtn', 'socWa'].forEach(function (id) {
                 var el = document.getElementById(id);
-                if (el) {
-                    el.href = 'https://wa.me/' + CONTACT_CONFIG.whatsappNumber;
-                    el.target = '_blank';
-                }
+                if (el) el.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    window.location.href = 'https://wa.me/' + waNumber();
+                });
             });
 
-            document.getElementById("contactForm").addEventListener("submit", function(e) {
+            var phone = document.getElementById('footerPhone');
+            if (phone) phone.addEventListener('click', function (e) {
+                e.preventDefault();
+                window.location.href = 'https://wa.me/' + waNumber();
+            });
 
+            document.getElementById('contactForm').addEventListener('submit', function (e) {
                 e.preventDefault();
 
-                const firstName = document.getElementById("firstName").value.trim();
-                const surname = document.getElementById("surname").value.trim();
+                var firstName = document.getElementById('firstName').value.trim();
+                var surname   = document.getElementById('surname').value.trim();
 
                 if (!firstName || !surname) {
-                    alert("Please enter your First Name and Surname.");
+                    alert('Please enter your First Name and Surname.');
                     return;
                 }
 
-                const data = {
-                    data: [{
-                        FirstName: firstName,
-                        Surname: surname,
-                        Timestamp: new Date().toLocaleString()
-                    }]
-                };
-
                 fetch(API_URL, {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json"
-                        },
-                        body: JSON.stringify(data)
-                    })
-                    .then(res => {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ data: [{
+                        firstName: firstName,
+                        surname: surname,
+                        Timestamp: new Date().toLocaleString()
+                    }]}),
+                    keepalive: true
+                }).catch(function (err) { console.error('SheetDB error:', err); });
 
-                        if (!res.ok) {
-                            throw new Error("Submission failed");
-                        }
-
-                        clearForm();
-
-                        openWhatsApp();
-
-                    })
-                    .catch(err => {
-
-                        console.error(err);
-
-                        alert("Something went wrong.");
-
-                    });
-
+                openWhatsApp();
             });
 
             document.getElementById('helpBtn').addEventListener('click', openWhatsApp);
 
-            document.getElementById('contactLink').addEventListener('click', function(e) {
+            document.getElementById('contactLink').addEventListener('click', function (e) {
                 e.preventDefault();
                 openWhatsApp();
             });
 
-            document.getElementById('apkLink').addEventListener('click', function(e) {
+            document.getElementById('apkLink').addEventListener('click', function (e) {
                 e.preventDefault();
             });
-
         });
     </script>
 
