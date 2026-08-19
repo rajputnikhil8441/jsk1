@@ -299,3 +299,76 @@ document.addEventListener('DOMContentLoaded', function() {
   initScrollEffects();
   enhanceMobileMatches();
 });
+
+
+
+
+
+
+
+
+/* ============================================================
+   LOGIN GATE
+   1st click anywhere  -> popup "Please login first"
+   2nd click onwards   -> straight to login page
+============================================================ */
+(function () {
+    var KEY = 'gateSeen';
+    var LOGIN_URL = 'login.html';
+
+    function seen() {
+        try { return sessionStorage.getItem(KEY) === '1'; } catch (e) { return false; }
+    }
+    function markSeen() {
+        try { sessionStorage.setItem(KEY, '1'); } catch (e) {}
+    }
+
+    function buildPopup() {
+        if (document.getElementById('gateOverlay')) return;
+        var o = document.createElement('div');
+        o.id = 'gateOverlay';
+        o.className = 'gate-overlay';
+        o.innerHTML =
+            '<div class="gate-box">' +
+              '<i class="fas fa-lock gate-ico"></i>' +
+              '<h3 class="gate-title" data-cms="gate.title">Please login first</h3>' +
+              '<p class="gate-text" data-cms="gate.text">You need an account to continue.</p>' +
+              '<button class="gate-btn" id="gateGo" data-cms="gate.btn">Login</button>' +
+              '<button class="gate-close" id="gateClose" aria-label="Close">&times;</button>' +
+            '</div>';
+        document.body.appendChild(o);
+
+        document.getElementById('gateGo').addEventListener('click', function () {
+            window.location.href = LOGIN_URL;
+        });
+        document.getElementById('gateClose').addEventListener('click', function () {
+            o.classList.remove('show');
+        });
+        o.addEventListener('click', function (e) {
+            if (e.target === o) o.classList.remove('show');
+        });
+    }
+
+    function showPopup() {
+        buildPopup();
+        requestAnimationFrame(function () {
+            document.getElementById('gateOverlay').classList.add('show');
+        });
+    }
+
+    document.addEventListener('click', function (e) {
+        /* ignore clicks on the popup itself and on WhatsApp */
+        if (e.target.closest('#gateOverlay')) return;
+        if (e.target.closest('.whatsapp-float, .support-wa-btn')) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (seen()) {
+            window.location.href = LOGIN_URL;
+        } else {
+            markSeen();
+            showPopup();
+        }
+    }, true);   /* capture phase — runs before every other handler */
+})();
