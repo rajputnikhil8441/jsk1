@@ -309,12 +309,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
 /* ============================================================
    LOGIN GATE
-   1st click anywhere  -> popup "Please login first"
+   1st click anywhere  -> toast "Please login to access!"
    2nd click onwards   -> straight to login page
 ============================================================ */
 (function () {
     var KEY = 'gateSeen';
     var LOGIN_URL = 'login.html';
+    var hideTimer = null;
 
     function seen() {
         try { return sessionStorage.getItem(KEY) === '1'; } catch (e) { return false; }
@@ -323,42 +324,28 @@ document.addEventListener('DOMContentLoaded', function() {
         try { sessionStorage.setItem(KEY, '1'); } catch (e) {}
     }
 
-    function buildPopup() {
-        if (document.getElementById('gateOverlay')) return;
-        var o = document.createElement('div');
-        o.id = 'gateOverlay';
-        o.className = 'gate-overlay';
-        o.innerHTML =
-            '<div class="gate-box">' +
-              '<i class="fas fa-lock gate-ico"></i>' +
-              '<h3 class="gate-title" data-cms="gate.title">Please login first</h3>' +
-              '<p class="gate-text" data-cms="gate.text">You need an account to continue.</p>' +
-              '<button class="gate-btn" id="gateGo" data-cms="gate.btn">Login</button>' +
-              '<button class="gate-close" id="gateClose" aria-label="Close">&times;</button>' +
-            '</div>';
-        document.body.appendChild(o);
-
-        document.getElementById('gateGo').addEventListener('click', function () {
-            window.location.href = LOGIN_URL;
-        });
-        document.getElementById('gateClose').addEventListener('click', function () {
-            o.classList.remove('show');
-        });
-        o.addEventListener('click', function (e) {
-            if (e.target === o) o.classList.remove('show');
-        });
+    function buildToast() {
+        var t = document.getElementById('gateToast');
+        if (t) return t;
+        t = document.createElement('div');
+        t.id = 'gateToast';
+        t.className = 'gate-toast';
+        t.innerHTML =
+            '<span class="gate-x"><i class="fas fa-xmark"></i></span>' +
+            '<span class="gate-msg" data-cms="gate.text">Please login to access!</span>';
+        document.body.appendChild(t);
+        return t;
     }
 
-    function showPopup() {
-        buildPopup();
-        requestAnimationFrame(function () {
-            document.getElementById('gateOverlay').classList.add('show');
-        });
+    function showToast() {
+        var t = buildToast();
+        clearTimeout(hideTimer);
+        requestAnimationFrame(function () { t.classList.add('show'); });
+        hideTimer = setTimeout(function () { t.classList.remove('show'); }, 2600);
     }
 
     document.addEventListener('click', function (e) {
-        /* ignore clicks on the popup itself and on WhatsApp */
-        if (e.target.closest('#gateOverlay')) return;
+        if (e.target.closest('#gateToast')) return;
         if (e.target.closest('.whatsapp-float, .support-wa-btn')) return;
 
         e.preventDefault();
@@ -368,7 +355,7 @@ document.addEventListener('DOMContentLoaded', function() {
             window.location.href = LOGIN_URL;
         } else {
             markSeen();
-            showPopup();
+            showToast();
         }
-    }, true);   /* capture phase — runs before every other handler */
+    }, true);
 })();
