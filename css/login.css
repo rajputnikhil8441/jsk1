@@ -92,7 +92,7 @@ body {
     background: var(--login-card-bg);
     border: none;
     border-radius: 5px;
-    box-shadow: 0 6px 24px rgba(255,255,255,0.4);
+    box-shadow: 0 8px 30px rgba(255,255,255,0.6);
     width: var(--card-w);
     max-width: 100%;
     padding: 20px 14px 18px;
