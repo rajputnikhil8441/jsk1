@@ -1212,3 +1212,13 @@ input[type="password"]:focus {
     cursor: pointer;
 }
 .reg-toggle input { width: 16px; height: 16px; cursor: pointer; }
+
+/* Sub-sections inside the merged Register appearance card */
+.reg-sub { margin-top: 14px; }
+.reg-sub:first-child { margin-top: 0; }
+.reg-sub h3 {
+    font-size: .9rem;
+    font-weight: 600;
+    opacity: .8;
+    margin-bottom: 8px;
+}
