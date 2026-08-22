@@ -1,0 +1,1358 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JSK1 - Online Sports Betting &amp; Casino</title>
+    <link rel="stylesheet" href="css/style.css" />
+    <link rel="stylesheet" href="css/responsive.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" />
+    <link rel="icon" id="cmsFavicon" href="assets/images/favicon.png" />
+
+    <!-- REMOTE BRAND STORAGE CONFIG (edit this one file to go live everywhere) -->
+    <script src="js/cms-config.js"></script>
+
+    <!-- PUBLISHED BRAND — regenerate from /admin > Export > Download brand.js -->
+    <script src="js/brand.js"></script>
+
+    <!-- WHITE LABEL CMS — must load before main.js -->
+    <script src="js/cms.js"></script>
+</head>
+
+<body>
+
+    <!-- HEADER -->
+    <header class="site-header">
+        <div class="header-inner">
+
+            <!-- Mobile Home Icon (mobile-only) -->
+            <a href="index.html" class="mob-home-icon" title="Home">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="18" height="18" aria-hidden="true"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+            </a>
+
+            <!-- Logo -->
+            <div class="header-logo">
+                <a href="index.html">
+                    <img src="assets/images/logo.png" class="logo-img" alt="PLAYZONE9" data-cms-img="logo" data-cms-img-mob="logoMobile" data-cms-alt="siteName" onerror="this.style.display='none'">
+                </a>
+            </div>
+
+            <!-- Header Right -->
+            <div class="header-right">
+                <a href="#" class="btn-apk" id="apkBtn">
+                    <i class="fas fa-download"></i> <span data-cms="btn.apk">Download Apk</span>
+                    <i class="fas fa-diamond apk-diamond"></i>
+                </a>
+                <a href="#" class="btn-demo" data-cms="btn.demo">Demo</a>
+                <a href="login.html" class="btn-login" data-cms="btn.login">Login</a>
+                <a href="#" class="btn-register" data-cms="btn.register">Register</a>
+            </div>
+
+        </div>
+
+        <!-- Ticker / Marquee -->
+        <div class="header-ticker" id="headerTicker">
+            <div class="ticker-icon"><i class="fas fa-bullhorn"></i></div>
+            <div class="ticker-wrap">
+                <div class="ticker-text" id="tickerText" data-cms="marquee.text">
+                    🔥🔥 The casino floor is buzzing with excitement! &nbsp;&nbsp;&nbsp;Teenpatti BaccaratPoker Play Live
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- NAVIGATION -->
+    <nav class="main-nav">
+        <div class="nav-inner">
+            <button class="nav-hamburger" id="navHamburger" aria-label="Open menu">
+      <i class="fas fa-bars"></i>
+    </button>
+
+            <ul class="nav-list" id="navList">
+                <li><a href="#" class="nav-link active"><i class="fas fa-home"></i> <span data-cms="nav.home">HOME</span></a></li>
+                <li><a href="#" class="nav-link" data-cms="nav.cricket">CRICKET</a></li>
+                <li><a href="#" class="nav-link" data-cms="nav.tennis">TENNIS</a></li>
+                <li><a href="#" class="nav-link" data-cms="nav.football">FOOTBALL</a></li>
+                <li><a href="#" class="nav-link" data-cms="nav.tabletennis">TABLE TENNIS</a></li>
+                <li><a href="#" class="nav-link" data-cms="nav.baccarat">BACCARAT</a></li>
+                <li><a href="#" class="nav-link" data-cms="nav.cards32">32 CARDS</a></li>
+                <li><a href="#" class="nav-link" data-cms="nav.teenpatti">TEENPATTI</a></li>
+                <li><a href="#" class="nav-link" data-cms="nav.poker">POKER</a></li>
+                <li><a href="#" class="nav-link" data-cms="nav.lucky7">LUCKY 7</a></li>
+                <li><a href="#" class="nav-link nav-crash"><i class="fas fa-fire"></i> <span data-cms="nav.crash">CRASH</span></a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- MOBILE: Featured Match Strip -->
+    <div class="mob-featured-strip" id="mobFeaturedStrip">
+        <a href="#" class="mob-feat-card">
+            <span class="mob-feat-icon"><i class="fas fa-cricket-bat-ball"></i></span>
+            <span class="mob-feat-name">Zimbabwe v India</span>
+        </a>
+        <a href="#" class="mob-feat-card">
+            <span class="mob-feat-icon"><i class="fas fa-cricket-bat-ball"></i></span>
+            <span class="mob-feat-name">West Indies v Pakistan</span>
+        </a>
+    </div>
+
+    <!-- MOBILE: Category Nav -->
+    <div class="mob-category-nav">
+        <div class="mob-category-inner" id="mobCategoryInner">
+            <a href="#" class="mob-cat-item active"><img class="mob-cat-img" data-cms-img="crashIcon" alt="" hidden> CRASH</a>
+            <a href="#" class="mob-cat-item"></i> SPORTS</a>
+            <a href="#" class="mob-cat-item"></i> OUR CASINO</a>
+            <a href="#" class="mob-cat-item"></i> LIVE CASINO</a>
+            <a href="#" class="mob-cat-item"></i> SLOTS</a>
+            <a href="#" class="mob-cat-item"></i> FANTASY</a>
+        </div>
+    </div>
+
+    <!-- LIVE EVENTS STRIP -->
+    <div class="live-strip">
+        <div class="live-strip-inner">
+
+            <div class="live-match-item">
+                <span class="live-dot green"></span>
+                <i class="fas fa-table-tennis-paddle-ball" style="font: size 9px;color:#666;"></i>
+                <span class="match-name">Van Assche v Hug Gaston</span>
+            </div>
+
+            <div class="live-match-item">
+                <span class="live-dot green"></span>
+                <i class="fas fa-table-tennis-paddle-ball" style="font-size:9px;color:#666;"></i>
+                <span class="match-name">Blockx v Darderi</span>
+            </div>
+
+            <div class="live-match-item">
+                <span class="live-dot red"></span>
+                <i class="fas fa-baseball-bat-ball" style="font-size:9px;color:#666;"></i>
+                <span class="match-name">Welsh Fire v MI London</span>
+            </div>
+
+            <div class="live-match-item">
+                <span class="live-dot red"></span>
+                <i class="fas fa-cricket-bat-ball" style="font-size:9px;color:#666;"></i>
+                <span class="match-name">West Indies v Pakistan</span>
+            </div>
+
+            <div class="live-match-item">
+                <span class="live-dot blue"></span>
+                <i class="fas fa-table-tennis-paddle-ball" style="font-size:9px;color:#666;"></i>
+                <span class="match-name">Robin Pacha - Martin Bittner</span>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- CONTENT WRAPPER (Sidebar + Main) -->
+    <div class="content-wrapper">
+
+        <!-- SIDEBAR -->
+        <aside class="left-sidebar" id="leftSidebar">
+
+            <!-- Racing Sports -->
+            <div class="sidebar-section">
+                <div class="sidebar-heading" data-toggle="racing-sports">
+                    <span>Racing Sports</span>
+                    <i class="fas fa-chevron-up sidebar-arrow"></i>
+                </div>
+                <ul class="sidebar-list" id="racing-sports">
+                    <li>
+                        <a href="#">
+                            <span class="link-label"><i class="fas fa-horse"></i> Horse Racing</span>
+                            <i class="fas fa-chevron-right arrow-r"></i>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#">
+                            <span class="link-label"><i class="fas fa-dog"></i> Greyhound Racing</span>
+                            <i class="fas fa-chevron-right arrow-r"></i>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Others -->
+            <div class="sidebar-section">
+                <div class="sidebar-heading" data-toggle="others-menu">
+                    <span>Others</span>
+                    <i class="fas fa-chevron-up sidebar-arrow"></i>
+                </div>
+                <ul class="sidebar-list" id="others-menu">
+                    <li><a href="#"><span class="link-label"><i class="fas fa-dice"></i> Our Casino</span></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-crown"></i> Our VIP Casino</span></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-star"></i> Our Premium Casino</span></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-vr-cardboard"></i> Our Virtual</span></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-video"></i> Live Casino</span></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-grip-lines"></i> Slot Game</span></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-gamepad"></i> Fantasy Game</span></a></li>
+                </ul>
+            </div>
+
+            <!-- All Sports -->
+            <div class="sidebar-section">
+                <div class="sidebar-heading" data-toggle="all-sports">
+                    <span>All Sports</span>
+                    <i class="fas fa-chevron-up sidebar-arrow"></i>
+                </div>
+                <ul class="sidebar-list" id="all-sports">
+                    <li><a href="#"><span class="link-label"><i class="fas fa-landmark"></i> Politics</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#" class="active"><span class="link-label"><i class="fas fa-cricket-bat-ball"></i> Cricket</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-futbol"></i> Football</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-table-tennis-paddle-ball"></i> Tennis</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-table-tennis-paddle-ball"></i> Table Tennis</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-feather"></i> Badminton</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-gamepad"></i> Esoccer</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-basketball"></i> Basketball</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-volleyball"></i> Volleyball</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-circle-dot"></i> Snooker</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-snowflake"></i> Ice Hockey</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-gamepad"></i> E Games</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-person-running"></i> Futsal</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-hands-clapping"></i> Handball</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-kaaba"></i> Kabaddi</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-golf-ball-tee"></i> Golf</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-football"></i> Rugby League</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-fist-raised"></i> Boxing</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-volleyball"></i> Beach Volleyball</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-fist-raised"></i> Mixed Martial Arts</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-motorcycle"></i> MotoGP</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-chess"></i> Chess</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-bicycle"></i> Cycling</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-motorcycle"></i> Motorbikes</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-person-running"></i> Athletics</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-basketball"></i> Basketball 3X3</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-person"></i> Sumo</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-gamepad"></i> Virtual sports</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-car"></i> Motor Sports</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-baseball"></i> Baseball</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-football"></i> Rugby Union</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-circle-dot"></i> Darts</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-futbol"></i> Soccer</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-gamepad"></i> Esports</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-ship"></i> Boat Racing</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-person-swimming"></i> Wrestling</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                    <li><a href="#"><span class="link-label"><i class="fas fa-football"></i> American Football</span><i class="fas fa-chevron-right arrow-r"></i></a></li>
+                </ul>
+            </div>
+
+        </aside>
+
+        <!-- Sidebar overlay -->
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+        <!-- MAIN CONTENT -->
+        <main class="main-content">
+
+            <!-- SPORTS TABS -->
+            <div class="sports-tabs">
+                <div class="sports-tabs-inner" id="sportsTabsInner">
+                    <button class="sport-tab active" data-sport="cricket">
+          <span class="sport-tab-icon"><i class="fas fa-cricket-bat-ball"></i></span>
+          <span class="sport-tab-label">CRICKET</span>
+        </button>
+                    <button class="sport-tab" data-sport="football">
+          <span class="sport-tab-icon"><i class="fas fa-futbol"></i></span>
+          <span class="sport-tab-label">FOOTBALL</span>
+        </button>
+                    <button class="sport-tab" data-sport="tennis">
+          <span class="sport-tab-icon"><i class="fas fa-table-tennis-paddle-ball"></i></span>
+          <span class="sport-tab-label">TENNIS</span>
+        </button>
+                    <button class="sport-tab" data-sport="table-tennis">
+          <span class="sport-tab-icon"><i class="fas fa-table-tennis-paddle-ball"></i></span>
+          <span class="sport-tab-label">TABLE TENNIS</span>
+        </button>
+                    <button class="sport-tab" data-sport="horse-racing">
+          <span class="sport-tab-icon"><i class="fas fa-horse"></i></span>
+          <span class="sport-tab-label">HORSE RACING</span>
+        </button>
+                    <button class="sport-tab" data-sport="greyhound">
+          <span class="sport-tab-icon"><i class="fas fa-dog"></i></span>
+          <span class="sport-tab-label">GREYHOUND</span>
+        </button>
+                    <button class="sport-tab" data-sport="basketball">
+          <span class="sport-tab-icon"><i class="fas fa-basketball"></i></span>
+          <span class="sport-tab-label">BASKETBALL</span>
+        </button>
+                    <button class="sport-tab" data-sport="esoccer">
+          <span class="sport-tab-icon"><i class="fas fa-gamepad"></i></span>
+          <span class="sport-tab-label">ESOCCER</span>
+        </button>
+                    <button class="sport-tab" data-sport="wrestling">
+          <span class="sport-tab-icon"><i class="fas fa-person-running"></i></span>
+          <span class="sport-tab-label">Wrestling</span>
+        </button>
+                    <button class="sport-tab" data-sport="volleyball">
+          <span class="sport-tab-icon"><i class="fas fa-volleyball"></i></span>
+          <span class="sport-tab-label">Volleyball</span>
+        </button>
+                    <button class="sport-tab" data-sport="badminton">
+          <span class="sport-tab-icon"><i class="fas fa-feather"></i></span>
+          <span class="sport-tab-label">Badminton</span>
+        </button>
+                    <button class="sport-tab" data-sport="snooker">
+          <span class="sport-tab-icon"><i class="fas fa-circle-dot"></i></span>
+          <span class="sport-tab-label">Snooker</span>
+        </button>
+                    <button class="sport-tab" data-sport="darts">
+          <span class="sport-tab-icon"><i class="fas fa-circle-dot"></i></span>
+          <span class="sport-tab-label">Darts</span>
+        </button>
+                </div>
+            </div>
+
+            <!-- MATCHES TABLE -->
+            <div class="matches-table" id="matchesTable">
+
+                <div class="match-group-header">
+                    <span class="match-group-title">Super Over2</span>
+                    <div class="match-group-right">
+                        <span class="mgr-dot"></span>
+                        <i class="fas fa-tv mgr-icon"></i>
+                        <i class="fab fa-facebook-f mgr-icon"></i>
+                        <span class="mgr-bm">BM</span>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">West Indies v Pakistan</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot green"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">25/07/2026 19:30:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn back">3.1</button>
+                        <button class="odds-btn lay">3.15</button>
+                        <button class="odds-btn draw">2.08</button>
+                        <button class="odds-btn back2">2.1</button>
+                        <button class="odds-btn back3">4.8</button>
+                        <button class="odds-btn lay2">5.1</button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">Welsh Fire v MI London</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot green"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">25/07/2026 22:30:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn back">1.64</button>
+                        <button class="odds-btn lay">1.65</button>
+                        <button class="odds-btn draw">-</button>
+                        <button class="odds-btn back2">-</button>
+                        <button class="odds-btn back3">2.52</button>
+                        <button class="odds-btn lay2">2.54</button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">Pakistan T10 v New Zealand T10</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot grey"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">25/07/2026 23:30:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">Melbourne Stars XI v Sydney Sixers XI</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot grey"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">25/07/2026 23:40:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">SNP XI v JT XI</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot grey"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">25/07/2026 23:45:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">Delhi Capitals (e) - Rajasthan Royals (e)</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot grey"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">25/07/2026 23:48:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">Punjab Kings (e) - Delhi Capitals (e)</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot grey"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">25/07/2026 23:48:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">The Hundred</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot grey"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">21/07/2026 23:00:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">Punjab Kings - Chennai Super Kings (e)</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot grey"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">25/07/2026 23:51:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">Australia T10 v West Indies T10</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot grey"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">26/07/2026 00:35:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">Guyana Amazon Warriors v Desert Vipers</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot grey"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">26/07/2026 04:30:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn back">1.47</button>
+                        <button class="odds-btn lay">1.62</button>
+                        <button class="odds-btn draw">-</button>
+                        <button class="odds-btn back2">-</button>
+                        <button class="odds-btn back3">2.62</button>
+                        <button class="odds-btn lay2">3.15</button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">Kandy Royals v Jaffna Kings</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot grey"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">26/07/2026 15:00:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn back">1.66</button>
+                        <button class="odds-btn lay">3</button>
+                        <button class="odds-btn draw">-</button>
+                        <button class="odds-btn back2">-</button>
+                        <button class="odds-btn back3">1.5</button>
+                        <button class="odds-btn lay2">2.5</button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">Manchester Super Giants W v Birmingham Phoenix W</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot grey"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">26/07/2026 15:30:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn back">1.74</button>
+                        <button class="odds-btn lay">1.75</button>
+                        <button class="odds-btn draw">-</button>
+                        <button class="odds-btn back2">-</button>
+                        <button class="odds-btn back3">2.32</button>
+                        <button class="odds-btn lay2">2.36</button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">Middlesex v Glamorgan</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot grey"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">26/07/2026 15:30:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">Essex v Derbyshire</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot grey"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">26/07/2026 15:30:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">Worcestershire v Hampshire</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot grey"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">26/07/2026 15:30:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">Surrey v Northamptonshire</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot grey"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">26/07/2026 15:30:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">Somerset v Warwickshire</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot grey"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">26/07/2026 15:30:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">Leicestershire v Lancashire</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot grey"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">26/07/2026 15:30:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">Zimbabwe v India</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot grey"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">26/07/2026 16:30:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn back">11</button>
+                        <button class="odds-btn lay">12</button>
+                        <button class="odds-btn draw">-</button>
+                        <button class="odds-btn back2">-</button>
+                        <button class="odds-btn back3">1.09</button>
+                        <button class="odds-btn lay2">1.1</button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">Trent Rockets W v London Spirit W</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot grey"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">26/07/2026 19:00:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn back">1.65</button>
+                        <button class="odds-btn lay">1.73</button>
+                        <button class="odds-btn draw">-</button>
+                        <button class="odds-btn back2">-</button>
+                        <button class="odds-btn back3">2.36</button>
+                        <button class="odds-btn lay2">2.42</button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">Manchester Super Giants v Birmingham Phoenix W</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot grey"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">26/07/2026 19:00:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn back">1.71</button>
+                        <button class="odds-btn lay">1.78</button>
+                        <button class="odds-btn draw">-</button>
+                        <button class="odds-btn back2">-</button>
+                        <button class="odds-btn back3">2.28</button>
+                        <button class="odds-btn lay2">2.42</button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">San Francisco Unicorns v Perth Scorchers</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot grey"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">26/07/2026 19:30:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn back">2.44</button>
+                        <button class="odds-btn lay">2.48</button>
+                        <button class="odds-btn draw">-</button>
+                        <button class="odds-btn back2">-</button>
+                        <button class="odds-btn back3">1.68</button>
+                        <button class="odds-btn lay2">1.7</button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">Trent Rockets v London Spirit</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot grey"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">26/07/2026 22:30:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn back">1.72</button>
+                        <button class="odds-btn lay">1.73</button>
+                        <button class="odds-btn draw">-</button>
+                        <button class="odds-btn back2">-</button>
+                        <button class="odds-btn back3">2.36</button>
+                        <button class="odds-btn lay2">2.4</button>
+                    </div>
+                </div>
+
+                <div class="match-row">
+                    <div class="match-info">
+                        <span class="match-title">The Hundred - Womens</span>
+                        <span class="match-meta">
+                            <span class="match-live-dot grey"></span>
+                            <i class="fas fa-calendar-days match-icon"></i>
+                            <i class="fab fa-facebook-f match-icon"></i>
+                            <span class="match-bm">BM</span>
+                        </span>
+                    </div>
+                    <div class="match-datetime">16/08/2026 18:45:00</div>
+                    <div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>
+                    <div class="match-odds">
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                        <button class="odds-btn lock"><span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span></button>
+                    </div>
+                </div>
+
+            </div>
+            <!-- END matches table -->
+
+            <!-- =========================
+         CASINO GAME GRID
+         Add/replace casino images in:
+         assets/images/games/
+    ========================= -->
+            <section class="casino-section">
+                <div class="casino-grid" id="casinoGrid">
+
+                    <div class="casino-card" data-game="goal2">
+                        <img src="assets/images/games/goal2.jpg" alt="Goal 2" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">GOAL 2</div>
+                    </div>
+
+                    <div class="casino-card" data-game="aaa">
+                        <img src="assets/images/games/aaa.jpg" alt="Matka Market" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">MATKA MARKET</div>
+                    </div>
+
+                    <div class="casino-card" data-game="teen1">
+                        <img src="assets/images/games/teen1.jpg" alt="Vip Teenpatti 1Day" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">VIP TEENPATTI 1DAY</div>
+                    </div>
+
+                    <div class="casino-card no-img" data-game="doli_dana">
+                        <div class="casino-ph-label">DOLI DANA</div>
+                    </div>
+
+                    <div class="casino-card no-img" data-game="mogambo">
+                        <div class="casino-ph-label">MOGAMBO</div>
+                    </div>
+
+                    <div class="casino-card" data-game="teen20">
+                        <img src="assets/images/games/teen20.jpg" alt="20-20 Teen Patti" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">20-20 TEEN PATTI</div>
+                    </div>
+
+                    <div class="casino-card" data-game="lucky5">
+                        <img src="assets/images/games/lucky5.jpg" alt="Lucky 6" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">LUCKY 6</div>
+                    </div>
+
+                    <div class="casino-card" data-game="roulette12">
+                        <img src="assets/images/games/roulette12.jpg" alt="Beach Roulette" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">BEACH ROULETTE</div>
+                    </div>
+
+                    <div class="casino-card" data-game="roulette13">
+                        <img src="assets/images/games/roulette13.jpg" alt="Golden Roulette" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">GOLDEN ROULETTE</div>
+                    </div>
+
+                    <div class="casino-card" data-game="teenunique">
+                        <img src="assets/images/games/teenunique.jpg" alt="Unique Teenpatti" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">UNIQUE TEENPATTI</div>
+                    </div>
+
+                    <div class="casino-card" data-game="poison">
+                        <img src="assets/images/games/poison.jpg" alt="Poison Teenpatti" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">POISON TEENPATTI</div>
+                    </div>
+
+                    <div class="casino-card" data-game="teen33">
+                        <img src="assets/images/games/teen33.jpg" alt="Teenpatti 33" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">TEENPATTI 33</div>
+                    </div>
+
+                    <div class="casino-card" data-game="poison20">
+                        <img src="assets/images/games/poison20.jpg" alt="Poison 20-20" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">POISON 20-20</div>
+                    </div>
+
+                    <div class="casino-card" data-game="joker120">
+                        <img src="assets/images/games/joker120.jpg" alt="Joker 1Day" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">JOKER 1DAY</div>
+                    </div>
+
+                    <div class="casino-card" data-game="joker20">
+                        <img src="assets/images/games/joker20.jpg" alt="Joker 20-20" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">JOKER 20-20</div>
+                    </div>
+
+                    <div class="casino-card" data-game="joker1">
+                        <img src="assets/images/games/joker1.jpg" alt="Joker" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">JOKER</div>
+                    </div>
+
+                    <div class="casino-card" data-game="btable">
+                        <img src="assets/images/games/btable.jpg" alt="Bollywood Table" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">BOLLYWOOD TABLE</div>
+                    </div>
+
+                    <div class="casino-card" data-game="ourroullete">
+                        <img src="assets/images/games/ourroullete.jpg" alt="Our Roulette" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">OUR ROULETTE</div>
+                    </div>
+
+                    <div class="casino-card" data-game="superover3">
+                        <img src="assets/images/games/superover3.jpg" alt="Super Over 3" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">SUPER OVER 3</div>
+                    </div>
+
+                    <div class="casino-card" data-game="teen20v1">
+                        <img src="assets/images/games/teen20v1.jpg" alt="20-20 Teenpatti V1" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">20-20 TEENPATTI V1</div>
+                    </div>
+
+                    <div class="casino-card" data-game="goal">
+                        <img src="assets/images/games/goal.jpg" alt="Goal" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">GOAL</div>
+                    </div>
+
+                    <div class="casino-card" data-game="lucky15">
+                        <img src="assets/images/games/lucky15.jpg" alt="Lucky 15" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">LUCKY 15</div>
+                    </div>
+
+                    <div class="casino-card" data-game="queen">
+                        <img src="assets/images/games/queen.jpg" alt="Queen" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">QUEEN</div>
+                    </div>
+
+                    <div class="casino-card" data-game="teen41">
+                        <img src="assets/images/games/teen41.jpg" alt="Teenpatti 41" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">TEENPATTI 41</div>
+                    </div>
+
+                    <div class="casino-card" data-game="teen42">
+                        <img src="assets/images/games/teen42.jpg" alt="Teenpatti 42" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">TEENPATTI 42</div>
+                    </div>
+
+                    <div class="casino-card" data-game="sicbo2">
+                        <img src="assets/images/games/sicbo2.jpg" alt="Sic Bo 2" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">SIC BO 2</div>
+                    </div>
+
+                    <div class="casino-card" data-game="ballbyball">
+                        <img src="assets/images/games/ballbyball.jpg" alt="Ball By Ball" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">BALL BY BALL</div>
+                    </div>
+
+                    <div class="casino-card" data-game="sicbo">
+                        <img src="assets/images/games/sicbo.jpg" alt="Sic Bo" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">SIC BO</div>
+                    </div>
+
+                    <div class="casino-card" data-game="btable2">
+                        <img src="assets/images/games/btable2.jpg" alt="Bollywood Table 2" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">BOLLYWOOD TABLE 2</div>
+                    </div>
+
+                    <div class="casino-card" data-game="teen20b">
+                        <img src="assets/images/games/teen20b.jpg" alt="20-20 Teenpatti B" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">20-20 TEENPATTI B</div>
+                    </div>
+
+                    <div class="casino-card" data-game="teen6">
+                        <img src="assets/images/games/teen6.jpg" alt="Teenpatti 6 Players" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">TEENPATTI 6 PLAYERS</div>
+                    </div>
+
+                    <div class="casino-card" data-game="teen9">
+                        <img src="assets/images/games/teen9.jpg" alt="Teenpatti 9" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">TEENPATTI 9</div>
+                    </div>
+
+                    <div class="casino-card" data-game="poker20">
+                        <img src="assets/images/games/poker20.jpg" alt="Poker 20-20" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">POKER 20-20</div>
+                    </div>
+
+                    <div class="casino-card" data-game="poker6">
+                        <img src="assets/images/games/poker6.jpg" alt="Poker 6 Players" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">POKER 6 PLAYERS</div>
+                    </div>
+
+                    <div class="casino-card" data-game="poker">
+                        <img src="assets/images/games/poker.jpg" alt="Poker" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">POKER</div>
+                    </div>
+
+                    <div class="casino-card" data-game="baccarat">
+                        <img src="assets/images/games/baccarat.jpg" alt="Baccarat" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">BACCARAT</div>
+                    </div>
+
+                    <div class="casino-card" data-game="baccarat2">
+                        <img src="assets/images/games/baccarat2.jpg" alt="Baccarat 2" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">BACCARAT 2</div>
+                    </div>
+
+                    <div class="casino-card" data-game="dt20">
+                        <img src="assets/images/games/dt20.jpg" alt="Dragon Tiger 20-20" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">DRAGON TIGER 20-20</div>
+                    </div>
+
+                    <div class="casino-card" data-game="dtl20">
+                        <img src="assets/images/games/dtl20.jpg" alt="Dt Lion 20-20" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">DT LION 20-20</div>
+                    </div>
+
+                    <div class="casino-card" data-game="dt202">
+                        <img src="assets/images/games/dt202.jpg" alt="Dragon Tiger 2" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">DRAGON TIGER 2</div>
+                    </div>
+
+                    <div class="casino-card" data-game="dt6">
+                        <img src="assets/images/games/dt6.jpg" alt="Dragon Tiger 6" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">DRAGON TIGER 6</div>
+                    </div>
+
+                    <div class="casino-card" data-game="card32">
+                        <img src="assets/images/games/card32.jpg" alt="32 Cards" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">32 CARDS</div>
+                    </div>
+
+                    <div class="casino-card" data-game="card32eu">
+                        <img src="assets/images/games/card32eu.jpg" alt="32 Cards Eu" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">32 CARDS EU</div>
+                    </div>
+
+                    <div class="casino-card" data-game="ab3">
+                        <img src="assets/images/games/ab3.jpg" alt="Andar Bahar 3" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">ANDAR BAHAR 3</div>
+                    </div>
+
+                    <div class="casino-card" data-game="lucky7eu">
+                        <img src="assets/images/games/lucky7eu.jpg" alt="Lucky 7 Eu" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">LUCKY 7 EU</div>
+                    </div>
+
+                    <div class="casino-card" data-game="lucky7eu2">
+                        <img src="assets/images/games/lucky7eu2.jpg" alt="Lucky 7 Eu 2" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">LUCKY 7 EU 2</div>
+                    </div>
+
+                    <div class="casino-card" data-game="ab20">
+                        <img src="assets/images/games/ab20.jpg" alt="Andar Bahar 20-20" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">ANDAR BAHAR 20-20</div>
+                    </div>
+
+                    <div class="casino-card" data-game="war">
+                        <img src="assets/images/games/war.jpg" alt="Casino War" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">CASINO WAR</div>
+                    </div>
+
+                    <div class="casino-card" data-game="worli">
+                        <img src="assets/images/games/worli.jpg" alt="Worli" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">WORLI</div>
+                    </div>
+
+                    <div class="casino-card" data-game="worli2">
+                        <img src="assets/images/games/worli2.jpg" alt="Worli 2" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">WORLI 2</div>
+                    </div>
+
+                    <div class="casino-card" data-game="ab4">
+                        <img src="assets/images/games/ab4.jpg" alt="Andar Bahar 4" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">ANDAR BAHAR 4</div>
+                    </div>
+
+                    <div class="casino-card" data-game="lottcard">
+                        <img src="assets/images/games/lottcard.jpg" alt="Lottery Card" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">LOTTERY CARD</div>
+                    </div>
+
+                    <div class="casino-card" data-game="cricketv3">
+                        <img src="assets/images/games/cricketv3.jpg" alt="Cricket V3" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">CRICKET V3</div>
+                    </div>
+
+                    <div class="casino-card" data-game="cmatch20">
+                        <img src="assets/images/games/cmatch20.jpg" alt="Cricket Match 20-20" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">CRICKET MATCH 20-20</div>
+                    </div>
+
+                    <div class="casino-card" data-game="cmeter">
+                        <img src="assets/images/games/cmeter.jpg" alt="Casino Meter" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">CASINO METER</div>
+                    </div>
+
+                    <div class="casino-card" data-game="patti2">
+                        <img src="assets/images/games/patti2.jpg" alt="Patti 2" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">PATTI 2</div>
+                    </div>
+
+                    <div class="casino-card" data-game="lucky7">
+                        <img src="assets/images/games/lucky7.jpg" alt="Lucky 7" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">LUCKY 7</div>
+                    </div>
+
+                    <div class="casino-card" data-game="race20">
+                        <img src="assets/images/games/race20.jpg" alt="Race 20-20" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">RACE 20-20</div>
+                    </div>
+
+                    <div class="casino-card" data-game="superover">
+                        <img src="assets/images/games/superover.jpg" alt="Super Over" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">SUPER OVER</div>
+                    </div>
+
+                    <div class="casino-card" data-game="trap">
+                        <img src="assets/images/games/trap.jpg" alt="The Trap" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">THE TRAP</div>
+                    </div>
+
+                    <div class="casino-card" data-game="teen3">
+                        <img src="assets/images/games/teen3.jpg" alt="Teenpatti 3 Cards" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">TEENPATTI 3 CARDS</div>
+                    </div>
+
+                    <div class="casino-card" data-game="abj">
+                        <img src="assets/images/games/abj.jpg" alt="Andar Bahar J" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">ANDAR BAHAR J</div>
+                    </div>
+
+                    <div class="casino-card" data-game="teenmuf">
+                        <img src="assets/images/games/teenmuf.jpg" alt="Muflis Teenpatti" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">MUFLIS TEENPATTI</div>
+                    </div>
+
+                    <div class="casino-card" data-game="race17">
+                        <img src="assets/images/games/race17.jpg" alt="Race 17" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">RACE 17</div>
+                    </div>
+
+                    <div class="casino-card" data-game="teen20c">
+                        <img src="assets/images/games/teen20c.jpg" alt="20-20 Teenpatti C" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">20-20 TEENPATTI C</div>
+                    </div>
+
+                    <div class="casino-card" data-game="trio">
+                        <img src="assets/images/games/trio.jpg" alt="Trio" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">TRIO</div>
+                    </div>
+
+                    <div class="casino-card" data-game="3cardj">
+                        <img src="assets/images/games/3cardj.jpg" alt="3 Card J" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">3 CARD J</div>
+                    </div>
+
+                    <div class="casino-card" data-game="dum10">
+                        <img src="assets/images/games/dum10.jpg" alt="Dum 10" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">DUM 10</div>
+                    </div>
+
+                    <div class="casino-card" data-game="notenum">
+                        <img src="assets/images/games/notenum.jpg" alt="Note Number" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">NOTE NUMBER</div>
+                    </div>
+
+                    <div class="casino-card" data-game="aaa2">
+                        <img src="assets/images/games/aaa2.jpg" alt="Aaa 2" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">AAA 2</div>
+                    </div>
+
+                    <div class="casino-card" data-game="roulette11">
+                        <img src="assets/images/games/roulette11.jpg" alt="Roulette" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">ROULETTE</div>
+                    </div>
+
+                    <div class="casino-card" data-game="teen">
+                        <img src="assets/images/games/teen.jpg" alt="Teenpatti" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">TEENPATTI</div>
+                    </div>
+
+                    <div class="casino-card" data-game="teen120">
+                        <img src="assets/images/games/teen120.jpg" alt="Teenpatti 1Day" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">TEENPATTI 1DAY</div>
+                    </div>
+
+                    <div class="casino-card" data-game="teen8">
+                        <img src="assets/images/games/teen8.jpg" alt="Teenpatti 8" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">TEENPATTI 8</div>
+                    </div>
+
+                    <div class="casino-card" data-game="teen32">
+                        <img src="assets/images/games/teen32.jpg" alt="Teenpatti 32" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">TEENPATTI 32</div>
+                    </div>
+
+                    <div class="casino-card" data-game="teen62">
+                        <img src="assets/images/games/teen62.gif" alt="Teenpatti 62" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">TEENPATTI 62</div>
+                    </div>
+
+                    <div class="casino-card" data-game="teensin">
+                        <img src="assets/images/games/teensin.jpg" alt="Teenpatti Sin" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">TEENPATTI SIN</div>
+                    </div>
+
+                    <div class="casino-card" data-game="race2">
+                        <img src="assets/images/games/race2.jpg" alt="Race 2" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">RACE 2</div>
+                    </div>
+
+                    <div class="casino-card" data-game="worli3">
+                        <img src="assets/images/games/worli3.gif" alt="Worli 3" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">WORLI 3</div>
+                    </div>
+
+                    <div class="casino-card" data-game="superover2">
+                        <img src="assets/images/games/superover2.jpg" alt="Super Over 2" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">SUPER OVER 2</div>
+                    </div>
+
+                    <div class="casino-card" data-game="cmeter1">
+                        <img src="assets/images/games/cmeter1.jpg" alt="Casino Meter 1" onerror="this.parentElement.classList.add('no-img')">
+                        <div class="casino-ph-label">CASINO METER 1</div>
+                    </div>
+
+                </div>
+            </section>
+            <!-- END casino section -->
+
+        </main>
+        <!-- END main content -->
+
+    </div>
+    <!-- END content wrapper -->
+
+    <!-- SUPPORT -->
+    <section class="support-section">
+        <div class="support-text">
+            <h3><i class="fas fa-headset"></i> <span data-cms="support.title">24X7 Support</span></h3>
+            <a class="support-link" id="whatsappLink" href="#" data-cms="support.link">https://wa.link/playzone9</a>
+        </div>
+        <a href="#" class="support-wa-btn" id="whatsappSupportBtn" title="WhatsApp Support">
+            <img src="assets/icons/whatsapp.png" data-cms-img="whatsappIcon" alt="WhatsApp">
+        </a>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="site-footer">
+        <div class="footer-inner">
+
+            <div class="footer-safe">
+                <div class="safe-badge">
+                    <img class="ssl-img" src="assets/images/ssl.png" alt="100% Safe">
+                </div>
+            </div>
+
+            <img class="footer-logo-img" id="footerLogo" data-cms-img="footerLogo" alt="" hidden>
+
+            <div class="footer-copy" data-cms="footer.copyright">
+                &copy; Copyright 2026. All Rights Reserved. Powered by PLAYZONE9.
+            </div>
+
+            <div class="footer-social" id="footerSocial"></div>
+
+            <div class="footer-badges">
+                <img class="footer-icon-img" src="assets/icons/18plus.png" alt="18+">
+                <img class="footer-icon-img" src="assets/icons/gamecare.png" alt="GamCare">
+                <img class="footer-icon-img" src="assets/icons/gt.png" alt="GT">
+            </div>
+
+        </div>
+    </footer>
+
+    <!-- WHATSAPP FLOATING BUTTON -->
+    <a href="#" id="whatsappFloat" class="whatsapp-float" title="WhatsApp Support">
+        <img src="assets/icons/whatsapp.png" data-cms-img="whatsappIcon" alt="WhatsApp">
+    </a>
+
+    <!-- Mobile sidebar toggle -->
+    <button class="sidebar-toggle-btn" id="sidebarToggle" aria-label="Toggle sidebar">
+  <i class="fas fa-list"></i>
+</button>
+
+    <script src="js/main.js"></script>
+
+    <!-- MATCHES TABLE: keep dynamically generated rows in the new 4-line structure -->
+    <script>
+        (function() {
+            var table = document.getElementById('matchesTable');
+            if (!table) return;
+
+            function normalise(row) {
+                if (row.dataset.mtReady) return;
+                row.dataset.mtReady = '1';
+
+                var info = row.querySelector('.match-info');
+                var title = row.querySelector('.match-title');
+
+                /* "Team A v Team B / 25/07/2026 19:30:00" -> two lines */
+                if (info && title && !row.querySelector('.match-datetime') && title.textContent.indexOf(' / ') > -1) {
+                    var parts = title.textContent.split(' / ');
+                    var when = parts.pop().trim();
+                    title.textContent = parts.join(' / ').trim();
+                    var dt = document.createElement('div');
+                    dt.className = 'match-datetime';
+                    dt.textContent = when;
+                    info.insertAdjacentElement('afterend', dt);
+                }
+
+                /* Six separate lock cells -> three pair-spanning suspended boxes */
+                var odds = row.querySelector('.match-odds');
+                if (odds) {
+                    var locks = odds.querySelectorAll('.odds-btn.lock');
+                    if (locks.length === 6) {
+                        for (var l = 5; l >= 0; l--) {
+                            if (l % 2) odds.removeChild(locks[l]);
+                            else locks[l].innerHTML = '<span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span>';
+                        }
+                    }
+                }
+
+                /* 1 / X / 2 strip above the odds */
+                if (odds && !row.querySelector('.mob-odds-labels')) {
+                    var labels = document.createElement('div');
+                    labels.className = 'mob-odds-labels';
+                    labels.innerHTML = '<span>1</span><span>X</span><span>2</span>';
+                    odds.insertAdjacentElement('beforebegin', labels);
+                }
+            }
+
+            function scan() {
+                var rows = table.querySelectorAll('.match-row');
+                for (var i = 0; i < rows.length; i++) normalise(rows[i]);
+            }
+
+            scan();
+            new MutationObserver(scan).observe(table, {
+                childList: true,
+                subtree: true
+            });
+        })();
+    </script>
+</body>
+
+</html>
