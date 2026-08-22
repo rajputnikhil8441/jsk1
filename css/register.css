@@ -19,13 +19,13 @@
 
 :root {
     /* All five are overwritten at runtime by cms.js -> paintRegister() */
-    --reg-primary: #3880bd;
+    --reg-primary: #0088cc;
     --reg-green: #5cb85c;
     --reg-grey: #d5d5d5;
     --reg-bg: linear-gradient( 168deg, #4a95cf 0%, #3880bc 22%, #2f6d9f 52%, #2a5f8c 78%, #24506f 100%);
-    --reg-radius: 5px;
-    --reg-card-w: 350px;
-    --reg-in-h: 46px;
+    --reg-radius: 4px;
+    --reg-card-w: 350px;   /* 330 content + 10px padding each side */
+    --reg-in-h: 36px;
     --reg-input-border: #d4dbe2;
     --reg-icon-bg: #e2e5ea;
     --reg-icon-fg: #3b4450;
@@ -76,10 +76,10 @@ body {
     background: #fff;
     border: none;
     border-radius: var(--reg-radius);
-    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18);
+    box-shadow: 0 0 5px #fff;
     width: var(--reg-card-w);
     max-width: 100%;
-    padding: 18px 14px 16px;
+    padding: 10px;
 }
 
 
@@ -90,10 +90,12 @@ body {
     align-items: center;
     justify-content: center;
     gap: 8px;
-    font-size: 1.5rem;
+    font-size: 22px;
+    line-height: 1.2;
     font-weight: 400;
+    font-family: "Roboto Condensed", "dfont", Arial, sans-serif;
     color: var(--reg-primary);
-    margin-bottom: 16px;
+    margin-bottom: 10px;
 }
 
 .reg-title i { font-size: 1.25rem; }
@@ -104,9 +106,9 @@ body {
 .reg-wa-box {
     background: var(--reg-grey);
     border-radius: 3px;
-    padding: 14px 12px;
+    padding: 8px;
     text-align: center;
-    margin-bottom: 4px;
+    margin-bottom: 5px;
 }
 
 .reg-wa-heading {
@@ -129,7 +131,8 @@ body {
     align-items: stretch;
     gap: 6px;
     text-decoration: none;
-    height: 50px;
+    height: 44px;
+    margin-top: 15px;
 }
 
 .reg-wa-btn .wa-ico {
@@ -191,7 +194,7 @@ body {
 .reg-form {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 24px;          /* bootstrap mb-4 on the reference */
 }
 
 .reg-row {
@@ -207,7 +210,7 @@ body {
     border-right: none;
     border-radius: var(--reg-radius) 0 0 var(--reg-radius);
     outline: none;
-    padding: 0 12px;
+    padding: 5px 10px;
     font-size: 15px;
     color: #333;
     background: #fff;
@@ -220,7 +223,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 46px;
+    width: 39px;
     flex-shrink: 0;
     background: var(--reg-icon-bg);
     border: 1px solid var(--reg-icon-bg);
@@ -246,7 +249,7 @@ body {
     display: flex;
     align-items: center;
     width: 100%;
-    height: var(--reg-in-h);
+    height: 38px;
     background: var(--reg-primary);
     color: #fff;
     border: none;
@@ -363,9 +366,9 @@ body {
         margin-bottom: 12px;
     }
     .reg-card {
-        width: calc(100% - 12px);
+        width: calc(100% - 40px);
         max-width: 350px;
-        padding: 16px 12px 14px;
+        padding: 10px;
     }
     .reg-wa-desc { font-size: 17px; }
 }
