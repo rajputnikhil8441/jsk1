@@ -347,6 +347,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.addEventListener('click', function (e) {
         if (e.target.closest('#gateToast')) return;
         if (e.target.closest('.whatsapp-float, .support-wa-btn')) return;
+        if (e.target.closest('.btn-register, .btn-login, .header-logo')) return;
 
         e.preventDefault();
         e.stopPropagation();
