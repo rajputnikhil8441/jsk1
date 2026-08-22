@@ -550,21 +550,6 @@
        REGISTRATION PAGE PANEL
     ======================================================== */
 
-    var REG_TEXT_FIELDS = [
-        ['register.heading',     'Page title',            'text'],
-        ['register.boxHeading',  'Grey box heading',      'text'],
-        ['register.boxDesc',     'Grey box description',  'text'],
-        ['register.waBtn',       'WhatsApp button text',  'text'],
-        ['register.or',          'Divider text',          'text'],
-        ['register.userPh',      'Username placeholder',  'text'],
-        ['register.passPh',      'Password placeholder',  'text'],
-        ['register.confirmPh',   'Confirm placeholder',   'text'],
-        ['register.phonePh',     'Phone placeholder',     'text'],
-        ['register.submit',      'Register button text',  'text'],
-        ['register.loginLabel',  'Login link label',      'text'],
-        ['register.loginLink',   'Login link text',       'text'],
-        ['register.notice',      'Notice / footer text',  'text']
-    ];
 
     var REG_APPEARANCE = [
         ['primary', 'Primary blue',       'color'],
@@ -594,8 +579,8 @@
 
         /* ---- General ---- */
         var gen = document.createElement('div');
-        gen.className = 'card';
-        gen.innerHTML = '<h2>General</h2>';
+        gen.className = 'reg-sub';
+        gen.innerHTML = '<h3>General</h3>';
 
         var toggle = document.createElement('label');
         toggle.className = 'reg-toggle';
@@ -615,34 +600,11 @@
         wrap.appendChild(gen);
 
         /* ---- WhatsApp + text ---- */
-        var txt = document.createElement('div');
-        txt.className = 'card';
-        txt.innerHTML = '<h2>Text &amp; WhatsApp</h2>' +
-            '<p class="hint">The WhatsApp number itself lives in Branding &rarr; WhatsApp number.</p>';
-        var tgrid = document.createElement('div');
-        tgrid.className = 'typo-grid';
-
-        REG_TEXT_FIELDS.forEach(function (f) {
-            var row = document.createElement('label');
-            row.className = 'typo-field';
-            row.innerHTML = '<span>' + esc(f[1]) + '</span>';
-            var inp = document.createElement('input');
-            inp.type = 'text';
-            inp.value = CMS.get(f[0]) || '';
-            inp.addEventListener('input', function () {
-                CMS.set(f[0], inp.value);
-                markDirty();
-            });
-            row.appendChild(inp);
-            tgrid.appendChild(row);
-        });
-        txt.appendChild(tgrid);
-        wrap.appendChild(txt);
-
+        var txt = null;   /* text fields now live in the Register page card above */
         /* ---- Appearance ---- */
         var app = document.createElement('div');
-        app.className = 'card';
-        app.innerHTML = '<h2>Appearance</h2>';
+        app.className = 'reg-sub';
+        app.innerHTML = '<h3>Colours &amp; radius</h3>';
         var agrid = document.createElement('div');
         agrid.className = 'typo-grid';
 
