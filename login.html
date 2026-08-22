@@ -157,10 +157,8 @@
 
             document.getElementById('helpBtn').addEventListener('click', openWhatsApp);
 
-            document.getElementById('contactLink').addEventListener('click', function (e) {
-                e.preventDefault();
-                openWhatsApp();
-            });
+                        var regLink = document.getElementById('contactLink');
+            if (regLink) regLink.setAttribute('href', 'register.html');
 
             document.getElementById('apkLink').addEventListener('click', function (e) {
                 e.preventDefault();
