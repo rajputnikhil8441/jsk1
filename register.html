@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register — JSK1</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="css/register.css">
+    <link rel="icon" id="cmsFavicon" href="assets/images/favicon.png" />
+
+    <!-- REMOTE BRAND STORAGE CONFIG -->
+    <script src="js/cms-config.js"></script>
+
+    <!-- PUBLISHED BRAND -->
+    <script src="js/brand.js"></script>
+
+    <!-- WHITE LABEL CMS -->
+    <script src="js/cms.js"></script>
+</head>
+
+<body>
+
+    <div class="reg-page">
+        <main class="reg-main">
+
+            <a href="index.html"><img src="assets/images/logo.png" class="reg-logo" data-cms-img="registerLogo" data-cms-alt="siteName" alt="Logo"></a>
+
+            <!-- Shown when registration is ENABLED in admin -->
+            <div class="reg-card" id="regCard">
+
+                <h1 class="reg-title">
+                    <span data-cms="register.heading">Register</span>
+                    <i class="fas fa-right-to-bracket"></i>
+                </h1>
+
+                <!-- Grey WhatsApp block -->
+                <div class="reg-wa-box">
+                    <div class="reg-wa-heading" data-cms="register.boxHeading">Register as New User</div>
+                    <div class="reg-wa-desc" data-cms="register.boxDesc">Get your instant ID from whatsapp</div>
+
+                    <a href="#" class="reg-wa-btn" id="regWaBtn">
+                        <span class="wa-ico"><i class="fab fa-whatsapp"></i></span>
+                        <span class="wa-label" data-cms="register.waBtn">CLICK HERE</span>
+                    </a>
+                </div>
+
+                <!-- OR divider -->
+                <div class="reg-or"><span data-cms="register.or">OR</span></div>
+
+                <!-- Display-only form -->
+                <form class="reg-form" id="regForm" autocomplete="off">
+
+                    <div class="reg-row">
+                        <input type="text" placeholder="Username" data-cms-ph="register.userPh">
+                        <span class="reg-ico"><i class="fas fa-user"></i></span>
+                    </div>
+
+                    <div class="reg-row">
+                        <input type="password" placeholder="Password" data-cms-ph="register.passPh">
+                        <span class="reg-ico"><i class="fas fa-key"></i></span>
+                    </div>
+
+                    <div class="reg-row">
+                        <input type="password" placeholder="Confirm Password" data-cms-ph="register.confirmPh">
+                        <span class="reg-ico"><i class="fas fa-key"></i></span>
+                    </div>
+
+                    <div class="reg-row">
+                        <select class="reg-country" aria-label="Country code">
+                            <option value="+91">🇮🇳 +91</option>
+                            <option value="+971">🇦🇪 +971</option>
+                            <option value="+44">🇬🇧 +44</option>
+                            <option value="+1">🇺🇸 +1</option>
+                            <option value="+61">🇦🇺 +61</option>
+                            <option value="+880">🇧🇩 +880</option>
+                            <option value="+977">🇳🇵 +977</option>
+                        </select>
+                        <input type="tel" placeholder="Mobile number" data-cms-ph="register.phonePh">
+                        <span class="reg-ico"><i class="fas fa-phone"></i></span>
+                    </div>
+
+                    <button type="submit" class="reg-submit" id="regSubmit">
+                        <span class="s-text" data-cms="register.submit">Register</span>
+                        <span class="s-ico"><i class="fas fa-right-to-bracket"></i></span>
+                    </button>
+
+                </form>
+
+                <div class="reg-login-row">
+                    <span class="rl-label" data-cms="register.loginLabel">Already have User?</span>
+                    <a href="login.html" data-cms="register.loginLink">Login here</a>
+                </div>
+
+            </div>
+
+            <!-- Shown when registration is DISABLED in admin -->
+            <div class="reg-disabled" id="regDisabled" hidden>
+                <h2>Registration is currently closed</h2>
+                <p>Please contact us on WhatsApp, or <a href="login.html">login here</a>.</p>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Toast -->
+    <div class="reg-toast" id="regToast">
+        <span class="t-ico"><i class="fab fa-whatsapp"></i></span>
+        <span class="t-msg" id="regToastMsg" data-cms="register.notice">Please get your ID from WhatsApp.</span>
+    </div>
+
+    <script>
+        (function () {
+            var hideTimer = null;
+
+            /* Read at click time so the Supabase brand data has arrived */
+            function waNumber() {
+                return (window.CMS && CMS.get('branding.whatsapp')) || '91xxxxxx';
+            }
+
+            function waMessage() {
+                return (window.CMS && CMS.get('register.boxHeading')) || 'Hi, I want to register';
+            }
+
+            function showToast() {
+                var t = document.getElementById('regToast');
+                clearTimeout(hideTimer);
+                t.classList.add('show');
+                hideTimer = setTimeout(function () { t.classList.remove('show'); }, 2800);
+            }
+
+            function openWhatsApp() {
+                window.location.href = 'https://wa.me/' + waNumber() +
+                    '?text=' + encodeURIComponent(waMessage());
+            }
+
+            document.addEventListener('DOMContentLoaded', function () {
+
+                /* Enable / disable toggle from admin */
+                function applyEnabled() {
+                    var rp = (window.CMS && CMS.get('registerPage')) || {};
+                    var on = rp.enabled !== false;
+                    document.getElementById('regCard').hidden = !on;
+                    document.getElementById('regDisabled').hidden = on;
+                }
+                applyEnabled();
+                /* re-check once the remote pull lands */
+                setTimeout(applyEnabled, 800);
+
+                /* Only the WhatsApp button actually does anything */
+                document.getElementById('regWaBtn').addEventListener('click', function (e) {
+                    e.preventDefault();
+                    openWhatsApp();
+                });
+
+                /* Register button is display-only -> toast */
+                document.getElementById('regForm').addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    showToast();
+                });
+            });
+        })();
+    </script>
+
+</body>
+
+</html>

@@ -1,0 +1,371 @@
+/* =========================
+   REGISTER PAGE — register.css
+   Shares the login page's shell; only the card body differs.
+========================= */
+
+@font-face {
+    font-family: "dfont";
+    src: url("../assets/fonts/dfont.ttf") format("truetype");
+    font-display: swap;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+:root {
+    /* All five are overwritten at runtime by cms.js -> paintRegister() */
+    --reg-primary: #3880bd;
+    --reg-green: #5cb85c;
+    --reg-grey: #d5d5d5;
+    --reg-bg: linear-gradient( 168deg, #4a95cf 0%, #3880bc 22%, #2f6d9f 52%, #2a5f8c 78%, #24506f 100%);
+    --reg-radius: 5px;
+    --reg-card-w: 350px;
+    --reg-in-h: 46px;
+    --reg-input-border: #d4dbe2;
+    --reg-icon-bg: #e2e5ea;
+    --reg-icon-fg: #3b4450;
+}
+
+html { min-height: 100%; }
+
+body {
+    font-family: "dfont", Arial, sans-serif;
+    font-size: 14px;
+    color: #222;
+}
+
+.reg-page {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    min-height: 100dvh;
+    background: var(--reg-bg);
+    background-attachment: fixed;
+}
+
+.reg-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 8px 16px 28px;
+}
+
+
+/* ---- LOGO ---- */
+
+.reg-logo {
+    display: block;
+    max-height: 96px;
+    max-width: 260px;
+    width: auto;
+    object-fit: contain;
+    margin-bottom: 14px;
+}
+
+
+/* ---- CARD ---- */
+
+.reg-card {
+    background: #fff;
+    border: none;
+    border-radius: var(--reg-radius);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18);
+    width: var(--reg-card-w);
+    max-width: 100%;
+    padding: 18px 14px 16px;
+}
+
+
+/* ---- TITLE ---- */
+
+.reg-title {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 1.5rem;
+    font-weight: 400;
+    color: var(--reg-primary);
+    margin-bottom: 16px;
+}
+
+.reg-title i { font-size: 1.25rem; }
+
+
+/* ---- GREY WHATSAPP BOX ---- */
+
+.reg-wa-box {
+    background: var(--reg-grey);
+    border-radius: 3px;
+    padding: 14px 12px;
+    text-align: center;
+    margin-bottom: 4px;
+}
+
+.reg-wa-heading {
+    font-size: 15px;
+    font-weight: 700;
+    color: #111;
+    margin-bottom: 8px;
+}
+
+.reg-wa-desc {
+    font-size: 18px;
+    font-weight: 700;
+    color: #111;
+    line-height: 1.25;
+    margin-bottom: 14px;
+}
+
+.reg-wa-btn {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+    text-decoration: none;
+    height: 50px;
+}
+
+.reg-wa-btn .wa-ico {
+    flex-shrink: 0;
+    width: 58px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--reg-green);
+    border-radius: 4px;
+    color: #fff;
+    font-size: 30px;
+}
+
+.reg-wa-btn .wa-label {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--reg-green);
+    border-radius: 4px;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+}
+
+.reg-wa-btn:hover .wa-ico,
+.reg-wa-btn:hover .wa-label { filter: brightness(0.94); }
+
+
+/* ---- OR DIVIDER ---- */
+
+.reg-or {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    margin: 14px 0 16px;
+}
+
+.reg-or::before,
+.reg-or::after {
+    content: "";
+    width: 46px;
+    height: 1px;
+    background: var(--reg-grey);
+}
+
+.reg-or span {
+    font-size: 13px;
+    font-weight: 700;
+    color: #111;
+}
+
+
+/* ---- FORM (display-only) ---- */
+
+.reg-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.reg-row {
+    display: flex;
+    height: var(--reg-in-h);
+}
+
+.reg-row input,
+.reg-row select {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid var(--reg-input-border);
+    border-right: none;
+    border-radius: var(--reg-radius) 0 0 var(--reg-radius);
+    outline: none;
+    padding: 0 12px;
+    font-size: 15px;
+    color: #333;
+    background: #fff;
+    font-family: inherit;
+}
+
+.reg-row input::placeholder { color: #7b8794; font-size: 15px; }
+
+.reg-ico {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 46px;
+    flex-shrink: 0;
+    background: var(--reg-icon-bg);
+    border: 1px solid var(--reg-icon-bg);
+    border-radius: 0 var(--reg-radius) var(--reg-radius) 0;
+    color: var(--reg-icon-fg);
+    font-size: 16px;
+}
+
+
+/* Country + phone row */
+
+.reg-row .reg-country {
+    flex: 0 0 92px;
+    border-radius: var(--reg-radius) 0 0 var(--reg-radius);
+    padding: 0 6px;
+    font-size: 15px;
+}
+
+
+/* ---- REGISTER BUTTON ---- */
+
+.reg-submit {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: var(--reg-in-h);
+    background: var(--reg-primary);
+    color: #fff;
+    border: none;
+    border-radius: 0;
+    font-size: 17px;
+    font-family: inherit;
+    cursor: pointer;
+    margin-top: 4px;
+    padding: 0 14px;
+    transition: filter 0.15s;
+}
+
+.reg-submit:hover { filter: brightness(0.92); }
+.reg-submit .s-text { flex: 1; text-align: center; }
+.reg-submit .s-ico  { font-size: 17px; flex-shrink: 0; }
+
+
+/* ---- LOGIN LINK ---- */
+
+.reg-login-row {
+    text-align: center;
+    font-size: 14px;
+    margin-top: 16px;
+}
+
+.reg-login-row .rl-label { color: #111; font-weight: 700; }
+
+.reg-login-row a {
+    color: var(--reg-primary);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.reg-login-row a:hover { text-decoration: underline; }
+
+.reg-notice {
+    text-align: center;
+    font-size: 12px;
+    color: #777;
+    margin-top: 10px;
+}
+
+
+/* ---- TOAST (shown when Register is pressed) ---- */
+
+.reg-toast {
+    position: fixed;
+    top: 18px;
+    left: 50%;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 270px;
+    max-width: calc(100% - 32px);
+    min-height: 58px;
+    padding: 12px 18px;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 6px 26px rgba(0, 0, 0, 0.22);
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, -16px);
+    transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.reg-toast.show {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate(-50%, 0);
+}
+
+.reg-toast .t-ico {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--reg-green);
+    color: #fff;
+    font-size: 16px;
+}
+
+.reg-toast .t-msg { font-size: 15px; font-weight: 500; color: #3c4149; }
+
+
+/* ---- DISABLED STATE ---- */
+
+.reg-disabled {
+    background: #fff;
+    border-radius: var(--reg-radius);
+    padding: 30px 22px;
+    text-align: center;
+    width: var(--reg-card-w);
+    max-width: 100%;
+}
+
+.reg-disabled h2 { font-size: 17px; color: #111; margin-bottom: 8px; }
+.reg-disabled p  { font-size: 13px; color: #666; }
+.reg-disabled a  { color: var(--reg-primary); font-weight: 700; }
+
+
+/* =========================
+   MOBILE ≤ 480px
+========================= */
+
+@media (max-width: 480px) {
+    .reg-main { padding: 8px 14px 20px; }
+    .reg-logo {
+        max-height: 78px;
+        max-width: 205px;
+        margin-bottom: 12px;
+    }
+    .reg-card {
+        width: calc(100% - 12px);
+        max-width: 350px;
+        padding: 16px 12px 14px;
+    }
+    .reg-wa-desc { font-size: 17px; }
+}
