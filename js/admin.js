@@ -536,7 +536,6 @@
                 CMS.paintTypography();
                 markDirty();
                 buildTypography();
-        buildRegister();
             });
 
             card.appendChild(grid);
@@ -1272,6 +1271,7 @@
         hydrateBindings();
         buildColors();
         buildTypography();
+        buildRegister();
         buildText();
         buildImages();
         buildAllLists();
