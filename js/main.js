@@ -15,7 +15,7 @@ var CONFIG = {
   whatsappMessage: 'Hello%2C%20I%20need%20support%20on%20PLAYZONE9.',
 
   /* Site name */
-  siteName: 'PLAYZONE9'
+  siteName: 'JSK1'
 };
 
 /* ============================================================
