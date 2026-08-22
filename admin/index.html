@@ -31,9 +31,6 @@
                 <button class="adm-nav-item" data-panel="colors">
             <i class="fas fa-palette"></i> Colors
           </button>
-                <button class="adm-nav-item" data-panel="register">
-            <i class="fas fa-user-plus"></i> Registration
-          </button>
                 <button class="adm-nav-item" data-panel="typography">
             <i class="fas fa-text-height"></i> Typography
           </button>
@@ -250,19 +247,6 @@
         <div id="colorGroups"></div>
     </section>
 
-    <!-- ---------- REGISTRATION PAGE ---------- -->
-    <section class="adm-panel" id="panel-register">
-        <div class="card">
-            <h2>Registration page</h2>
-            <p class="hint">
-                Controls <code>register.html</code>. Only the WhatsApp button is functional on that
-                page &mdash; the input fields are display-only. Changes apply live and publish to
-                Supabase with Save changes.
-            </p>
-        </div>
-        <div id="regGroups"></div>
-    </section>
-
     <!-- ---------- TYPOGRAPHY ---------- -->
     <section class="adm-panel" id="panel-typography">
         <div class="card">
@@ -308,6 +292,13 @@
             </p>
             <div class="grid2" id="registerText"></div>
             <div class="grid2" id="registerImages"></div>
+        </div>
+        <div class="card">
+            <h2>Register appearance</h2>
+            <p class="hint">
+                Colours, corner radius and the on/off switch for <code>register.html</code>.
+            </p>
+            <div id="regGroups"></div>
         </div>
     </section>
 
