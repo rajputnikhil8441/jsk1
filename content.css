@@ -1,0 +1,123 @@
+/* =========================================================
+   content.css — styles for JSK1 info pages
+   (About, Contact, Responsible Gaming) + the connecting nav
+   Loads AFTER style.css so it can rely on the site header.
+   ========================================================= */
+
+/* Connecting nav strip: links all info pages + login/register */
+.info-nav {
+    background: #11151c;
+    border-bottom: 1px solid rgba(255, 255, 255, .08);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.info-nav-inner {
+    display: flex;
+    gap: 6px;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 8px 12px;
+    white-space: nowrap;
+}
+
+.info-nav a {
+    color: #cfd6e4;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: .3px;
+    padding: 8px 14px;
+    border-radius: 6px;
+    transition: background .15s, color .15s;
+}
+
+.info-nav a:hover {
+    background: rgba(255, 255, 255, .06);
+    color: #fff;
+}
+
+.info-nav a.active {
+    background: #f5c518;
+    color: #11151c;
+}
+
+/* Content container */
+.content-wrap {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 28px 18px 60px;
+    color: #e7ecf3;
+    line-height: 1.7;
+}
+
+.content-wrap h1 {
+    font-size: 26px;
+    margin: 0 0 6px;
+    color: #fff;
+}
+
+.content-wrap .lead {
+    color: #a9b2c2;
+    font-size: 15px;
+    margin: 0 0 26px;
+}
+
+.content-wrap h2 {
+    font-size: 19px;
+    margin: 30px 0 10px;
+    color: #f5c518;
+}
+
+.content-wrap p {
+    margin: 0 0 14px;
+}
+
+.content-wrap ul {
+    margin: 0 0 16px;
+    padding-left: 20px;
+}
+
+.content-wrap li {
+    margin-bottom: 6px;
+}
+
+.content-wrap a.inline {
+    color: #f5c518;
+    text-decoration: underline;
+}
+
+/* Simple contact rows */
+.contact-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 20px;
+}
+
+.contact-list li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    background: #161b24;
+    border: 1px solid rgba(255, 255, 255, .07);
+    border-radius: 8px;
+    margin-bottom: 10px;
+}
+
+.contact-list i {
+    color: #f5c518;
+    width: 20px;
+    text-align: center;
+}
+
+/* Placeholder marker so you can spot demo text to rewrite */
+.rewrite {
+    background: rgba(245, 197, 24, .12);
+    border-left: 3px solid #f5c518;
+    padding: 10px 14px;
+    border-radius: 4px;
+    font-size: 13px;
+    color: #d8c98f;
+    margin: 0 0 20px;
+}
