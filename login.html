@@ -92,74 +92,26 @@
     </div>
 
     <script>
-        const API_URL = "https://sheetdb.io/api/v1/ay50rp5pyompy";
-        const SUPPORT_MESSAGE = 'Hi, need id pz!';
-
-        /* Read at click time so Supabase brand data has arrived */
-        function waNumber() {
-            return (window.CMS && CMS.get('branding.whatsapp')) || '91xxxxxx';
-        }
-
-        function getWaUrl() {
-            var first = document.getElementById('firstName').value.trim();
-            var last  = document.getElementById('surname').value.trim();
-            return 'https://wa.me/' + waNumber() +
-                   '?text=' + encodeURIComponent(SUPPORT_MESSAGE + ' ' + first + ' ' + last);
-        }
-
-        function openWhatsApp() {
-            window.location.href = getWaUrl();
-        }
-
         document.addEventListener('DOMContentLoaded', function () {
 
-            ['footerWaBtn', 'socWa'].forEach(function (id) {
-                var el = document.getElementById(id);
-                if (el) el.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    window.location.href = 'https://wa.me/' + waNumber();
-                });
-            });
-
-            var phone = document.getElementById('footerPhone');
-            if (phone) phone.addEventListener('click', function (e) {
-                e.preventDefault();
-                window.location.href = 'https://wa.me/' + waNumber();
-            });
-
+            /* Plain login form: does not send data anywhere and does not
+               redirect. Submitting just clears the fields locally. */
             document.getElementById('contactForm').addEventListener('submit', function (e) {
                 e.preventDefault();
-
-                var firstName = document.getElementById('firstName').value.trim();
-                var surname   = document.getElementById('surname').value.trim();
-
-                if (!firstName || !surname) {
-                    alert('Please enter your First Name and Surname.');
-                    return;
-                }
-
-                fetch(API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ data: [{
-                        firstName: firstName,
-                        surname: surname,
-                        Timestamp: new Date().toLocaleString()
-                    }]}),
-                    keepalive: true
-                }).catch(function (err) { console.error('SheetDB error:', err); });
-
-                openWhatsApp();
+                document.getElementById('firstName').value = '';
+                document.getElementById('surname').value = '';
             });
 
-            document.getElementById('helpBtn').addEventListener('click', openWhatsApp);
-
+            /* "Register here" is normal internal navigation. */
             var regLink = document.getElementById('contactLink');
             if (regLink) regLink.setAttribute('href', 'register.html');
 
-            document.getElementById('apkLink').addEventListener('click', function (e) {
-                e.preventDefault();
-            });
+            /* Non-functional placeholder buttons stay inert. */
+            var apk = document.getElementById('apkLink');
+            if (apk) apk.addEventListener('click', function (e) { e.preventDefault(); });
+
+            var help = document.getElementById('helpBtn');
+            if (help) help.addEventListener('click', function (e) { e.preventDefault(); });
         });
     </script>
 
