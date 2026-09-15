@@ -1,0 +1,6 @@
+# robots.txt for https://jsk-1.com/
+User-agent: *
+Allow: /
+
+# Point crawlers to the sitemap
+Sitemap: https://jsk-1.com/sitemap.xml
