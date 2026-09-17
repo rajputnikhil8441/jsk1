@@ -1,5 +1,5 @@
 /* ============================================================
-   PLAYZONE9 — WHITE LABEL CMS ENGINE  (js/cms.js)
+   JSK1 — WHITE LABEL CMS + SEO ENGINE  (js/cms.js)
    ------------------------------------------------------------
    Loaded by index.html, login.html and /admin/index.html.
    Owns one master object in localStorage under CMS.KEY:
@@ -15,14 +15,14 @@
     var KEY = 'whiteLabelCMS';
 
     /* ========================================================
-       DEFAULTS — the PLAYZONE9 brand as shipped
+       DEFAULTS — the JSK1 brand as shipped
     ======================================================== */
     var DEFAULTS = {
 
         branding: {
-            siteName: 'PLAYZONE9',
-            browserTitle: 'PLAYZONE9 - Online Sports Betting & Casino',
-            loginTitle: 'Login — PLAYZONE9',
+            siteName: 'JSK1',
+            browserTitle: 'JSK1 — Official Site | JSK1 Login & Online Gaming',
+            loginTitle: 'Login — JSK1',
             whatsapp: '91xxxxxx',
             telegram: '',
             email: '',
@@ -147,8 +147,8 @@
             'nav.lucky7': 'LUCKY 7',
             'nav.crash': 'CRASH',
             'support.title': '24X7 Support',
-            'support.link': 'https://wa.link/playzone9',
-            'footer.copyright': '© Copyright 2026. All Rights Reserved. Powered by PLAYZONE9.',
+            'support.link': 'WhatsApp Support',
+            'footer.copyright': '© Copyright 2026 JSK1. All Rights Reserved.',
             /* login page */
             'login.heading': 'LOGIN',
             'login.userPh': 'name',
@@ -205,6 +205,68 @@
         },
 
         /* ----------------------------------------------------------
+           SEO — site wide defaults.
+           Everything here is edited in /admin > SEO. Values are only
+           ever applied when they are non-empty: an empty field means
+           "use whatever the static HTML already says", which is what
+           keeps the site correct when Supabase or JavaScript fails.
+           Blank fields stay blank until real information is entered —
+           nothing here is invented.
+        ---------------------------------------------------------- */
+        seo: {
+
+            baseUrl: 'https://jsk-1.com',
+            siteName: 'JSK1',
+
+            /* %s is replaced by the page title. It is only applied when
+               the page title does not already contain the site name, so
+               a title you write in full is never doubled up. */
+            titleTemplate: '%s | JSK1',
+
+            defaultTitle: 'JSK1 — Official Site | JSK1 Login & Online Gaming',
+            defaultDescription: 'JSK1 is the official JSK1 online gaming site. Access your JSK1 account, log in, and get 24x7 support at jsk-1.com.',
+
+            /* Social defaults. Leave the image blank until a real
+               1200x630 share image exists — an empty tag is better
+               than one pointing at a file that is not there. */
+            defaultOgImage: '',
+            defaultOgTitle: '',
+            defaultOgDescription: '',
+
+            twitterCard: 'summary_large_image',
+            twitterSite: '',
+            defaultTwitterImage: '',
+            defaultTwitterTitle: '',
+            defaultTwitterDescription: '',
+
+            /* Only emitted into Organization schema when filled in. */
+            organization: {
+                name: 'JSK1',
+                legalName: '',
+                logo: '',
+                sameAs: [],
+                contactPoint: {
+                    telephone: '',
+                    email: '',
+                    contactType: 'customer support'
+                }
+            },
+
+            /* A verification tag is written only when its field has a
+               value — empty fields emit nothing at all. */
+            verification: {
+                google: '',
+                bing: '',
+                yandex: ''
+            },
+
+            schema: {
+                organization: true,
+                website: true
+            }
+        },
+
+        /* ----------------------------------------------------------
            INFO PAGES — About, Contact, Responsible Gaming.
            Each page owns its own SEO head (title + metaDescription),
            its H1, a lead paragraph and a body of free HTML. Everything
@@ -215,8 +277,77 @@
         ---------------------------------------------------------- */
         pages: {
 
+            /* The homepage is part of the SEO system too — its title is
+               no longer taken from branding.browserTitle, which is what
+               used to overwrite it with the shipped white label name. */
+            home: {
+                label: 'Home',
+                url: '',
+                slug: '',
+                canonical: '',
+                robots: { index: true, follow: true },
+                og: { title: '', description: '', image: '' },
+                twitter: { title: '', description: '', image: '' },
+                breadcrumb: { label: 'Home', show: false },
+                schema: { webPage: true, breadcrumb: false, contactPage: false },
+                inSitemap: true,
+                updatedAt: '2026-09-17',
+                title: 'JSK1 — Official Site | JSK1 Login & Online Gaming',
+                metaDescription: 'JSK1 is the official JSK1 online gaming site. Access your JSK1 account, log in, and get 24x7 support. Visit the official JSK1 website at jsk-1.com.',
+                heading: 'JSK1 — Official Online Gaming Site',
+                lead: '',
+                body: ''
+            },
+
+            login: {
+                label: 'Login',
+                url: 'login.html',
+                slug: 'login',
+                canonical: '',
+                robots: { index: false, follow: true },
+                og: { title: '', description: '', image: '' },
+                twitter: { title: '', description: '', image: '' },
+                breadcrumb: { label: '', show: false },
+                schema: { webPage: false, breadcrumb: false, contactPage: false },
+                inSitemap: false,
+                updatedAt: '2026-09-17',
+                title: 'Login — JSK1',
+                metaDescription: 'Sign in to your JSK1 account on the official JSK1 website.',
+                heading: '',
+                lead: '',
+                body: ''
+            },
+
+            register: {
+                label: 'Register',
+                url: 'register.html',
+                slug: 'register',
+                canonical: '',
+                robots: { index: false, follow: true },
+                og: { title: '', description: '', image: '' },
+                twitter: { title: '', description: '', image: '' },
+                breadcrumb: { label: '', show: false },
+                schema: { webPage: false, breadcrumb: false, contactPage: false },
+                inSitemap: false,
+                updatedAt: '2026-09-17',
+                title: 'Register — JSK1',
+                metaDescription: 'Create a JSK1 account on the official JSK1 website.',
+                heading: '',
+                lead: '',
+                body: ''
+            },
+
             about: {
                 label: 'About',
+                slug: 'about',
+                canonical: '',
+                robots: { index: true, follow: true },
+                og: { title: '', description: '', image: '' },
+                twitter: { title: '', description: '', image: '' },
+                breadcrumb: { label: 'About', show: true },
+                schema: { webPage: true, breadcrumb: true, contactPage: false },
+                inSitemap: true,
+                updatedAt: '2026-09-17',
                 url: 'about.html',
                 title: 'About JSK1 — About the Official JSK1 Website',
                 metaDescription: 'Learn about JSK1, the official JSK1 online gaming website. Find out what JSK1 offers and how to get started at jsk-1.com.',
@@ -239,6 +370,15 @@
 
             contact: {
                 label: 'Contact',
+                slug: 'contact',
+                canonical: '',
+                robots: { index: true, follow: true },
+                og: { title: '', description: '', image: '' },
+                twitter: { title: '', description: '', image: '' },
+                breadcrumb: { label: 'Contact', show: true },
+                schema: { webPage: true, breadcrumb: true, contactPage: true },
+                inSitemap: true,
+                updatedAt: '2026-09-17',
                 url: 'contact.html',
                 title: 'Contact JSK1 — JSK1 Support & Help',
                 metaDescription: 'Contact JSK1 support. Reach the official JSK1 team for help with your JSK1 account at jsk-1.com.',
@@ -262,6 +402,15 @@
 
             'responsible-gaming': {
                 label: 'Responsible Gaming',
+                slug: 'responsible-gaming',
+                canonical: '',
+                robots: { index: true, follow: true },
+                og: { title: '', description: '', image: '' },
+                twitter: { title: '', description: '', image: '' },
+                breadcrumb: { label: 'Responsible Gaming', show: true },
+                schema: { webPage: true, breadcrumb: true, contactPage: false },
+                inSitemap: true,
+                updatedAt: '2026-09-17',
                 url: 'responsible-gaming.html',
                 title: 'Responsible Gaming — JSK1',
                 metaDescription: 'JSK1 responsible gaming information: 18+ only, setting limits, spotting warning signs and where to get help. Official JSK1 site, jsk-1.com.',
@@ -523,21 +672,262 @@
     }
 
     /* ========================================================
-       HEAD — title + favicon
+       SEO ENGINE
+       ------------------------------------------------------
+       THE RULE THIS FILE LIVES BY: the static HTML is correct on
+       its own. The CMS only ever OVERWRITES a tag when it holds a
+       real, non-empty value for it. An empty or missing CMS value
+       leaves the markup exactly as the file shipped it.
+
+       That is what makes a Supabase outage, a failed fetch, an
+       empty localStorage or a JavaScript error harmless: the page
+       keeps the correct title, description, canonical and social
+       tags that are written into the file itself.
+
+       A page identifies itself with  <html data-cms-page="about">.
+       Pages without that attribute (the admin panel) are left
+       completely alone — nothing here touches their title.
+    ======================================================== */
+
+    function str(v) { return v == null ? '' : String(v).trim(); }
+
+    function pageKey() {
+        var el = document.documentElement;
+        return el ? str(el.getAttribute('data-cms-page')) : '';
+    }
+
+    function pageData(key) {
+        var pages = load().pages || {};
+        return pages[key || pageKey()] || null;
+    }
+
+    /* Absolute URL against the configured base. Values that are
+       already absolute are returned untouched. */
+    function absUrl(u) {
+        u = str(u);
+        if (!u) return '';
+        if (/^https?:\/\//i.test(u) || /^data:/i.test(u)) return u;
+        var base = str(get('seo.baseUrl', '')).replace(/\/+$/, '');
+        if (!base) return u;
+        return base + '/' + u.replace(/^\/+/, '');
+    }
+
+    /* The page's own address, used for canonical and og:url. */
+    function pageUrl(page) {
+        if (page && str(page.canonical)) return absUrl(page.canonical);
+        var base = str(get('seo.baseUrl', '')).replace(/\/+$/, '');
+        if (!base) return '';
+        var u = page ? str(page.url) : '';
+        return u ? base + '/' + u.replace(/^\/+/, '') : base + '/';
+    }
+
+    function computeTitle(page) {
+        var t = page ? str(page.title) : '';
+        if (!t) t = str(get('seo.defaultTitle', ''));
+        if (!t) return '';                     /* leave the static title */
+        var tpl  = str(get('seo.titleTemplate', ''));
+        var site = str(get('seo.siteName', ''));
+        /* Only apply the template when the title does not already
+           carry the brand, so a full title is never doubled up. */
+        if (tpl && tpl.indexOf('%s') > -1 && site &&
+            t.toLowerCase().indexOf(site.toLowerCase()) === -1) {
+            t = tpl.replace('%s', t);
+        }
+        return t;
+    }
+
+    function computeDescription(page) {
+        return (page ? str(page.metaDescription) : '') ||
+               str(get('seo.defaultDescription', ''));
+    }
+
+    /* Social values cascade: page -> global default -> the plain
+       title/description -> nothing. */
+    function computeOg(page, what) {
+        var v = page && page.og ? str(page.og[what]) : '';
+        if (v) return v;
+        v = str(get('seo.defaultOg' + what.charAt(0).toUpperCase() + what.slice(1), ''));
+        if (v) return v;
+        if (what === 'title') return computeTitle(page);
+        if (what === 'description') return computeDescription(page);
+        return '';
+    }
+
+    function computeTwitter(page, what) {
+        var v = page && page.twitter ? str(page.twitter[what]) : '';
+        if (v) return v;
+        v = str(get('seo.defaultTwitter' + what.charAt(0).toUpperCase() + what.slice(1), ''));
+        return v || computeOg(page, what);      /* inherit OG by default */
+    }
+
+    function robotsValue(page) {
+        if (!page || !page.robots) return '';
+        var r = page.robots;
+        if (r.index === undefined && r.follow === undefined) return '';
+        return (r.index === false ? 'noindex' : 'index') + ',' +
+               (r.follow === false ? 'nofollow' : 'follow');
+    }
+
+    /* --- tag writers. Each one is a no-op on an empty value. --- */
+
+    function setMeta(attr, name, value) {
+        value = str(value);
+        if (!value) return;                     /* keep the static tag */
+        var sel = 'meta[' + attr + '="' + name + '"]';
+        var el = document.head ? document.head.querySelector(sel) : null;
+        if (!el) {
+            el = document.createElement('meta');
+            el.setAttribute(attr, name);
+            (document.head || document.documentElement).appendChild(el);
+        }
+        el.setAttribute('content', value);
+    }
+
+    function setLink(rel, href) {
+        href = str(href);
+        if (!href) return;
+        var el = document.head ? document.head.querySelector('link[rel="' + rel + '"]') : null;
+        if (!el) {
+            el = document.createElement('link');
+            el.setAttribute('rel', rel);
+            (document.head || document.documentElement).appendChild(el);
+        }
+        el.setAttribute('href', href);
+    }
+
+    function paintSeo() {
+        var key = pageKey();
+        var legacy = document.querySelector('title[data-cms-title]');
+
+        /* No page identity and no legacy hook -> do not touch a thing. */
+        if (!key && !legacy) return;
+
+        var page = key ? pageData(key) : null;
+
+        var title = page ? computeTitle(page)
+                         : get(legacy.getAttribute('data-cms-title'), '');
+        if (title) document.title = title;
+        if (!page) return;
+
+        setMeta('name', 'description', computeDescription(page));
+        setMeta('name', 'robots', robotsValue(page));
+        setLink('canonical', pageUrl(page));
+
+        setMeta('property', 'og:site_name', get('seo.siteName', ''));
+        setMeta('property', 'og:title', computeOg(page, 'title'));
+        setMeta('property', 'og:description', computeOg(page, 'description'));
+        setMeta('property', 'og:url', pageUrl(page));
+        setMeta('property', 'og:image', absUrl(computeOg(page, 'image')));
+
+        setMeta('name', 'twitter:card', get('seo.twitterCard', ''));
+        setMeta('name', 'twitter:site', get('seo.twitterSite', ''));
+        setMeta('name', 'twitter:title', computeTwitter(page, 'title'));
+        setMeta('name', 'twitter:description', computeTwitter(page, 'description'));
+        setMeta('name', 'twitter:image', absUrl(computeTwitter(page, 'image')));
+
+        /* Verification tags are created only when a code is present. */
+        setMeta('name', 'google-site-verification', get('seo.verification.google', ''));
+        setMeta('name', 'msvalidate.01', get('seo.verification.bing', ''));
+        setMeta('name', 'yandex-verification', get('seo.verification.yandex', ''));
+
+        paintSchema(page);
+    }
+
+    /* ========================================================
+       STRUCTURED DATA
+       Written into the <script> tags the HTML already ships, so
+       the markup stays valid with JavaScript disabled. A block is
+       only replaced when the CMS can build a complete one, and a
+       block that is switched off is emptied rather than left stale.
+    ======================================================== */
+
+    function writeLd(id, obj) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        if (!obj) { el.textContent = '{}'; return; }
+        obj['@context'] = 'https://schema.org';
+        el.textContent = JSON.stringify(obj, null, 2);
+    }
+
+    function buildOrganization() {
+        if (get('seo.schema.organization', true) === false) return null;
+        var org = (load().seo && load().seo.organization) || {};
+        var name = str(org.name) || str(get('seo.siteName', ''));
+        if (!name) return null;
+        var out = { '@type': 'Organization', name: name, url: absUrl('') || str(get('seo.baseUrl', '')) };
+        if (str(org.legalName)) out.legalName = str(org.legalName);
+        var logo = absUrl(org.logo);
+        if (logo) out.logo = logo;               /* omitted when unset */
+        var same = (org.sameAs || []).map(str).filter(Boolean);
+        if (same.length) out.sameAs = same;
+        var cp = org.contactPoint || {};
+        if (str(cp.telephone) || str(cp.email)) {
+            out.contactPoint = { '@type': 'ContactPoint',
+                                 contactType: str(cp.contactType) || 'customer support' };
+            if (str(cp.telephone)) out.contactPoint.telephone = str(cp.telephone);
+            if (str(cp.email)) out.contactPoint.email = str(cp.email);
+        }
+        return out;
+    }
+
+    function buildWebSite() {
+        if (get('seo.schema.website', true) === false) return null;
+        var name = str(get('seo.siteName', ''));
+        var url = str(get('seo.baseUrl', ''));
+        if (!name || !url) return null;
+        /* No SearchAction: this site has no search, and declaring one
+           it does not have would misrepresent it. */
+        return { '@type': 'WebSite', name: name, url: url.replace(/\/+$/, '') + '/' };
+    }
+
+    function buildWebPage(page) {
+        if (!page || !page.schema || page.schema.webPage === false) return null;
+        var name = str(page.title) || str(page.heading);
+        var url = pageUrl(page);
+        if (!name || !url) return null;
+        var out = {
+            '@type': page.schema.contactPage ? 'ContactPage' : 'WebPage',
+            name: name,
+            url: url,
+            inLanguage: 'en'
+        };
+        var d = computeDescription(page);
+        if (d) out.description = d;
+        var site = str(get('seo.baseUrl', ''));
+        if (site) out.isPartOf = { '@type': 'WebSite', url: site.replace(/\/+$/, '') + '/' };
+        return out;
+    }
+
+    /* Breadcrumb schema is only emitted when the page actually shows a
+       breadcrumb — Google requires the markup to match what is visible. */
+    function buildBreadcrumb(page) {
+        if (!page || !page.schema || !page.schema.breadcrumb) return null;
+        if (!page.breadcrumb || !page.breadcrumb.show) return null;
+        if (!document.querySelector('.breadcrumb')) return null;
+        var base = str(get('seo.baseUrl', '')).replace(/\/+$/, '');
+        var label = str(page.breadcrumb.label) || str(page.label);
+        if (!base || !label) return null;
+        return {
+            '@type': 'BreadcrumbList',
+            itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: base + '/' },
+                { '@type': 'ListItem', position: 2, name: label, item: pageUrl(page) }
+            ]
+        };
+    }
+
+    function paintSchema(page) {
+        writeLd('ldOrganization', buildOrganization());
+        writeLd('ldWebSite', buildWebSite());
+        writeLd('ldPage', buildWebPage(page));
+        writeLd('ldBreadcrumb', buildBreadcrumb(page));
+    }
+
+    /* ========================================================
+       HEAD — SEO + favicon
     ======================================================== */
     function paintHead() {
-        /* A page that declares its own CMS title owns it — the global
-           browserTitle must not overwrite an info page's SEO title. */
-        var titleEl = document.querySelector('title[data-cms-title]');
-        var t;
-        if (titleEl) {
-            t = get(titleEl.getAttribute('data-cms-title'), '');
-        } else {
-            var isLogin = /login\.html/i.test(location.pathname);
-            t = isLogin ? get('branding.loginTitle') : get('branding.browserTitle');
-        }
-        if (t) document.title = t;
-
+        paintSeo();
         paintPageMeta();
 
         var fav = get('images.favicon');
@@ -773,8 +1163,12 @@
         var list = get('home.casino', []);
         if (!list.length) return;
         box.innerHTML = list.filter(on).map(function (g) {
+            /* width/height and lazy loading are repeated here so a
+               CMS rendered grid keeps the same no-layout-shift
+               behaviour as the markup in index.html. */
             return '<div class="casino-card" data-game="' + esc(g.id) + '" data-link="' + esc(g.link || 'login.html') + '">' +
                    '<img src="' + esc(g.src) + '" alt="' + esc(g.title) + '" ' +
+                   'width="400" height="400" loading="lazy" decoding="async" ' +
                    'onerror="this.parentElement.classList.add(\'no-img\')">' +
                    '<div class="casino-ph-label">' + esc(g.title) + '</div></div>';
         }).join('');
@@ -1095,6 +1489,14 @@
         applyHead: applyHead,
         applyBody: applyBody,
         paintVars: paintVars,
+        paintSeo: paintSeo,
+        seoUrlFor: pageUrl,
+        seoTitleFor: computeTitle,
+        seoDescriptionFor: computeDescription,
+        seoOgFor: computeOg,
+        seoTwitterFor: computeTwitter,
+        seoRobotsFor: robotsValue,
+        seoAbsUrl: absUrl,
         paintPageContent: paintPageContent,
         paintPageMeta: paintPageMeta,
         paintTypography: paintTypography,

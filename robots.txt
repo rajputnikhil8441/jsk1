@@ -1,6 +1,14 @@
 # robots.txt for https://jsk-1.com/
+
 User-agent: *
 Allow: /
 
-# Point crawlers to the sitemap
+# The admin panel is not a search landing page. This stops crawling;
+# admin/index.html also carries <meta name="robots" content="noindex,nofollow">,
+# because a Disallow alone cannot keep a linked URL out of the index.
+Disallow: /admin/
+
+# CSS, JavaScript and images are deliberately left crawlable — search
+# engines need them to render the pages correctly.
+
 Sitemap: https://jsk-1.com/sitemap.xml

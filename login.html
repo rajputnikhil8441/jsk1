@@ -1,10 +1,21 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-cms-page="login">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Contact Us — JSK1</title>
+    <title data-cms-title="pages.login.title">Login — JSK1</title>
+    <meta name="description" data-cms-meta="pages.login.metaDescription" content="Sign in to your JSK1 account on the official JSK1 website." />
+    <link rel="canonical" href="https://jsk-1.com/login.html" />
+    <!-- A sign in screen is not a search landing page. noindex keeps it
+         out of results; follow still lets the links on it pass through. -->
+    <meta name="robots" content="noindex,follow" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="JSK1" />
+    <meta property="og:title" content="Login — JSK1" />
+    <meta property="og:description" content="Sign in to your JSK1 account on the official JSK1 website." />
+    <meta property="og:url" content="https://jsk-1.com/login.html" />
+    <meta name="twitter:card" content="summary_large_image" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="css/login.css">
     <link rel="icon" id="cmsFavicon" href="assets/images/favicon.png" />
@@ -24,7 +35,7 @@
     <div class="login-page">
         <main class="login-main">
 
-            <a href="index.html"><img src="assets/images/logo.png" class="login-logo" data-cms-img="loginLogo" data-cms-alt="siteName" alt="PLAYZONE9"></a>
+            <a href="./"><img src="assets/images/logo.png" class="login-logo" data-cms-img="loginLogo" data-cms-alt="siteName" alt="JSK1"></a>
 
             <div class="login-card">
 
@@ -33,12 +44,12 @@
                 <form id="contactForm" class="login-form" autocomplete="off">
 
                     <div class="input-row">
-                        <input type="text" id="firstName" name="firstName" placeholder="Username" data-cms-ph="login.userPh" maxlength="60">
+                        <input type="text" id="firstName" name="firstName" placeholder="Username" data-cms-ph="login.userPh" maxlength="60" autocomplete="username">
                         <span class="input-icon"><i class="fas fa-user"></i></span>
                     </div>
 
                     <div class="input-row ">
-                        <input type="text" id="surname" name="surname" placeholder="Password" data-cms-ph="login.passPh" maxlength="60">
+                        <input type="password" id="surname" name="surname" placeholder="Password" data-cms-ph="login.passPh" maxlength="60" autocomplete="current-password">
                         <span class="input-icon"><i class="fas fa-key"></i></span>
                     </div>
 

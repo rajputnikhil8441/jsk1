@@ -12,7 +12,7 @@ var CONFIG = {
   whatsappNumber: (window.CMS && CMS.get('branding.whatsapp')) || '91xxxxxx',
 
   /* WhatsApp message (URL encoded) */
-  whatsappMessage: 'Hello%2C%20I%20need%20support%20on%20PLAYZONE9.',
+  whatsappMessage: 'Hello%2C%20I%20need%20support%20on%20JSK1.',
 
   /* Site name */
   siteName: 'JSK1'

@@ -1144,7 +1144,7 @@
 
         area.addEventListener('input', function () {
             page.body = area.value;
-            markDirty();
+            touchPage(page);
             paintPreview();
         });
 
@@ -1167,13 +1167,181 @@
             el.focus();
             el.setSelectionRange(caret, caret);
             page.body = el.value;
-            markDirty();
+            touchPage(page);
             paintPreview();
         }
 
         /* the editor repaints the live preview of the page it describes */
         paintPreview();
+
+        /* ---- search engine settings ---- */
+        var seoCard = document.createElement('div');
+        seoCard.className = 'card';
+        seoCard.innerHTML = '<h2>Search engines</h2>' +
+            '<p class="hint">Leave a field blank to keep whatever the page\'s HTML already ' +
+            'contains. Nothing here can blank a page out.</p>';
+        var seoGrid = document.createElement('div');
+        seoGrid.className = 'grid2';
+
+        seoGrid.appendChild(seoField(
+            function () { return page.canonical || ''; },
+            function (v) { page.canonical = v; touchPage(page); },
+            { label: 'Canonical URL override',
+              hint: 'Blank = built automatically from the base URL and this page\'s address.',
+              onChange: paintSeoPreviews }));
+
+        seoGrid.appendChild(seoToggle(
+            function () { return !page.robots || page.robots.index !== false; },
+            function (v) { page.robots = page.robots || {}; page.robots.index = v; touchPage(page); renderPageEditor(); },
+            'Allow indexing', 'Off = noindex. The page stays reachable but is kept out of search results.'));
+
+        seoGrid.appendChild(seoToggle(
+            function () { return !page.robots || page.robots.follow !== false; },
+            function (v) { page.robots = page.robots || {}; page.robots.follow = v; touchPage(page); renderPageEditor(); },
+            'Follow links', 'Off = nofollow on every link on the page. Rarely wanted.'));
+
+        seoGrid.appendChild(seoToggle(
+            function () { return page.inSitemap !== false; },
+            function (v) { page.inSitemap = v; touchPage(page); },
+            'Include in sitemap', 'A noindex page is excluded automatically whatever this says.'));
+
+        seoCard.appendChild(seoGrid);
+        host.appendChild(seoCard);
+
+        /* ---- social ---- */
+        var socCard = document.createElement('div');
+        socCard.className = 'card';
+        socCard.innerHTML = '<h2>Sharing</h2>' +
+            '<p class="hint">Blank fields inherit the defaults in <strong>SEO &gt; Social</strong>, ' +
+            'and X/Twitter inherits from Open Graph.</p>';
+        var socGrid = document.createElement('div');
+        socGrid.className = 'grid2';
+        page.og = page.og || { title: '', description: '', image: '' };
+        page.twitter = page.twitter || { title: '', description: '', image: '' };
+        [['og', 'title', 'OG title', 60], ['og', 'description', 'OG description', 155], ['og', 'image', 'OG image URL', 0],
+         ['twitter', 'title', 'X title', 60], ['twitter', 'description', 'X description', 155], ['twitter', 'image', 'X image URL', 0]
+        ].forEach(function (f) {
+            socGrid.appendChild(seoField(
+                function () { return page[f[0]][f[1]] || ''; },
+                function (v) { page[f[0]][f[1]] = v; touchPage(page); },
+                { label: f[2], counter: f[3] || 0,
+                  kind: f[1] === 'description' ? 'area' : 'input',
+                  onChange: paintSeoPreviews }));
+        });
+        socCard.appendChild(socGrid);
+        host.appendChild(socCard);
+
+        /* ---- structured data + breadcrumb (not shown for login/register) ---- */
+        if (page.url && !/^(login|register)\.html$/.test(page.url)) {
+            var scCard = document.createElement('div');
+            scCard.className = 'card';
+            scCard.innerHTML = '<h2>Structured data &amp; breadcrumb</h2>' +
+                '<p class="hint">Breadcrumb markup is only published when the page actually ' +
+                'shows a breadcrumb — search engines require the two to match.</p>';
+            var scGrid = document.createElement('div');
+            scGrid.className = 'grid2';
+            page.schema = page.schema || { webPage: true, breadcrumb: false, contactPage: false };
+            page.breadcrumb = page.breadcrumb || { label: page.label || '', show: false };
+
+            scGrid.appendChild(seoToggle(
+                function () { return page.schema.webPage !== false; },
+                function (v) { page.schema.webPage = v; touchPage(page); },
+                'WebPage schema', 'Describes this page to search engines.'));
+            scGrid.appendChild(seoToggle(
+                function () { return !!page.schema.contactPage; },
+                function (v) { page.schema.contactPage = v; touchPage(page); },
+                'Mark as ContactPage', 'Only for a page that genuinely holds contact details.'));
+            scGrid.appendChild(seoToggle(
+                function () { return !!page.breadcrumb.show; },
+                function (v) { page.breadcrumb.show = v; touchPage(page); },
+                'Show breadcrumb', 'Displays "Home › page" above the content.'));
+            scGrid.appendChild(seoToggle(
+                function () { return !!page.schema.breadcrumb; },
+                function (v) { page.schema.breadcrumb = v; touchPage(page); },
+                'BreadcrumbList schema', 'Ignored unless the breadcrumb above is shown.'));
+            scGrid.appendChild(seoField(
+                function () { return page.breadcrumb.label || ''; },
+                function (v) { page.breadcrumb.label = v; touchPage(page); },
+                { label: 'Breadcrumb label', hint: 'Short — it is the last step of the trail.' }));
+            scCard.appendChild(scGrid);
+            host.appendChild(scCard);
+        }
+
+        /* ---- previews ---- */
+        var pvCard = document.createElement('div');
+        pvCard.className = 'card';
+        pvCard.innerHTML = '<h2>Previews</h2>' +
+            '<p class="hint">An impression of how this page may appear. Search engines rewrite ' +
+            'titles and snippets whenever they judge something else fits the query better, so ' +
+            'treat this as a guide rather than a guarantee.</p>' +
+            '<div class="seoprev-wrap">' +
+              '<div class="seoprev"><div class="seoprev-label">Google</div><div id="pvGoogle" class="pv-google"></div></div>' +
+              '<div class="seoprev"><div class="seoprev-label">Open Graph</div><div id="pvOg" class="pv-card"></div></div>' +
+              '<div class="seoprev"><div class="seoprev-label">X / Twitter</div><div id="pvTw" class="pv-card"></div></div>' +
+            '</div>';
+        host.appendChild(pvCard);
+
+        /* ---- checks ---- */
+        var chkCard = document.createElement('div');
+        chkCard.className = 'card';
+        chkCard.innerHTML = '<h2>Checks</h2>' +
+            '<p class="hint">Editorial guidance, not a score — no search engine publishes one.</p>' +
+            '<div id="pageChecks"></div>';
+        host.appendChild(chkCard);
+
+        paintSeoPreviews();
     }
+
+    /* Stamp the edit date so the sitemap lastmod stays honest. */
+    function touchPage(page) {
+        page.updatedAt = todayIso();
+        markDirty();
+        paintSeoPreviews();
+    }
+
+    function paintSeoPreviews() {
+        var key = activePageKey;
+        var page = CMS.data().pages[key];
+        if (!page) return;
+
+        var title = CMS.seoTitleFor ? CMS.seoTitleFor(page) : (page.title || '');
+        var desc  = CMS.seoDescriptionFor ? CMS.seoDescriptionFor(page) : (page.metaDescription || '');
+        var url   = CMS.seoUrlFor ? CMS.seoUrlFor(page) : '';
+        var ogT   = CMS.seoOgFor ? CMS.seoOgFor(page, 'title') : title;
+        var ogD   = CMS.seoOgFor ? CMS.seoOgFor(page, 'description') : desc;
+        var ogI   = CMS.seoOgFor ? CMS.seoAbsUrl(CMS.seoOgFor(page, 'image')) : '';
+        var twT   = CMS.seoTwitterFor ? CMS.seoTwitterFor(page, 'title') : ogT;
+        var twD   = CMS.seoTwitterFor ? CMS.seoTwitterFor(page, 'description') : ogD;
+        var twI   = CMS.seoTwitterFor ? CMS.seoAbsUrl(CMS.seoTwitterFor(page, 'image')) : ogI;
+        var crumb = url.replace(/^https?:\/\//, '').replace(/\/$/, '').split('/').join(' › ');
+
+        var g = $('#pvGoogle');
+        if (g) {
+            g.innerHTML =
+                '<div class="pv-url">' + esc(crumb) + '</div>' +
+                '<div class="pv-title">' + esc(title || '(no title set)') + '</div>' +
+                '<div class="pv-desc">' + esc(desc || '(no description set — Google will pick a snippet from the page)') + '</div>' +
+                (page.robots && page.robots.index === false
+                    ? '<div class="pv-noindex"><i class="fas fa-eye-slash"></i> This page is set to noindex, so it will not appear at all.</div>' : '');
+        }
+        function card(host, t, d, img, dom) {
+            if (!host) return;
+            host.innerHTML =
+                (img ? '<div class="pv-img" style="background-image:url(\'' + esc(img) + '\')"></div>'
+                     : '<div class="pv-img pv-img-empty">no share image set</div>') +
+                '<div class="pv-body"><div class="pv-dom">' + esc(dom) + '</div>' +
+                '<div class="pv-ct">' + esc(t || '(no title)') + '</div>' +
+                '<div class="pv-cd">' + esc(d || '') + '</div></div>';
+        }
+        var domain = url.replace(/^https?:\/\//, '').split('/')[0];
+        card($('#pvOg'), ogT, ogD, ogI, domain);
+        card($('#pvTw'), twT, twD, twI, domain);
+
+        var c = $('#pageChecks');
+        if (c) c.innerHTML = checksHtml(validatePage(key));
+    }
+
+
 
     function pageField(page, def) {
         var wrap = document.createElement('label');
@@ -1205,7 +1373,7 @@
 
         input.addEventListener('input', function () {
             page[def.key] = input.value;
-            markDirty();
+            touchPage(page);
             paintCount();
             if (def.key === 'heading' || def.key === 'lead') {
                 var pv = $('.pagepreview');
@@ -1220,6 +1388,568 @@
         return wrap;
     }
 
+
+    /* ========================================================
+       SEO CONTROL CENTER
+       ------------------------------------------------------
+       Reads and writes CMS.data().seo and CMS.data().pages, so
+       everything here publishes through the same Save changes ->
+       Supabase path as the rest of the admin. Nothing below adds
+       storage of its own.
+    ======================================================== */
+
+    function sstr(v) { return v == null ? '' : String(v).trim(); }
+
+    /* ---------- generic bound field ---------- */
+    function seoField(get, set, def) {
+        var wrap = document.createElement('label');
+        wrap.className = 'f';
+        var el;
+        if (def.kind === 'select') {
+            el = document.createElement('select');
+            def.options.forEach(function (o) {
+                var op = document.createElement('option');
+                op.value = o[0]; op.textContent = o[1];
+                el.appendChild(op);
+            });
+        } else if (def.kind === 'area') {
+            el = document.createElement('textarea');
+            el.rows = def.rows || 3;
+        } else {
+            el = document.createElement('input');
+            el.type = 'text';
+        }
+        el.value = get() == null ? '' : get();
+
+        var span = document.createElement('span');
+        span.innerHTML = esc(def.label) +
+            (def.hint ? '<br><small style="opacity:.6">' + def.hint + '</small>' : '');
+        wrap.appendChild(span);
+        wrap.appendChild(el);
+
+        var count = null;
+        if (def.counter) { count = document.createElement('small'); count.className = 'charcount'; wrap.appendChild(count); }
+        function paintCount() {
+            if (!count) return;
+            var n = el.value.length;
+            count.textContent = n + ' / ~' + def.counter + ' characters';
+            count.classList.toggle('over', n > def.counter);
+        }
+        el.addEventListener('input', function () {
+            set(el.value);
+            markDirty();
+            paintCount();
+            if (def.onChange) def.onChange();
+        });
+        el.addEventListener('change', function () { if (def.onChange) def.onChange(); });
+        paintCount();
+        return wrap;
+    }
+
+    function seoToggle(get, set, label, hint) {
+        var wrap = document.createElement('label');
+        wrap.className = 'f switch';
+        wrap.innerHTML = '<span>' + esc(label) +
+            (hint ? '<br><small style="opacity:.6">' + esc(hint) + '</small>' : '') + '</span>';
+        var box = document.createElement('input');
+        box.type = 'checkbox';
+        box.checked = !!get();
+        box.addEventListener('change', function () { set(box.checked); markDirty(); buildSeo(); });
+        wrap.appendChild(box);
+        return wrap;
+    }
+
+    function seoGet(path, fallback) {
+        var parts = path.split('.'), cur = CMS.data(), i;
+        for (i = 0; i < parts.length; i++) { if (cur == null) return fallback; cur = cur[parts[i]]; }
+        return cur == null ? fallback : cur;
+    }
+    function seoSet(path, val) {
+        var parts = path.split('.'), cur = CMS.data(), i;
+        for (i = 0; i < parts.length - 1; i++) {
+            if (typeof cur[parts[i]] !== 'object' || cur[parts[i]] === null) cur[parts[i]] = {};
+            cur = cur[parts[i]];
+        }
+        cur[parts[parts.length - 1]] = val;
+    }
+    function bound(path, def) {
+        return seoField(function () { return seoGet(path, ''); },
+                        function (v) { seoSet(path, v); }, def);
+    }
+
+    /* ---------- tabs ---------- */
+    var SEO_TABS = [
+        ['dashboard', 'Dashboard'],
+        ['global',    'Global SEO'],
+        ['social',    'Social / Sharing'],
+        ['schema',    'Structured Data'],
+        ['sitemap',   'Sitemap'],
+        ['robots',    'Robots.txt'],
+        ['newpage',   'Create Page']
+    ];
+    var activeSeoTab = 'dashboard';
+
+    function buildSeo() {
+        var tabs = $('#seoTabs');
+        if (!tabs) return;
+        tabs.innerHTML = '';
+        SEO_TABS.forEach(function (t) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'pagetab' + (t[0] === activeSeoTab ? ' active' : '');
+            b.textContent = t[1];
+            b.addEventListener('click', function () { activeSeoTab = t[0]; buildSeo(); });
+            tabs.appendChild(b);
+            var pane = $('#seotab-' + t[0]);
+            if (pane) pane.hidden = (t[0] !== activeSeoTab);
+        });
+
+        if (activeSeoTab === 'dashboard') buildSeoDashboard();
+        if (activeSeoTab === 'global')    buildSeoGlobal();
+        if (activeSeoTab === 'social')    buildSeoSocial();
+        if (activeSeoTab === 'schema')    buildSeoSchema();
+        if (activeSeoTab === 'sitemap')   buildSeoSitemap();
+        if (activeSeoTab === 'robots')    buildSeoRobots();
+        if (activeSeoTab === 'newpage')   buildSeoNewPage();
+    }
+
+    /* ---------- global ---------- */
+    function buildSeoGlobal() {
+        var a = $('#seoGlobalIdentity'); a.innerHTML = '';
+        a.appendChild(bound('seo.siteName', { label: 'Site name', hint: 'Used in og:site_name, the title template and Organization schema.' }));
+        a.appendChild(bound('seo.baseUrl', { label: 'Base URL', hint: 'No trailing slash, e.g. <code>https://jsk-1.com</code>. Every canonical is built from this.' }));
+        a.appendChild(bound('seo.titleTemplate', { label: 'Title template', hint: '<code>%s</code> is the page title. Only applied when the page title does not already contain the site name.' }));
+
+        var b = $('#seoGlobalDefaults'); b.innerHTML = '';
+        b.appendChild(bound('seo.defaultTitle', { label: 'Default page title', counter: 60, hint: 'Fallback for a page with no title of its own.' }));
+        b.appendChild(bound('seo.defaultDescription', { label: 'Default meta description', kind: 'area', counter: 155 }));
+
+        var c = $('#seoVerification'); c.innerHTML = '';
+        c.appendChild(bound('seo.verification.google', { label: 'Google Search Console', hint: 'The <code>content</code> value only, not the whole tag.' }));
+        c.appendChild(bound('seo.verification.bing', { label: 'Bing Webmaster Tools' }));
+        c.appendChild(bound('seo.verification.yandex', { label: 'Yandex Webmaster' }));
+    }
+
+    /* ---------- social ---------- */
+    function buildSeoSocial() {
+        var a = $('#seoSocial'); a.innerHTML = '';
+        a.appendChild(bound('seo.defaultOgTitle', { label: 'Default OG title', counter: 60, hint: 'Blank = use the page title.' }));
+        a.appendChild(bound('seo.defaultOgDescription', { label: 'Default OG description', kind: 'area', counter: 155, hint: 'Blank = use the meta description.' }));
+        a.appendChild(seoField(function () { return seoGet('seo.twitterCard', 'summary_large_image'); },
+                               function (v) { seoSet('seo.twitterCard', v); },
+                               { label: 'X / Twitter card type', kind: 'select',
+                                 options: [['summary_large_image', 'summary_large_image'], ['summary', 'summary']] }));
+        a.appendChild(bound('seo.twitterSite', { label: 'X / Twitter @handle', hint: 'Optional, including the @. Leave blank if there is no account.' }));
+        a.appendChild(bound('seo.defaultTwitterTitle', { label: 'Default X title', counter: 60, hint: 'Blank = inherit the OG title.' }));
+        a.appendChild(bound('seo.defaultTwitterDescription', { label: 'Default X description', kind: 'area', counter: 155, hint: 'Blank = inherit the OG description.' }));
+
+        var b = $('#seoSocialImage'); b.innerHTML = '';
+        b.appendChild(bound('seo.defaultOgImage', { label: 'Default OG image URL', hint: 'Absolute URL, or a path like <code>assets/images/share.png</code>.' }));
+        b.appendChild(bound('seo.defaultTwitterImage', { label: 'Default X image URL', hint: 'Blank = inherit the OG image.' }));
+    }
+
+    /* ---------- structured data ---------- */
+    function buildSeoSchema() {
+        var a = $('#seoOrg'); a.innerHTML = '';
+        a.appendChild(bound('seo.organization.name', { label: 'Organization name' }));
+        a.appendChild(bound('seo.organization.legalName', { label: 'Legal name', hint: 'Optional. Only if a registered entity name genuinely applies.' }));
+        a.appendChild(bound('seo.organization.logo', { label: 'Logo URL', hint: 'Must resolve to a real image, or leave blank — a broken logo URL invalidates the markup.' }));
+        a.appendChild(bound('seo.organization.contactPoint.telephone', { label: 'Support phone', hint: 'Optional. Only publish a number that is genuinely answered.' }));
+        a.appendChild(bound('seo.organization.contactPoint.email', { label: 'Support email', hint: 'Optional.' }));
+
+        var same = $('#seoSameAs'); same.innerHTML = '';
+        var list = seoGet('seo.organization.sameAs', []) || [];
+        same.appendChild(seoField(
+            function () { return list.join('\n'); },
+            function (v) {
+                seoSet('seo.organization.sameAs',
+                       v.split('\n').map(function (x) { return x.trim(); }).filter(Boolean));
+            },
+            { label: 'Profile URLs', kind: 'area', rows: 4, hint: 'One per line.' }));
+
+        var t = $('#seoSchemaToggles'); t.innerHTML = '';
+        t.appendChild(seoToggle(function () { return seoGet('seo.schema.organization', true) !== false; },
+                                function (v) { seoSet('seo.schema.organization', v); },
+                                'Organization', 'Published on the homepage.'));
+        t.appendChild(seoToggle(function () { return seoGet('seo.schema.website', true) !== false; },
+                                function (v) { seoSet('seo.schema.website', v); },
+                                'WebSite', 'Published on the homepage.'));
+
+        var pv = $('#seoSchemaPreview');
+        if (pv) {
+            var org = { '@context': 'https://schema.org', '@type': 'Organization',
+                        name: sstr(seoGet('seo.organization.name', '')) || sstr(seoGet('seo.siteName', '')),
+                        url: sstr(seoGet('seo.baseUrl', '')) };
+            if (sstr(seoGet('seo.organization.legalName', ''))) org.legalName = sstr(seoGet('seo.organization.legalName', ''));
+            if (sstr(seoGet('seo.organization.logo', ''))) org.logo = sstr(seoGet('seo.organization.logo', ''));
+            var sa = (seoGet('seo.organization.sameAs', []) || []).filter(Boolean);
+            if (sa.length) org.sameAs = sa;
+            var tel = sstr(seoGet('seo.organization.contactPoint.telephone', ''));
+            var eml = sstr(seoGet('seo.organization.contactPoint.email', ''));
+            if (tel || eml) {
+                org.contactPoint = { '@type': 'ContactPoint', contactType: 'customer support' };
+                if (tel) org.contactPoint.telephone = tel;
+                if (eml) org.contactPoint.email = eml;
+            }
+            pv.textContent = seoGet('seo.schema.organization', true) === false
+                ? 'Organization schema is switched off.'
+                : JSON.stringify(org, null, 2);
+        }
+    }
+
+    /* ---------- sitemap ---------- */
+    function indexablePages() {
+        var pages = CMS.data().pages || {};
+        return Object.keys(pages).map(function (k) {
+            var p = pages[k];
+            var robots = p.robots || {};
+            return {
+                key: k, label: p.label || k, url: p.url || '',
+                index: robots.index !== false,
+                inSitemap: p.inSitemap !== false && robots.index !== false,
+                updatedAt: p.updatedAt || ''
+            };
+        });
+    }
+
+    function buildSitemapXml() {
+        var base = sstr(seoGet('seo.baseUrl', '')).replace(/\/+$/, '');
+        var rows = indexablePages().filter(function (p) { return p.inSitemap; });
+        var out = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+                  '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
+        rows.forEach(function (p) {
+            out += '  <url>\n    <loc>' + base + '/' + p.url + '</loc>\n';
+            if (p.updatedAt) out += '    <lastmod>' + p.updatedAt + '</lastmod>\n';
+            out += '  </url>\n';
+        });
+        return out + '</urlset>\n';
+    }
+
+    function buildSeoSitemap() {
+        var rows = indexablePages();
+        var host = $('#seoSitemapTable');
+        var html = '<table class="seotable"><thead><tr><th>Page</th><th>URL</th>' +
+                   '<th>Indexable</th><th>In sitemap</th><th>Last updated</th></tr></thead><tbody>';
+        rows.forEach(function (p) {
+            html += '<tr><td>' + esc(p.label) + '</td>' +
+                    '<td><code>/' + esc(p.url) + '</code></td>' +
+                    '<td>' + (p.index ? '<span class="ok">index</span>' : '<span class="muted">noindex</span>') + '</td>' +
+                    '<td>' + (p.inSitemap ? 'yes' : '—') + '</td>' +
+                    '<td>' + esc(p.updatedAt || '—') + '</td></tr>';
+        });
+        host.innerHTML = html + '</tbody></table>';
+        $('#seoSitemapNote').innerHTML =
+            'Pages set to <strong>noindex</strong> are left out automatically. ' +
+            'Change a page\'s index setting in <strong>Pages</strong>.';
+        $('#seoSitemapOut').textContent = buildSitemapXml();
+    }
+
+    function buildRobotsTxt() {
+        var base = sstr(seoGet('seo.baseUrl', '')).replace(/\/+$/, '');
+        var extra = sstr(seoGet('seo.robotsExtra', ''));
+        var out = '# robots.txt for ' + base + '/\n\nUser-agent: *\nAllow: /\n\n' +
+                  '# The admin panel is not a search landing page.\nDisallow: /admin/\n';
+        if (extra) out += '\n' + extra + '\n';
+        out += '\nSitemap: ' + base + '/sitemap.xml\n';
+        return out;
+    }
+
+    function buildSeoRobots() {
+        var ta = $('#seoRobotsExtra');
+        ta.value = seoGet('seo.robotsExtra', '');
+        ta.oninput = function () { seoSet('seo.robotsExtra', ta.value); markDirty(); $('#seoRobotsOut').textContent = buildRobotsTxt(); };
+        $('#seoRobotsOut').textContent = buildRobotsTxt();
+    }
+
+    function download(name, text, type) {
+        var blob = new Blob([text], { type: type || 'text/plain' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    }
+
+    function copyText(text, what) {
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(text)
+                .then(function () { toast(what + ' copied.'); })
+                .catch(function () { toast('Copy failed — use Download instead.', true); });
+        } else { toast('Copy is not available here — use Download.', true); }
+    }
+
+    /* ========================================================
+       VALIDATION
+       Individual, explainable checks. Deliberately NOT a score:
+       search engines do not publish one, and a number invites
+       optimising for the number instead of the reader.
+    ======================================================== */
+    function validatePage(key) {
+        var pages = CMS.data().pages || {};
+        var p = pages[key];
+        var out = [];
+        if (!p) return out;
+        var ok   = function (m) { out.push({ level: 'ok',   msg: m }); };
+        var warn = function (m) { out.push({ level: 'warn', msg: m }); };
+        var bad  = function (m) { out.push({ level: 'bad',  msg: m }); };
+
+        var title = sstr(p.title);
+        if (!title) bad('No SEO title. Search engines will invent one from the page.');
+        else if (title.length < 20) warn('SEO title is quite short (' + title.length + ' characters) — there is room to say more.');
+        else if (title.length > 60) warn('SEO title is ' + title.length + ' characters; Google usually truncates around 60.');
+        else ok('SEO title looks a sensible length.');
+
+        var desc = sstr(p.metaDescription);
+        if (!desc) bad('No meta description. Google will pull an arbitrary snippet instead.');
+        else if (desc.length < 70) warn('Meta description is short (' + desc.length + ' characters).');
+        else if (desc.length > 160) warn('Meta description is ' + desc.length + ' characters; the snippet is usually cut near 160.');
+        else ok('Meta description looks a sensible length.');
+
+        /* duplicates across pages */
+        Object.keys(pages).forEach(function (k) {
+            if (k === key) return;
+            if (title && sstr(pages[k].title) === title) bad('Same SEO title as "' + (pages[k].label || k) + '".');
+            if (desc && sstr(pages[k].metaDescription) === desc) bad('Same meta description as "' + (pages[k].label || k) + '".');
+        });
+
+        var robots = p.robots || {};
+        if (robots.index === false) warn('This page is set to noindex — it will not appear in search results.');
+
+        var base = sstr(seoGet('seo.baseUrl', ''));
+        if (!/^https?:\/\//i.test(base)) bad('The base URL in Global SEO is not a valid absolute URL.');
+        var canon = sstr(p.canonical);
+        if (canon && !/^https?:\/\//i.test(canon) && canon.indexOf('/') !== 0 && !/^[\w.-]+\.html$/.test(canon))
+            bad('Canonical override does not look like a valid URL or page path.');
+        if (canon && /^https?:\/\//i.test(canon) && base && canon.indexOf(base) !== 0)
+            warn('Canonical points at a different domain than the base URL.');
+
+        /* body checks, only where a page owns a body */
+        if (p.body !== undefined && sstr(p.url) !== '' ) {
+            var body = sstr(p.body);
+            var h1s = (body.match(/<h1[\s>]/gi) || []).length;
+            if (h1s > 0) bad('The body contains ' + h1s + ' <h1> tag(s). The page already has one H1 above the body — use H2 inside the content.');
+            if (!sstr(p.heading)) bad('No H1 set for this page.');
+            else ok('One H1 is set.');
+
+            if (!body) bad('The page body is empty.');
+            else {
+                var words = body.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
+                if (words < 150) warn('Body is about ' + words + ' words. Short pages rarely satisfy a search visitor.');
+                else ok('Body is about ' + words + ' words.');
+
+                var levels = (body.match(/<h([2-6])[\s>]/gi) || []).map(function (t) { return parseInt(t.replace(/\D/g, ''), 10); });
+                var prev = 1, skipped = false;
+                levels.forEach(function (l) { if (l > prev + 1) skipped = true; prev = l; });
+                if (skipped) warn('A heading level is skipped (for example an H2 followed by an H4).');
+
+                var imgs = body.match(/<img[^>]*>/gi) || [];
+                var noAlt = imgs.filter(function (t) { return !/alt\s*=/.test(t); }).length;
+                if (noAlt) warn(noAlt + ' image(s) in the body have no alt text.');
+
+                var links = body.match(/href="([a-z0-9-]+\.html)"/gi) || [];
+                links.forEach(function (l) {
+                    var f = l.replace(/href="|"/g, '');
+                    var known = Object.keys(pages).some(function (k) { return pages[k].url === f; });
+                    if (!known) warn('Links to <code>' + esc(f) + '</code>, which is not a page the CMS knows about.');
+                });
+            }
+        }
+
+        var ogImg = (p.og && sstr(p.og.image)) || sstr(seoGet('seo.defaultOgImage', ''));
+        if (!ogImg) warn('No share image set, so links to this page share without a picture.');
+        else ok('Share image is configured.');
+
+        return out;
+    }
+
+    function checksHtml(list) {
+        var icon = { ok: '<i class="fas fa-check"></i>', warn: '<i class="fas fa-triangle-exclamation"></i>', bad: '<i class="fas fa-circle-exclamation"></i>' };
+        return '<ul class="seochecks">' + list.map(function (c) {
+            return '<li class="chk-' + c.level + '">' + icon[c.level] + ' <span>' + c.msg + '</span></li>';
+        }).join('') + '</ul>';
+    }
+
+    function buildSeoDashboard() {
+        var host = $('#seoDashboard');
+        var pages = CMS.data().pages || {};
+        var html = '';
+        Object.keys(pages).forEach(function (k) {
+            var p = pages[k];
+            var checks = validatePage(k);
+            var bad = checks.filter(function (c) { return c.level === 'bad'; }).length;
+            var warn = checks.filter(function (c) { return c.level === 'warn'; }).length;
+            var pill = bad ? '<span class="pill warn">' + bad + ' to fix</span>'
+                     : warn ? '<span class="pill">' + warn + ' to review</span>'
+                            : '<span class="pill ok">clear</span>';
+            html += '<div class="seorow"><div class="seorow-head">' +
+                    '<strong>' + esc(p.label || k) + '</strong> ' +
+                    '<code>/' + esc(p.url || '') + '</code> ' + pill +
+                    '<button class="adm-btn ghost snip" data-editpage="' + esc(k) + '">Edit</button></div>' +
+                    checksHtml(checks) + '</div>';
+        });
+        host.innerHTML = html;
+        $$('[data-editpage]', host).forEach(function (b) {
+            b.addEventListener('click', function () {
+                activePageKey = b.getAttribute('data-editpage');
+                switchPanel('pages');
+                buildPages();
+            });
+        });
+    }
+
+    /* ---------- create page ---------- */
+    var newPageDraft = null;
+
+    function slugify(v) {
+        return String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    }
+
+    /* Two slugs are "too close" when one contains the other or they differ
+       by a couple of characters — the shape of a doorway page. */
+    function nearDuplicate(slug) {
+        var pages = CMS.data().pages || {};
+        var hits = [];
+        Object.keys(pages).forEach(function (k) {
+            var other = pages[k].slug || k;
+            if (!other || other === slug) { if (other === slug) hits.push(other); return; }
+            if (other.indexOf(slug) > -1 || slug.indexOf(other) > -1) hits.push(other);
+        });
+        return hits;
+    }
+
+    function buildSeoNewPage() {
+        if (!newPageDraft) newPageDraft = { label: '', slug: '', title: '', metaDescription: '', heading: '', lead: '' };
+        var host = $('#seoNewPageFields'); host.innerHTML = '';
+        function f(key, def) {
+            return seoField(function () { return newPageDraft[key]; },
+                            function (v) {
+                                newPageDraft[key] = v;
+                                if (key === 'label' && !newPageDraft.slugTouched) newPageDraft.slug = slugify(v);
+                                if (key === 'slug') newPageDraft.slugTouched = true;
+                                checkNewPage();
+                            }, def);
+        }
+        host.appendChild(f('label', { label: 'Page name', hint: 'How it appears in the admin and in navigation.' }));
+        host.appendChild(f('slug', { label: 'Slug / file name', hint: 'Becomes <code>slug.html</code>. Lowercase, hyphens.' }));
+        host.appendChild(f('title', { label: 'SEO title', counter: 60 }));
+        host.appendChild(f('metaDescription', { label: 'Meta description', kind: 'area', counter: 155 }));
+        host.appendChild(f('heading', { label: 'H1 heading' }));
+        host.appendChild(f('lead', { label: 'Intro / lead' }));
+        checkNewPage();
+    }
+
+    function checkNewPage() {
+        var warn = $('#seoNewPageWarn');
+        if (!warn || !newPageDraft) return;
+        var slug = slugify(newPageDraft.slug);
+        var msgs = [];
+        if (slug) {
+            var near = nearDuplicate(slug);
+            if (near.length) {
+                msgs.push({ level: 'bad', msg: 'A page with a very similar address already exists: <code>' +
+                            near.map(esc).join('</code>, <code>') + '</code>. Near-duplicate pages compete with each other and look like keyword doorways. Expand the existing page instead.' });
+            }
+            if (/(login|register|signup|sign-up)/.test(slug)) {
+                msgs.push({ level: 'warn', msg: 'Pages built around sign-in keywords rarely earn rankings and often read as doorway pages.' });
+            }
+        }
+        warn.innerHTML = msgs.length ? checksHtml(msgs) : '';
+        var btn = $('#btnCreatePage');
+        if (btn) btn.disabled = !slug || !sstr(newPageDraft.label) ||
+                                msgs.some(function (m) { return m.level === 'bad'; });
+    }
+
+    function newPageHtml(key) {
+        var p = CMS.data().pages[key];
+        var base = sstr(seoGet('seo.baseUrl', '')).replace(/\/+$/, '');
+        var url = base + '/' + p.url;
+        function e(v) { return esc(sstr(v)); }
+        return '<!DOCTYPE html>\n<html lang="en" data-cms-page="' + e(key) + '">\n\n<head>\n' +
+            '    <meta charset="UTF-8" />\n' +
+            '    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n\n' +
+            '    <title data-cms-title="pages.' + e(key) + '.title">' + e(p.title) + '</title>\n' +
+            '    <meta name="description" data-cms-meta="pages.' + e(key) + '.metaDescription" content="' + e(p.metaDescription) + '" />\n' +
+            '    <link rel="canonical" href="' + e(url) + '" />\n' +
+            '    <meta name="robots" content="index,follow" />\n\n' +
+            '    <meta property="og:type" content="website" />\n' +
+            '    <meta property="og:site_name" content="' + e(seoGet('seo.siteName', '')) + '" />\n' +
+            '    <meta property="og:title" content="' + e(p.title) + '" />\n' +
+            '    <meta property="og:description" content="' + e(p.metaDescription) + '" />\n' +
+            '    <meta property="og:url" content="' + e(url) + '" />\n' +
+            '    <meta name="twitter:card" content="summary_large_image" />\n' +
+            '    <meta name="twitter:title" content="' + e(p.title) + '" />\n' +
+            '    <meta name="twitter:description" content="' + e(p.metaDescription) + '" />\n\n' +
+            '    <link rel="stylesheet" href="css/style.css" />\n' +
+            '    <link rel="stylesheet" href="css/menu.css" />\n' +
+            '    <link rel="stylesheet" href="css/responsive.css" />\n' +
+            '    <link rel="stylesheet" href="css/content.css" />\n' +
+            '    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" />\n' +
+            '    <link rel="icon" id="cmsFavicon" href="assets/images/favicon.png" />\n\n' +
+            '    <script src="js/cms-config.js"></scr' + 'ipt>\n' +
+            '    <script src="js/brand.js"></scr' + 'ipt>\n' +
+            '    <script src="js/cms.js"></scr' + 'ipt>\n' +
+            '</head>\n\n<body>\n\n' +
+            '    <!-- Copy the header, nav and footer blocks from about.html so this\n' +
+            '         page uses exactly the same shell as the rest of the site. -->\n\n' +
+            '    <main class="info-main">\n' +
+            '        <article class="info-article">\n' +
+            '            <h1 data-cms-text="pages.' + e(key) + '.heading">' + e(p.heading) + '</h1>\n' +
+            '            <p class="info-lead" data-cms-text="pages.' + e(key) + '.lead">' + e(p.lead) + '</p>\n' +
+            '            <div class="info-body" data-cms-html="pages.' + e(key) + '.body"></div>\n' +
+            '        </article>\n' +
+            '    </main>\n\n' +
+            '    <script src="js/menu.js"></scr' + 'ipt>\n' +
+            '</body>\n\n</html>\n';
+    }
+
+    function todayIso() {
+        var d = new Date();
+        return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+    }
+
+    /* ---------- wiring ---------- */
+    function wireSeoButtons() {
+        var b;
+        if ((b = $('#btnCopySitemap')))     b.addEventListener('click', function () { copyText(buildSitemapXml(), 'sitemap.xml'); });
+        if ((b = $('#btnDownloadSitemap'))) b.addEventListener('click', function () { download('sitemap.xml', buildSitemapXml(), 'application/xml'); });
+        if ((b = $('#btnCopyRobots')))      b.addEventListener('click', function () { copyText(buildRobotsTxt(), 'robots.txt'); });
+        if ((b = $('#btnDownloadRobots')))  b.addEventListener('click', function () { download('robots.txt', buildRobotsTxt()); });
+
+        if ((b = $('#btnCreatePage'))) b.addEventListener('click', function () {
+            var slug = slugify(newPageDraft.slug);
+            if (!slug) return;
+            CMS.data().pages[slug] = {
+                label: sstr(newPageDraft.label) || slug,
+                url: slug + '.html',
+                slug: slug,
+                title: sstr(newPageDraft.title),
+                metaDescription: sstr(newPageDraft.metaDescription),
+                canonical: '',
+                robots: { index: true, follow: true },
+                heading: sstr(newPageDraft.heading),
+                lead: sstr(newPageDraft.lead),
+                body: '',
+                og: { title: '', description: '', image: '' },
+                twitter: { title: '', description: '', image: '' },
+                breadcrumb: { label: sstr(newPageDraft.label) || slug, show: true },
+                schema: { webPage: true, breadcrumb: true, contactPage: false },
+                inSitemap: true,
+                updatedAt: todayIso()
+            };
+            markDirty();
+            $('#btnDownloadPage').hidden = false;
+            $('#btnDownloadPage').setAttribute('data-key', slug);
+            toast('Page created in the CMS. Download the HTML file and add it to the site.');
+            newPageDraft = null;
+            buildPages();
+            buildSeo();
+        });
+
+        if ((b = $('#btnDownloadPage'))) b.addEventListener('click', function () {
+            var k = b.getAttribute('data-key');
+            if (k && CMS.data().pages[k]) download(CMS.data().pages[k].url, newPageHtml(k), 'text/html');
+        });
+    }
 
     /* ========================================================
        PRESETS
@@ -1502,6 +2232,7 @@
         buildImages();
         buildAllLists();
         buildPages();
+        buildSeo();
         buildPresets();
         renderPreview();
         $('#brandLabel').textContent = CMS.get('branding.siteName', 'BRAND');
@@ -1512,6 +2243,7 @@
         $('#savedFlag').className = 'adm-saved';
     }
 
+    wireSeoButtons();
     refreshAll();
 
     /* First run with no harvested content? Tell the admin how to fill it. */
