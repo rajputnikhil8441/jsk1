@@ -18,10 +18,10 @@
     <!-- Reference site uses Roboto Condensed for the card title. Remove this line to fall back to dfont. -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&display=swap">
     <link rel="stylesheet" href="css/register.css">
-    <!-- href is set by the CMS from the uploaded favicon. It is left off here
-         because no such file exists in this repository; pointing at one that
-         is missing only produces a 404 on every page load. -->
-    <link rel="icon" id="cmsFavicon" />
+    <!-- Favicon. The committed file is the static fallback so the icon is
+         correct before any script runs and for crawlers; the CMS overrides
+         this href with the uploaded favicon whenever one is set. -->
+    <link rel="icon" type="image/png" sizes="512x512" href="assets/images/favicon.png" id="cmsFavicon" />
 
     <!-- REMOTE BRAND STORAGE CONFIG -->
     <script src="js/cms-config.js"></script>
