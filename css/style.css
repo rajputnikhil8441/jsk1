@@ -791,8 +791,8 @@ button {
     align-items: center;
     gap: 8px;
     padding: 3px 6px;
-    background: var(--table-row-bg);
-    border-bottom: 1px solid var(--table-border);
+    background: var(--st-row-bg, var(--table-row-bg));
+    border-bottom: var(--st-row-sep, 1px) solid var(--table-border);
 }
 
 .match-row:last-child {
@@ -809,8 +809,8 @@ button {
 }
 
 .match-title {
-    font-size: 11px;
-    font-weight: 700;
+    font-size: var(--st-title-size, 11px);
+    font-weight: var(--st-title-weight, 700);
     color: var(--table-text);
     min-width: 0;
     overflow: hidden;
@@ -826,8 +826,8 @@ button {
 }
 
 .match-live-dot {
-    width: 7px;
-    height: 7px;
+    width: var(--st-dot-size, 7px);
+    height: var(--st-dot-size, 7px);
     border-radius: 50%;
     background: var(--live-grey);
     flex-shrink: 0;
@@ -860,7 +860,7 @@ button {
 }
 
 .match-datetime {
-    font-size: 9px;
+    font-size: var(--st-date-size, 9px);
     color: var(--table-dim);
     white-space: nowrap;
     flex-shrink: 0;
@@ -887,15 +887,15 @@ button {
 .match-odds {
     display: grid;
     grid-template-columns: repeat(6, 45px);
-    gap: 1px;
+    gap: var(--st-cell-gap, 1px);
     flex-shrink: 0;
 }
 
 .odds-btn {
-    height: 22px;
-    line-height: 22px;
-    font-size: 11px;
-    font-weight: 700;
+    height: var(--st-odds-h, 22px);
+    line-height: var(--st-odds-h, 22px);
+    font-size: var(--st-odds-size, 11px);
+    font-weight: var(--st-odds-weight, 700);
     text-align: center;
     border: none;
     border-radius: 0;
@@ -953,7 +953,7 @@ button {
 }
 
 .odds-btn.lock i {
-    font-size: 14px;
+    font-size: var(--st-lock-size, 12px);
     line-height: 1;
     color: var(--lock-icon);
 }

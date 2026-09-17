@@ -456,6 +456,45 @@
         themes: {},
 
 
+        /* ----------------------------------------------------------
+           SPORTS / EVENT TABLE — presentation only.
+           Edited in /admin > Sports Table. Each value is painted as a
+           CSS variable that css/style.css and css/responsive.css read
+           with a matching fallback, so a saved record without this
+           section renders exactly as the stylesheets ship.
+           Colours are deliberately absent: the table already draws from
+           the global palette in /admin > Colors (--back, --lay,
+           --lock-bg, --labels-bg, --table-*), and duplicating them here
+           would give two places to change the same thing.
+        ---------------------------------------------------------- */
+        sportsTable: {
+
+            /* desktop — one line per event */
+            titleSize: '11',
+            titleWeight: '700',
+            dateSize: '9',
+            oddsHeight: '22',
+            oddsSize: '11',
+            oddsWeight: '700',
+            cellGap: '1',
+            dotSize: '7',
+            lockSize: '12',
+            rowSeparator: '1',
+
+            /* mobile — four stacked lines per event */
+            mobTitleSize: '12.5',
+            mobDateSize: '10.5',
+            mobDateGap: '0',
+            mobLabelSize: '12',
+            mobLabelGap: '3',
+            mobLabelPad: '0',
+            mobOddsHeight: '19',
+            mobOddsSize: '11.5',
+            mobLockSize: '13',
+            mobRowPad: '3',
+            mobRowGap: '3'
+        },
+
         /* Per-section typography. Empty string = inherit existing CSS. */
         typography: {},
 
@@ -617,6 +656,62 @@
     }
 
 
+    /* ========================================================
+       SPORTS / EVENT TABLE -> CSS variables
+       One variable per configured value. A blank or missing value is
+       skipped entirely, which leaves the stylesheet's own fallback in
+       place — that is what keeps older saved records working.
+    ======================================================== */
+
+    var ST_VARS = {
+        titleSize:     ['--st-title-size',   'px'],
+        titleWeight:   ['--st-title-weight', ''],
+        dateSize:      ['--st-date-size',    'px'],
+        oddsHeight:    ['--st-odds-h',       'px'],
+        oddsSize:      ['--st-odds-size',    'px'],
+        oddsWeight:    ['--st-odds-weight',  ''],
+        cellGap:       ['--st-cell-gap',     'px'],
+        dotSize:       ['--st-dot-size',     'px'],
+        lockSize:      ['--st-lock-size',    'px'],
+        rowSeparator:  ['--st-row-sep',      'px'],
+        mobTitleSize:  ['--stm-title-size',  'px'],
+        mobDateSize:   ['--stm-date-size',   'px'],
+        mobDateGap:    ['--stm-date-gap',    'px'],
+        mobLabelSize:  ['--stm-label-size',  'px'],
+        mobLabelGap:   ['--stm-label-gap',   'px'],
+        mobLabelPad:   ['--stm-label-pad',   'px'],
+        mobOddsHeight: ['--stm-odds-h',      'px'],
+        mobOddsSize:   ['--stm-odds-size',   'px'],
+        mobLockSize:   ['--stm-lock-size',   'px'],
+        mobRowPad:     ['--stm-row-pad',     'px'],
+        mobRowGap:     ['--stm-row-gap',     'px']
+    };
+
+    function sportsTableCSS(conf) {
+        conf = conf || (load().sportsTable) || {};
+        var out = '', k;
+        for (k in ST_VARS) {
+            if (!Object.prototype.hasOwnProperty.call(ST_VARS, k)) continue;
+            var v = String(conf[k] == null ? '' : conf[k]).trim();
+            if (!v) continue;                       /* keep the CSS fallback */
+            var unit = ST_VARS[k][1];
+            if (unit && /^-?[0-9.]+$/.test(v)) v += unit;
+            out += ST_VARS[k][0] + ':' + v + ';';
+        }
+        return out;
+    }
+
+    function paintSportsTable() {
+        var css = sportsTableCSS();
+        var tag = document.getElementById('cmsSportsTable');
+        if (!tag) {
+            tag = document.createElement('style');
+            tag.id = 'cmsSportsTable';
+            (document.head || document.documentElement).appendChild(tag);
+        }
+        tag.textContent = css ? ':root{' + css + '}' : '';
+    }
+
     /* Registration page appearance -> CSS variables */
     function paintRegister() {
         var rp = (load().registerPage) || {};
@@ -669,6 +764,7 @@
 
         paintTypography();
         paintRegister();
+        paintSportsTable();
     }
 
     /* ========================================================
@@ -1517,6 +1613,9 @@
         paintPageMeta: paintPageMeta,
         paintTypography: paintTypography,
         paintRegister: paintRegister,
+        paintSportsTable: paintSportsTable,
+        sportsTableCSS: sportsTableCSS,
+        ST_VARS: ST_VARS,
         TYPO_TARGETS: TYPO_TARGETS,
         TYPO_PROPS: TYPO_PROPS,
         reload: function () { state = null; return load(); },
