@@ -1,39 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Indexable pages only. login.html and register.html are noindex and are
+  deliberately absent, as is /admin/. Regenerate from /admin > SEO > Sitemap
+  after adding or retiring a page.
+-->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://jsk-1.com/</loc>
-    <lastmod>2026-09-15</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>1.0</priority>
+    <lastmod>2026-09-17</lastmod>
   </url>
   <url>
     <loc>https://jsk-1.com/about.html</loc>
     <lastmod>2026-09-17</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://jsk-1.com/contact.html</loc>
     <lastmod>2026-09-17</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
   </url>
   <url>
     <loc>https://jsk-1.com/responsible-gaming.html</loc>
     <lastmod>2026-09-17</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
-  </url>
-  <url>
-    <loc>https://jsk-1.com/login.html</loc>
-    <lastmod>2026-09-15</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
-  </url>
-  <url>
-    <loc>https://jsk-1.com/register.html</loc>
-    <lastmod>2026-09-15</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
   </url>
 </urlset>

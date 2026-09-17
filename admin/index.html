@@ -4,7 +4,10 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>White Label CMS — Admin</title>
+    <title>JSK1 CMS — Admin</title>
+    <!-- The admin panel must never appear in search results. robots.txt
+         alone cannot guarantee that, so the directive lives here too. -->
+    <meta name="robots" content="noindex,nofollow" />
     <link rel="stylesheet" href="../css/admin.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" />
 </head>
@@ -17,7 +20,7 @@
                 <i class="fas fa-layer-group"></i>
                 <div>
                     <strong>White Label CMS</strong>
-                    <small id="brandLabel">PLAYZONE9</small>
+                    <small id="brandLabel">JSK1</small>
                 </div>
             </div>
 
@@ -45,6 +48,9 @@
           </button>
                 <button class="adm-nav-item" data-panel="home">
             <i class="fas fa-house"></i> Home Content
+          </button>
+                <button class="adm-nav-item" data-panel="seo">
+            <i class="fas fa-magnifying-glass-chart"></i> SEO
           </button>
                 <button class="adm-nav-item" data-panel="pages">
             <i class="fas fa-file-lines"></i> Pages
@@ -363,6 +369,182 @@
                 <i class="fas fa-plus"></i> Add game
               </button>
         </div>
+    </section>
+
+    <!-- ---------- SEO CONTROL CENTER ---------- -->
+    <section class="adm-panel" id="panel-seo">
+
+        <div class="card">
+            <h2>SEO</h2>
+            <p class="hint">
+                Everything here is stored in the same config as the rest of the CMS and
+                published with <strong>Save changes</strong>. Fields left blank fall back to
+                what the page's HTML already contains, so an empty field never blanks a page.
+            </p>
+            <div class="pagetabs" id="seoTabs"></div>
+        </div>
+
+        <!-- Dashboard -->
+        <div class="seo-tab" id="seotab-dashboard">
+            <div class="card">
+                <h2>Every page at a glance</h2>
+                <p class="hint">
+                    Checks run against what is saved right now. They are editorial guidance,
+                    not a score — search engines do not publish one.
+                </p>
+                <div id="seoDashboard"></div>
+            </div>
+        </div>
+
+        <!-- Global -->
+        <div class="seo-tab" id="seotab-global" hidden>
+            <div class="card">
+                <h2>Site identity</h2>
+                <p class="hint">
+                    The base URL is used to build every canonical and <code>og:url</code>.
+                    Change it only if the site moves to a different domain.
+                </p>
+                <div class="grid2" id="seoGlobalIdentity"></div>
+            </div>
+            <div class="card">
+                <h2>Default title &amp; description</h2>
+                <p class="hint">
+                    Used by any page that has no title or description of its own.
+                </p>
+                <div class="grid2" id="seoGlobalDefaults"></div>
+            </div>
+            <div class="card">
+                <h2>Search engine verification</h2>
+                <p class="hint">
+                    Paste the content value from Search Console, Bing Webmaster Tools or
+                    Yandex. A tag is written into the page only when its field has a value —
+                    empty fields output nothing at all.
+                </p>
+                <div class="grid2" id="seoVerification"></div>
+            </div>
+        </div>
+
+        <!-- Social -->
+        <div class="seo-tab" id="seotab-social" hidden>
+            <div class="card">
+                <h2>Sharing defaults</h2>
+                <p class="hint">
+                    What social platforms show when someone shares a link. Pages can override
+                    any of it individually. X/Twitter falls back to the Open Graph values, so
+                    you only fill the X fields in when you want something different there.
+                </p>
+                <div class="grid2" id="seoSocial"></div>
+            </div>
+            <div class="card">
+                <h2>Default share image</h2>
+                <p class="hint">
+                    A real image around 1200&times;630. Leave it blank until one exists —
+                    no tag at all is better than a tag pointing at a missing file.
+                </p>
+                <div class="grid2" id="seoSocialImage"></div>
+            </div>
+        </div>
+
+        <!-- Structured data -->
+        <div class="seo-tab" id="seotab-schema" hidden>
+            <div class="card">
+                <h2>Organization</h2>
+                <p class="hint">
+                    Describes the site owner to search engines. Only fields you fill in are
+                    published — nothing is invented, and empty values are simply omitted.
+                </p>
+                <div class="grid2" id="seoOrg"></div>
+                <div id="seoCmsImages"></div>
+            </div>
+            <div class="card">
+                <h2>Social profile URLs <span class="pill">sameAs</span></h2>
+                <p class="hint">
+                    One real profile URL per line. Only add profiles that genuinely belong to
+                    this site.
+                </p>
+                <div id="seoSameAs"></div>
+            </div>
+            <div class="card">
+                <h2>What gets published</h2>
+                <div class="grid2" id="seoSchemaToggles"></div>
+                <p class="hint" style="margin-top:12px">
+                    Per-page WebPage, ContactPage and breadcrumb markup is switched on in
+                    <strong>Pages</strong>, next to the page it belongs to. Breadcrumb markup
+                    is only emitted when the page actually shows a breadcrumb.
+                </p>
+                <p class="hint">Preview of the JSON-LD this page set will output:</p>
+                <pre class="codebox" id="seoSchemaPreview"></pre>
+            </div>
+        </div>
+
+        <!-- Sitemap -->
+        <div class="seo-tab" id="seotab-sitemap" hidden>
+            <div class="card">
+                <h2>Sitemap</h2>
+                <p class="hint" id="seoSitemapNote"></p>
+                <div id="seoSitemapTable"></div>
+            </div>
+            <div class="card">
+                <h2>Generated <code>sitemap.xml</code></h2>
+                <p class="hint">
+                    Built from the pages above. <strong>This is a real file in the
+                    repository</strong> — saving in the admin does not rewrite it. Copy or
+                    download this and replace <code>sitemap.xml</code> to deploy it.
+                </p>
+                <div class="snipbar">
+                    <button class="adm-btn ghost snip" id="btnCopySitemap"><i class="fas fa-copy"></i> Copy</button>
+                    <button class="adm-btn ghost snip" id="btnDownloadSitemap"><i class="fas fa-download"></i> Download</button>
+                </div>
+                <pre class="codebox" id="seoSitemapOut"></pre>
+            </div>
+        </div>
+
+        <!-- Robots -->
+        <div class="seo-tab" id="seotab-robots" hidden>
+            <div class="card">
+                <h2>robots.txt</h2>
+                <p class="hint">
+                    Also a real file in the repository. Edit the rules here, then copy or
+                    download the result and replace <code>robots.txt</code>. The admin cannot
+                    write it for you, and it would be dishonest to pretend otherwise.
+                </p>
+                <label class="f">
+                    <span>Extra rules <small style="opacity:.6">one per line, e.g. <code>Disallow: /private/</code></small></span>
+                    <textarea id="seoRobotsExtra" rows="4" spellcheck="false"></textarea>
+                </label>
+                <div class="snipbar">
+                    <button class="adm-btn ghost snip" id="btnCopyRobots"><i class="fas fa-copy"></i> Copy</button>
+                    <button class="adm-btn ghost snip" id="btnDownloadRobots"><i class="fas fa-download"></i> Download</button>
+                </div>
+                <pre class="codebox" id="seoRobotsOut"></pre>
+            </div>
+        </div>
+
+        <!-- New page -->
+        <div class="seo-tab" id="seotab-newpage" hidden>
+            <div class="card">
+                <h2>Create a page</h2>
+                <p class="hint">
+                    This site is static, so a genuinely new address needs a real
+                    <code>.html</code> file next to the others. The admin creates the page's
+                    content and SEO here and hands you the finished file to add once — after
+                    that everything on it is editable from <strong>Pages</strong> like any
+                    other page.
+                </p>
+                <p class="hint">
+                    Make a page because a real question deserves its own answer. Near-duplicate
+                    pages aimed at keyword variants get sites penalised, so this form warns you
+                    when a slug looks too close to one that already exists.
+                </p>
+                <div class="grid2" id="seoNewPageFields"></div>
+                <div id="seoNewPageWarn"></div>
+                <div class="snipbar">
+                    <button class="adm-btn primary snip" id="btnCreatePage"><i class="fas fa-plus"></i> Create page</button>
+                    <button class="adm-btn ghost snip" id="btnDownloadPage" hidden><i class="fas fa-download"></i> Download HTML file</button>
+                </div>
+            </div>
+        </div>
+
     </section>
 
     <!-- ---------- PAGES (About / Contact / Responsible Gaming) ---------- -->

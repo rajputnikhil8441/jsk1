@@ -85,6 +85,13 @@ body {
     margin-bottom: 14px;
 }
 
+/* An author display value outranks the UA rule for [hidden]; the logo
+   stays hidden until the CMS supplies an uploaded image. */
+
+.login-logo[hidden] {
+    display: none;
+}
+
 
 /* ---- CARD ---- */
 
