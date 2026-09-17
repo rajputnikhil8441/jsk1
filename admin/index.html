@@ -55,6 +55,9 @@
                 <button class="adm-nav-item" data-panel="pages">
             <i class="fas fa-file-lines"></i> Pages
           </button>
+                <button class="adm-nav-item" data-panel="sportstable">
+            <i class="fas fa-table-list"></i> Sports Table
+          </button>
                 <button class="adm-nav-item" data-panel="presets">
             <i class="fas fa-wand-magic-sparkles"></i> Theme Presets
           </button>
@@ -561,6 +564,48 @@
             <div class="pagetabs" id="pageTabs"></div>
         </div>
         <div id="pageEditor"></div>
+    </section>
+
+    <!-- ---------- SPORTS / EVENT TABLE ---------- -->
+    <section class="adm-panel" id="panel-sportstable">
+
+        <div class="card">
+            <h2>Sports / event table</h2>
+            <p class="hint">
+                Presentation of the event rows on the homepage &mdash; the list of matches
+                with their 1 / X / 2 odds. These settings change sizing and spacing only;
+                the event data, links, locked markets and login gate are untouched.
+                Colours are not repeated here because the table already draws them from
+                <strong>Colors</strong> (back, lay, suspended, labels, table text).
+            </p>
+            <p class="hint">
+                Leave a field blank to use the value the stylesheet ships with.
+            </p>
+        </div>
+
+        <div class="card">
+            <h2>Preview <span class="pill">390px</span></h2>
+            <p class="hint">
+                Sample rows, not live event data. Shows an open market, a partly suspended
+                market and a fully suspended one.
+            </p>
+            <div class="stprev-frame">
+                <div class="stprev" id="stPreview"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Mobile <span class="pill">under 768px</span></h2>
+            <p class="hint">Four stacked lines per event: name, date, 1 / X / 2, odds.</p>
+            <div class="grid2" id="stMobile"></div>
+        </div>
+
+        <div class="card">
+            <h2>Desktop <span class="pill">768px and up</span></h2>
+            <p class="hint">One line per event, with the odds on the right.</p>
+            <div class="grid2" id="stDesktop"></div>
+        </div>
+
     </section>
 
     <!-- ---------- PRESETS ---------- -->

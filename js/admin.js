@@ -2047,6 +2047,135 @@
     }
 
     /* ========================================================
+       SPORTS / EVENT TABLE
+       Writes CMS.data().sportsTable, which js/cms.js paints as CSS
+       variables. Presentation only — no event data, no markup is
+       generated for the live table from here.
+    ======================================================== */
+
+    var ST_MOBILE_FIELDS = [
+        ['mobTitleSize',  'Event name size',   'Bigger names read better but cost row height.'],
+        ['mobDateSize',   'Date / time size',  ''],
+        ['mobDateGap',    'Gap between name and date', ''],
+        ['mobLabelSize',  '1 / X / 2 size',    ''],
+        ['mobLabelGap',   'Gap above 1 / X / 2', ''],
+        ['mobLabelPad',   'Space around 1 / X / 2', 'Padding above and below the labels themselves.'],
+        ['mobOddsHeight', 'Odds cell height',  'Drives how tall each event row ends up.'],
+        ['mobOddsSize',   'Odds text size',    ''],
+        ['mobLockSize',   'Lock icon size',    'The padlock in a suspended market.'],
+        ['mobRowPad',     'Row padding',       'Space above and below each event.'],
+        ['mobRowGap',     'Gap between events','The light band separating one event from the next.']
+    ];
+
+    var ST_DESKTOP_FIELDS = [
+        ['titleSize',    'Event name size',  ''],
+        ['titleWeight',  'Event name weight','400 to 900.'],
+        ['dateSize',     'Date / time size', ''],
+        ['oddsHeight',   'Odds cell height', ''],
+        ['oddsSize',     'Odds text size',   ''],
+        ['oddsWeight',   'Odds text weight', '400 to 900.'],
+        ['cellGap',      'Gap between odds cells', ''],
+        ['dotSize',      'Live indicator size',    'The coloured dot beside each event.'],
+        ['lockSize',     'Lock icon size',   ''],
+        ['rowSeparator', 'Row separator width', '']
+    ];
+
+    function stField(def) {
+        var key = def[0];
+        return seoField(
+            function () { return seoGet('sportsTable.' + key, ''); },
+            function (v) { seoSet('sportsTable.' + key, v); },
+            { label: def[1], hint: def[2] || '', onChange: paintStPreview });
+    }
+
+    function buildSportsTable() {
+        var mob = $('#stMobile'), desk = $('#stDesktop');
+        if (!mob || !desk) return;
+        mob.innerHTML = '';
+        desk.innerHTML = '';
+        ST_MOBILE_FIELDS.forEach(function (f) { mob.appendChild(stField(f)); });
+        ST_DESKTOP_FIELDS.forEach(function (f) { desk.appendChild(stField(f)); });
+        paintStPreview();
+    }
+
+    /* Sample rows built from the real class names, so the preview is styled
+       by the same rules as the site rather than a second stylesheet. */
+    function stPreviewMarkup() {
+        function row(name, when, dot, odds) {
+            return '<div class="match-row">' +
+                     '<div class="match-info">' +
+                       '<span class="match-title">' + esc(name) + '</span>' +
+                       '<span class="match-meta">' +
+                         '<span class="match-live-dot ' + dot + '"></span>' +
+                         '<span class="match-bm">BM</span>' +
+                       '</span>' +
+                     '</div>' +
+                     '<div class="match-datetime">' + esc(when) + '</div>' +
+                     '<div class="mob-odds-labels"><span>1</span><span>X</span><span>2</span></div>' +
+                     '<div class="match-odds">' + odds + '</div>' +
+                   '</div>';
+        }
+        var lock = '<button class="odds-btn lock"><span class="lock-dash">-</span>' +
+                   '<i class="fas fa-lock"></i><span class="lock-dash">-</span></button>';
+        var open = '<button class="odds-btn back">3.1</button><button class="odds-btn lay">3.15</button>' +
+                   '<button class="odds-btn draw">2.08</button><button class="odds-btn back2">2.1</button>' +
+                   '<button class="odds-btn back3">4.8</button><button class="odds-btn lay2">5.1</button>';
+        var part = lock + '<button class="odds-btn draw">-</button>' +
+                   '<button class="odds-btn back2">-</button>' + lock;
+        return '<div class="matches-table">' +
+                 '<div class="match-group-header">' +
+                   '<span class="match-group-title">Super Over2</span>' +
+                   '<div class="match-group-right"><span class="mgr-dot"></span>' +
+                   '<span class="mgr-bm">BM</span></div>' +
+                 '</div>' +
+                 row('Kolkata Knight Riders (e) - Rajasthan Royals', '18/09/2026 03:06:00', 'green', open) +
+                 row('Lucknow Super Giants - Sunrisers Hyderabad', '18/09/2026 03:06:00', 'green', part) +
+                 row('Melbourne Stars XI v Sydney Sixers XI', '18/09/2026 03:40:00', 'grey', lock + lock + lock) +
+               '</div>';
+    }
+
+    /* The preview is an iframe at 390px carrying the site's own stylesheets,
+       so it is shown by the same CSS the phone gets, at the same width. */
+    function paintStPreview() {
+        var host = $('#stPreview');
+        if (!host) return;
+        var vars = CMS.sportsTableCSS ? CMS.sportsTableCSS(CMS.data().sportsTable) : '';
+        var colors = '';
+        var c = CMS.data().colors || {};
+        for (var k in c) {
+            if (Object.prototype.hasOwnProperty.call(c, k) && c[k] &&
+                k !== 'login-bg-from' && k !== 'login-bg-to') {
+                colors += '--' + k + ':' + c[k] + ';';
+            }
+        }
+        var doc =
+            '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+            '<link rel="stylesheet" href="../css/style.css">' +
+            '<link rel="stylesheet" href="../css/responsive.css">' +
+            '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">' +
+            '<style>:root{' + colors + vars + '}' +
+            'body{margin:0;background:var(--page-bg)}' +
+            '.matches-table{max-height:none;overflow:visible}</style>' +
+            '</head><body>' + stPreviewMarkup() + '</body></html>';
+
+        var frame = host.querySelector('iframe');
+        if (!frame) {
+            frame = document.createElement('iframe');
+            frame.className = 'stprev-iframe';
+            frame.setAttribute('title', 'Sports table preview');
+            host.innerHTML = '';
+            host.appendChild(frame);
+        }
+        frame.srcdoc = doc;
+        frame.onload = function () {
+            try {
+                var h = frame.contentDocument.body.scrollHeight;
+                if (h) frame.style.height = (h + 4) + 'px';
+            } catch (e) { /* height stays at the CSS default */ }
+        };
+    }
+
+    /* ========================================================
        PRESETS
     ======================================================== */
     function buildPresets() {
@@ -2328,6 +2457,7 @@
         buildAllLists();
         buildPages();
         buildSeo();
+        buildSportsTable();
         buildPresets();
         renderPreview();
         $('#brandLabel').textContent = CMS.get('branding.siteName', 'BRAND');

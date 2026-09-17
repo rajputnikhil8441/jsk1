@@ -1389,15 +1389,37 @@
                     info.insertAdjacentElement('afterend', dt);
                 }
 
-                /* Six separate lock cells -> three pair-spanning suspended boxes */
+                /* A suspended market is drawn as one box spanning its whole
+                   1 / X / 2 pair, so .odds-btn.lock spans 2 grid columns and
+                   the row only adds up when each pair is a single cell.
+
+                   Some rows already ship that way, so collapse adjacent locks
+                   only while the grid genuinely exceeds six columns. That
+                   makes the pass idempotent, leaves correct markup alone, and
+                   still fixes a raw six-cell market from dynamic data whether
+                   it is fully or only partly suspended. */
                 var odds = row.querySelector('.match-odds');
                 if (odds) {
-                    var locks = odds.querySelectorAll('.odds-btn.lock');
-                    if (locks.length === 6) {
-                        for (var l = 5; l >= 0; l--) {
-                            if (l % 2) odds.removeChild(locks[l]);
-                            else locks[l].innerHTML = '<span class="lock-dash">-</span><i class="fas fa-lock"></i><span class="lock-dash">-</span>';
+                    var span = function () {
+                        var n = 0, i;
+                        for (i = 0; i < odds.children.length; i++) {
+                            n += odds.children[i].classList.contains('lock') ? 2 : 1;
                         }
+                        return n;
+                    };
+                    while (span() > 6) {
+                        var merged = false, c;
+                        for (c = 1; c < odds.children.length; c++) {
+                            var cur = odds.children[c], prev = odds.children[c - 1];
+                            if (!cur.classList.contains('lock') || !prev.classList.contains('lock')) continue;
+                            odds.removeChild(cur);
+                            prev.innerHTML = '<span class="lock-dash">-</span>' +
+                                             '<i class="fas fa-lock"></i>' +
+                                             '<span class="lock-dash">-</span>';
+                            merged = true;
+                            break;
+                        }
+                        if (!merged) break;      /* nothing left to pair up */
                     }
                 }
 
