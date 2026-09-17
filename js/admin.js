@@ -1553,9 +1553,63 @@
         var a = $('#seoOrg'); a.innerHTML = '';
         a.appendChild(bound('seo.organization.name', { label: 'Organization name' }));
         a.appendChild(bound('seo.organization.legalName', { label: 'Legal name', hint: 'Optional. Only if a registered entity name genuinely applies.' }));
-        a.appendChild(bound('seo.organization.logo', { label: 'Logo URL', hint: 'Must resolve to a real image, or leave blank — a broken logo URL invalidates the markup.' }));
+        a.appendChild(bound('seo.organization.logo', { label: 'Logo URL',
+            hint: 'A path like <code>assets/images/logo.png</code> or a full URL. ' +
+                  'It must be a file search engines can fetch — an uploaded CMS image ' +
+                  'will not work here, see below. Blank leaves the property out.',
+            onChange: buildSeoSchema }));
         a.appendChild(bound('seo.organization.contactPoint.telephone', { label: 'Support phone', hint: 'Optional. Only publish a number that is genuinely answered.' }));
         a.appendChild(bound('seo.organization.contactPoint.email', { label: 'Support email', hint: 'Optional.' }));
+
+        /* Why the uploaded logo cannot simply be reused here, and how to turn
+           it into something that can be. */
+        var bridge = $('#seoCmsImages');
+        if (bridge) {
+            var cmsLogo = sstr(CMS.get('images.logo', ''));
+            var cmsFav = sstr(CMS.get('images.favicon', ''));
+            var seoLogo = sstr(seoGet('seo.organization.logo', ''));
+            var rows = [];
+
+            rows.push(cmsLogo
+                ? { level: 'ok', msg: 'A header logo is uploaded in <strong>Images</strong>, and the site displays it correctly.' }
+                : { level: 'warn', msg: 'No header logo is uploaded in <strong>Images</strong>.' });
+            rows.push(cmsFav
+                ? { level: 'ok', msg: 'A favicon is uploaded in <strong>Images</strong>, and browsers use it.' }
+                : { level: 'warn', msg: 'No favicon is uploaded in <strong>Images</strong>.' });
+
+            if (isInlineImage(seoLogo)) {
+                rows.push({ level: 'bad', msg: 'The Logo URL above holds an uploaded image rather than a file path. ' +
+                    'Search engines fetch that URL from the web, so an inline image cannot be read and the ' +
+                    'property is left out of the markup. Save the file below and use its path instead.' });
+            } else if (!seoLogo) {
+                rows.push({ level: 'warn', msg: 'No Logo URL set, so <code>Organization.logo</code> is omitted. ' +
+                    'That is valid — better than pointing at a file that is not there.' });
+            } else {
+                rows.push({ level: 'ok', msg: 'Logo URL is a fetchable path: <code>' + esc(crawlableImage(seoLogo)) + '</code>' });
+            }
+
+            bridge.innerHTML =
+                '<p class="hint">Uploaded images live inside the CMS record as inline data, which is why they ' +
+                'appear on the site without any files being added. Structured data and social previews are ' +
+                'different: the platform fetches those images from a URL, so they need a real file. Save what ' +
+                'you already uploaded, commit it beside the other assets, then point the fields at its path.</p>' +
+                checksHtml(rows);
+
+            var bar = document.createElement('div');
+            bar.className = 'snipbar';
+            [['logo', 'logo', 'Save uploaded logo as a file'],
+             ['favicon', 'favicon', 'Save uploaded favicon as a file']].forEach(function (row) {
+                var val = sstr(CMS.get('images.' + row[0], ''));
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'adm-btn ghost snip';
+                btn.innerHTML = '<i class="fas fa-download"></i> ' + row[2];
+                btn.disabled = !val;
+                btn.addEventListener('click', function () { downloadDataUrl(val, row[1]); });
+                bar.appendChild(btn);
+            });
+            bridge.appendChild(bar);
+        }
 
         var same = $('#seoSameAs'); same.innerHTML = '';
         var list = seoGet('seo.organization.sameAs', []) || [];
@@ -1581,7 +1635,8 @@
                         name: sstr(seoGet('seo.organization.name', '')) || sstr(seoGet('seo.siteName', '')),
                         url: sstr(seoGet('seo.baseUrl', '')) };
             if (sstr(seoGet('seo.organization.legalName', ''))) org.legalName = sstr(seoGet('seo.organization.legalName', ''));
-            if (sstr(seoGet('seo.organization.logo', ''))) org.logo = sstr(seoGet('seo.organization.logo', ''));
+            var pvLogo = crawlableImage(seoGet('seo.organization.logo', ''));
+            if (pvLogo) org.logo = pvLogo;
             var sa = (seoGet('seo.organization.sameAs', []) || []).filter(Boolean);
             if (sa.length) org.sameAs = sa;
             var tel = sstr(seoGet('seo.organization.contactPoint.telephone', ''));
@@ -1659,6 +1714,38 @@
         ta.value = seoGet('seo.robotsExtra', '');
         ta.oninput = function () { seoSet('seo.robotsExtra', ta.value); markDirty(); $('#seoRobotsOut').textContent = buildRobotsTxt(); };
         $('#seoRobotsOut').textContent = buildRobotsTxt();
+    }
+
+    /* Same rule the painter uses: an image a crawler must fetch cannot be a
+       data URL. Kept in one place so the admin never shows something the page
+       would not actually emit. */
+    function isInlineImage(u) { return /^(data|blob):/i.test(sstr(u)); }
+
+    function crawlableImage(u) {
+        if (!sstr(u) || isInlineImage(u)) return '';
+        return CMS.seoCrawlableImage ? CMS.seoCrawlableImage(u) : sstr(u);
+    }
+
+    /* Turn an uploaded CMS image (a data URL) into a real downloadable file.
+       This is the only way to get a crawlable URL for it on a static site:
+       save it, commit it next to the other assets, then point the SEO field
+       at that path. */
+    function downloadDataUrl(dataUrl, baseName) {
+        var m = /^data:([^;,]+)[;,]/.exec(sstr(dataUrl));
+        if (!m) { toast('That slot does not hold an uploaded image.', true); return; }
+        var ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp',
+                    'image/gif': 'gif', 'image/svg+xml': 'svg',
+                    'image/x-icon': 'ico', 'image/vnd.microsoft.icon': 'ico' }[m[1]] || 'png';
+        var parts = dataUrl.split(',');
+        var bin = /;base64/i.test(parts[0]) ? atob(parts[1]) : decodeURIComponent(parts[1]);
+        var buf = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([buf], { type: m[1] }));
+        a.download = baseName + '.' + ext;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+        toast('Saved ' + a.download + '. Commit it to the repository, then use its path above.');
     }
 
     function download(name, text, type) {
@@ -1756,8 +1843,16 @@
         }
 
         var ogImg = (p.og && sstr(p.og.image)) || sstr(seoGet('seo.defaultOgImage', ''));
-        if (!ogImg) warn('No share image set, so links to this page share without a picture.');
-        else ok('Share image is configured.');
+        var twImg = (p.twitter && sstr(p.twitter.image)) || sstr(seoGet('seo.defaultTwitterImage', ''));
+        if (isInlineImage(ogImg) || isInlineImage(twImg)) {
+            bad('A share image is set to an uploaded image rather than a file path. Facebook and X fetch ' +
+                'that image from the web, so an inline one cannot be used and the tag is left out. Save the ' +
+                'file from SEO &gt; Structured Data and use its path.');
+        } else if (!ogImg) {
+            warn('No share image set, so links to this page share without a picture.');
+        } else {
+            ok('Share image is configured.');
+        }
 
         return out;
     }
@@ -1884,7 +1979,7 @@
             '    <link rel="stylesheet" href="css/responsive.css" />\n' +
             '    <link rel="stylesheet" href="css/content.css" />\n' +
             '    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" />\n' +
-            '    <link rel="icon" id="cmsFavicon" href="assets/images/favicon.png" />\n\n' +
+            '    <link rel="icon" id="cmsFavicon" />\n\n' +
             '    <script src="js/cms-config.js"></scr' + 'ipt>\n' +
             '    <script src="js/brand.js"></scr' + 'ipt>\n' +
             '    <script src="js/cms.js"></scr' + 'ipt>\n' +

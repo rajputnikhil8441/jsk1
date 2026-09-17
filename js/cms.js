@@ -712,6 +712,18 @@
         return base + '/' + u.replace(/^\/+/, '');
     }
 
+    /* An image URL a crawler can actually fetch. A data: or blob: URL is
+       rejected outright: og:image, twitter:image and Organization.logo are
+       retrieved server-side by the platform, so an inline image is not just
+       oversized in the tag, it is unusable. Returning '' means the tag is
+       simply not written, which is the honest outcome. */
+    function crawlableImage(u) {
+        u = str(u);
+        if (!u) return '';
+        if (/^(data|blob):/i.test(u)) return '';
+        return absUrl(u);
+    }
+
     /* The page's own address, used for canonical and og:url. */
     function pageUrl(page) {
         if (page && str(page.canonical)) return absUrl(page.canonical);
@@ -817,13 +829,13 @@
         setMeta('property', 'og:title', computeOg(page, 'title'));
         setMeta('property', 'og:description', computeOg(page, 'description'));
         setMeta('property', 'og:url', pageUrl(page));
-        setMeta('property', 'og:image', absUrl(computeOg(page, 'image')));
+        setMeta('property', 'og:image', crawlableImage(computeOg(page, 'image')));
 
         setMeta('name', 'twitter:card', get('seo.twitterCard', ''));
         setMeta('name', 'twitter:site', get('seo.twitterSite', ''));
         setMeta('name', 'twitter:title', computeTwitter(page, 'title'));
         setMeta('name', 'twitter:description', computeTwitter(page, 'description'));
-        setMeta('name', 'twitter:image', absUrl(computeTwitter(page, 'image')));
+        setMeta('name', 'twitter:image', crawlableImage(computeTwitter(page, 'image')));
 
         /* Verification tags are created only when a code is present. */
         setMeta('name', 'google-site-verification', get('seo.verification.google', ''));
@@ -856,8 +868,11 @@
         if (!name) return null;
         var out = { '@type': 'Organization', name: name, url: absUrl('') || str(get('seo.baseUrl', '')) };
         if (str(org.legalName)) out.legalName = str(org.legalName);
-        var logo = absUrl(org.logo);
-        if (logo) out.logo = logo;               /* omitted when unset */
+        /* The uploaded CMS logo is a data URL and cannot be used here — see
+           crawlableImage(). The property stays absent until a real file URL
+           is set in /admin > SEO > Structured Data. */
+        var logo = crawlableImage(org.logo);
+        if (logo) out.logo = logo;
         var same = (org.sameAs || []).map(str).filter(Boolean);
         if (same.length) out.sameAs = same;
         var cp = org.contactPoint || {};
@@ -1497,6 +1512,7 @@
         seoTwitterFor: computeTwitter,
         seoRobotsFor: robotsValue,
         seoAbsUrl: absUrl,
+        seoCrawlableImage: crawlableImage,
         paintPageContent: paintPageContent,
         paintPageMeta: paintPageMeta,
         paintTypography: paintTypography,

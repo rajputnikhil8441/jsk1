@@ -207,6 +207,15 @@ button {
 }
 
 
+/* An author display value outranks the UA rule for [hidden], so the header
+   logo needs this to stay hidden until the CMS supplies one — the same fix
+   .footer-logo-img[hidden] already uses below. */
+
+.logo-img[hidden] {
+    display: none;
+}
+
+
 /* Fallback text logo (shown if image missing) */
 
 .logo-text-fallback {

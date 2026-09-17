@@ -18,7 +18,10 @@
     <!-- Reference site uses Roboto Condensed for the card title. Remove this line to fall back to dfont. -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&display=swap">
     <link rel="stylesheet" href="css/register.css">
-    <link rel="icon" id="cmsFavicon" href="assets/images/favicon.png" />
+    <!-- href is set by the CMS from the uploaded favicon. It is left off here
+         because no such file exists in this repository; pointing at one that
+         is missing only produces a 404 on every page load. -->
+    <link rel="icon" id="cmsFavicon" />
 
     <!-- REMOTE BRAND STORAGE CONFIG -->
     <script src="js/cms-config.js"></script>
@@ -35,7 +38,7 @@
     <div class="reg-page">
         <main class="reg-main">
 
-            <a href="./"><img src="assets/images/logo.png" class="reg-logo" data-cms-img="registerLogo" data-cms-alt="siteName" alt="Logo"></a>
+            <a href="./"><img hidden class="reg-logo" data-cms-img="registerLogo" data-cms-alt="siteName" alt="Logo"></a>
 
             <!-- Shown when registration is ENABLED in admin -->
             <div class="reg-card" id="regCard">

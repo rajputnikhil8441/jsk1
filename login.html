@@ -18,7 +18,10 @@
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="css/login.css">
-    <link rel="icon" id="cmsFavicon" href="assets/images/favicon.png" />
+    <!-- href is set by the CMS from the uploaded favicon. It is left off here
+         because no such file exists in this repository; pointing at one that
+         is missing only produces a 404 on every page load. -->
+    <link rel="icon" id="cmsFavicon" />
 
     <!-- REMOTE BRAND STORAGE CONFIG (edit this one file to go live everywhere) -->
     <script src="js/cms-config.js"></script>
@@ -35,7 +38,7 @@
     <div class="login-page">
         <main class="login-main">
 
-            <a href="./"><img src="assets/images/logo.png" class="login-logo" data-cms-img="loginLogo" data-cms-alt="siteName" alt="JSK1"></a>
+            <a href="./"><img hidden class="login-logo" data-cms-img="loginLogo" data-cms-alt="siteName" alt="JSK1"></a>
 
             <div class="login-card">
 
