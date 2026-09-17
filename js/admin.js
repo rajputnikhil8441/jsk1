@@ -996,6 +996,232 @@
     }
 
     /* ========================================================
+       INFO PAGES  (About / Contact / Responsible Gaming)
+       Reads and writes CMS.data().pages, so Save changes
+       publishes them through the same Supabase path as the
+       rest of the config. Adding a fourth page means adding
+       one entry to DEFAULTS.pages in ../js/cms.js — this
+       panel builds itself from whatever is there.
+    ======================================================== */
+
+    var PAGE_FIELDS = [
+        {
+            key: 'title', label: 'Page title (SEO)', kind: 'input',
+            hint: 'The browser tab and Google result title. Around 60 characters.',
+            counter: 60
+        },
+        {
+            key: 'metaDescription', label: 'Meta description (SEO)', kind: 'area', rows: 3,
+            hint: 'The grey summary under the title in search results. Around 155 characters.',
+            counter: 155
+        },
+        {
+            key: 'heading', label: 'H1 heading', kind: 'input',
+            hint: 'The one main heading of the page.'
+        },
+        {
+            key: 'lead', label: 'Intro / lead text', kind: 'input',
+            hint: 'One sentence under the H1.'
+        }
+    ];
+
+    /* Markup the toolbar drops in at the cursor */
+    var PAGE_SNIPPETS = [
+        ['H2', '<h2>Section heading</h2>'],
+        ['H3', '<h3>Sub heading</h3>'],
+        ['Paragraph', '<p>Write your paragraph here.</p>'],
+        ['List', '<ul>\n  <li>First point</li>\n  <li>Second point</li>\n</ul>'],
+        ['Numbered list', '<ol>\n  <li>First step</li>\n  <li>Second step</li>\n</ol>'],
+        ['Link', '<a href="contact.html">link text</a>'],
+        ['Table', '<table>\n  <tr><th>Heading</th><th>Heading</th></tr>\n  <tr><td>Cell</td><td>Cell</td></tr>\n</table>'],
+        ['Placeholder note', '<p class="page-note">Editable placeholder — replace this with real information.</p>']
+    ];
+
+    var activePageKey = null;
+
+    function pageKeys() {
+        var pages = CMS.data().pages;
+        return pages ? Object.keys(pages) : [];
+    }
+
+    function buildPages() {
+        var tabs = $('#pageTabs'), host = $('#pageEditor');
+        if (!tabs || !host) return;
+
+        var keys = pageKeys();
+        if (!keys.length) {
+            tabs.innerHTML = '';
+            host.innerHTML = '<div class="card"><p class="hint">No pages are defined in the CMS.</p></div>';
+            return;
+        }
+        if (keys.indexOf(activePageKey) === -1) activePageKey = keys[0];
+
+        tabs.innerHTML = '';
+        keys.forEach(function (k) {
+            var page = CMS.data().pages[k];
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'pagetab' + (k === activePageKey ? ' active' : '');
+            b.textContent = page.label || k;
+            b.addEventListener('click', function () {
+                activePageKey = k;
+                buildPages();
+            });
+            tabs.appendChild(b);
+        });
+
+        renderPageEditor();
+    }
+
+    function renderPageEditor() {
+        var host = $('#pageEditor');
+        var key = activePageKey;
+        var page = CMS.data().pages[key];
+        host.innerHTML = '';
+
+        /* ---- SEO + headings ---- */
+        var head = document.createElement('div');
+        head.className = 'card';
+        head.innerHTML = '<h2>' + esc(page.label || key) + ' <span class="pill">' +
+            esc(page.url || '') + '</span></h2>';
+
+        if (page.url) {
+            var open = document.createElement('a');
+            open.className = 'adm-btn ghost pageopen';
+            open.href = '../' + page.url;
+            open.target = '_blank';
+            open.rel = 'noopener';
+            open.innerHTML = '<i class="fas fa-arrow-up-right-from-square"></i> Open page';
+            head.appendChild(open);
+        }
+
+        var grid = document.createElement('div');
+        grid.className = 'grid2';
+        PAGE_FIELDS.forEach(function (f) { grid.appendChild(pageField(page, f)); });
+        head.appendChild(grid);
+        host.appendChild(head);
+
+        /* ---- body HTML ---- */
+        var bodyCard = document.createElement('div');
+        bodyCard.className = 'card';
+        bodyCard.innerHTML =
+            '<h2>Main content</h2>' +
+            '<p class="hint">Plain HTML. Use the buttons to drop in a heading, paragraph, ' +
+            'list, link or table at the cursor. There is no length limit — this is where the ' +
+            'long-form content for this page lives.</p>';
+
+        var bar = document.createElement('div');
+        bar.className = 'snipbar';
+        bodyCard.appendChild(bar);
+
+        var area = document.createElement('textarea');
+        area.className = 'codearea';
+        area.rows = 22;
+        area.spellcheck = false;
+        area.value = page.body || '';
+        bodyCard.appendChild(area);
+
+        var previewLabel = document.createElement('p');
+        previewLabel.className = 'hint';
+        previewLabel.textContent = 'Preview';
+        bodyCard.appendChild(previewLabel);
+
+        var preview = document.createElement('div');
+        preview.className = 'pagepreview';
+        bodyCard.appendChild(preview);
+        host.appendChild(bodyCard);
+
+        function paintPreview() {
+            preview.innerHTML =
+                '<h1>' + esc(page.heading || '') + '</h1>' +
+                '<p class="info-lead">' + esc(page.lead || '') + '</p>' +
+                (page.body || '');
+            /* keep preview links inert */
+            $$('a', preview).forEach(function (a) {
+                a.addEventListener('click', function (e) { e.preventDefault(); });
+            });
+        }
+
+        area.addEventListener('input', function () {
+            page.body = area.value;
+            markDirty();
+            paintPreview();
+        });
+
+        PAGE_SNIPPETS.forEach(function (s) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'adm-btn ghost snip';
+            b.textContent = s[0];
+            b.addEventListener('click', function () { insertSnippet(area, s[1]); });
+            bar.appendChild(b);
+        });
+
+        function insertSnippet(el, text) {
+            var start = el.selectionStart, end = el.selectionEnd, val = el.value;
+            var before = val.slice(0, start);
+            var pad = (before && !/\n$/.test(before)) ? '\n' : '';
+            var insert = pad + text + '\n';
+            el.value = before + insert + val.slice(end);
+            var caret = start + insert.length;
+            el.focus();
+            el.setSelectionRange(caret, caret);
+            page.body = el.value;
+            markDirty();
+            paintPreview();
+        }
+
+        /* the editor repaints the live preview of the page it describes */
+        paintPreview();
+    }
+
+    function pageField(page, def) {
+        var wrap = document.createElement('label');
+        wrap.className = 'f';
+        var input = document.createElement(def.kind === 'area' ? 'textarea' : 'input');
+        if (def.kind === 'area') input.rows = def.rows || 3;
+        else input.type = 'text';
+        input.value = page[def.key] == null ? '' : page[def.key];
+
+        var span = document.createElement('span');
+        span.innerHTML = esc(def.label) +
+            (def.hint ? '<br><small style="opacity:.6">' + esc(def.hint) + '</small>' : '');
+        wrap.appendChild(span);
+        wrap.appendChild(input);
+
+        var count = null;
+        if (def.counter) {
+            count = document.createElement('small');
+            count.className = 'charcount';
+            wrap.appendChild(count);
+        }
+
+        function paintCount() {
+            if (!count) return;
+            var n = input.value.length;
+            count.textContent = n + ' / ~' + def.counter + ' characters';
+            count.classList.toggle('over', n > def.counter);
+        }
+
+        input.addEventListener('input', function () {
+            page[def.key] = input.value;
+            markDirty();
+            paintCount();
+            if (def.key === 'heading' || def.key === 'lead') {
+                var pv = $('.pagepreview');
+                if (pv) {
+                    var h1 = pv.querySelector('h1'), lead = pv.querySelector('.info-lead');
+                    if (h1 && def.key === 'heading') h1.textContent = input.value;
+                    if (lead && def.key === 'lead') lead.textContent = input.value;
+                }
+            }
+        });
+        paintCount();
+        return wrap;
+    }
+
+
+    /* ========================================================
        PRESETS
     ======================================================== */
     function buildPresets() {
@@ -1275,6 +1501,7 @@
         buildText();
         buildImages();
         buildAllLists();
+        buildPages();
         buildPresets();
         renderPreview();
         $('#brandLabel').textContent = CMS.get('branding.siteName', 'BRAND');
