@@ -1222,3 +1222,212 @@ input[type="password"]:focus {
     opacity: .8;
     margin-bottom: 8px;
 }
+
+
+/* ============================================================
+   PAGES PANEL — About / Contact / Responsible Gaming
+   ============================================================ */
+
+.pagetabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.pagetab {
+    background: #101820;
+    border: 1px solid var(--a-line);
+    border-radius: 7px;
+    color: var(--a-dim);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 9px 14px;
+    cursor: pointer;
+    transition: border-color 0.14s, color 0.14s, background 0.14s;
+}
+
+.pagetab:hover {
+    color: var(--a-text);
+    border-color: #3b4a5c;
+}
+
+.pagetab.active {
+    background: var(--a-accent);
+    border-color: var(--a-accent);
+    color: #fff;
+}
+
+.pageopen {
+    float: right;
+    margin: -38px 0 0;
+    text-decoration: none;
+}
+
+.charcount {
+    font-size: 11px;
+    color: var(--a-dim);
+}
+
+.charcount.over {
+    color: #ffb020;
+}
+
+/* Snippet toolbar above the HTML editor */
+
+.snipbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 12px 0 8px;
+}
+
+.snipbar .snip {
+    font-size: 12px;
+    padding: 6px 10px;
+}
+
+/* The HTML editor itself */
+
+.codearea {
+    width: 100%;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 12.5px;
+    line-height: 1.6;
+    min-height: 260px;
+    resize: vertical;
+    tab-size: 2;
+}
+
+/* Rendered preview of the page content */
+
+.pagepreview {
+    margin-top: 8px;
+    background: #ffffff;
+    color: #222222;
+    border: 1px solid var(--a-line);
+    border-radius: var(--a-radius);
+    padding: 16px 18px;
+    max-height: 460px;
+    overflow: auto;
+    font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.65;
+}
+
+.pagepreview h1 {
+    font-size: 21px;
+    margin: 0 0 6px;
+    color: #222222;
+}
+
+.pagepreview .info-lead {
+    font-size: 15px;
+    color: #777777;
+    margin: 0 0 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #ebebeb;
+}
+
+.pagepreview h2 {
+    font-size: 17px;
+    color: #0088cc;
+    margin: 20px 0 8px;
+}
+
+.pagepreview h3 {
+    font-size: 15px;
+    margin: 16px 0 6px;
+    color: #222222;
+}
+
+.pagepreview p {
+    margin: 0 0 12px;
+}
+
+.pagepreview ul,
+.pagepreview ol {
+    margin: 0 0 14px;
+    padding-left: 20px;
+}
+
+.pagepreview ul {
+    list-style: disc;
+}
+
+.pagepreview ol {
+    list-style: decimal;
+}
+
+.pagepreview li {
+    margin-bottom: 5px;
+}
+
+.pagepreview a {
+    color: #0088cc;
+    text-decoration: underline;
+}
+
+.pagepreview table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0 0 14px;
+    font-size: 13px;
+}
+
+.pagepreview th,
+.pagepreview td {
+    border: 1px solid #ececec;
+    padding: 7px 9px;
+    text-align: left;
+}
+
+.pagepreview th {
+    background: #e9edf1;
+    font-weight: 700;
+}
+
+.pagepreview .contact-list {
+    list-style: none;
+    padding: 0;
+}
+
+.pagepreview .contact-list li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: #eef0f3;
+    border: 1px solid #ebebeb;
+    border-radius: 4px;
+    margin-bottom: 8px;
+}
+
+.pagepreview .contact-list i {
+    color: #0088cc;
+    width: 18px;
+    text-align: center;
+}
+
+.pagepreview .page-note {
+    display: inline-block;
+    background: #fff8e1;
+    border-left: 3px solid #ffcc00;
+    padding: 7px 11px;
+    border-radius: 3px;
+    font-size: 13px;
+    color: #7a6100;
+}
+
+.pagepreview p.page-note {
+    display: block;
+}
+
+@media (max-width: 760px) {
+    .pageopen {
+        float: none;
+        margin: 10px 0 0;
+        display: inline-block;
+    }
+}

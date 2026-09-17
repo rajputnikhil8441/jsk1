@@ -1,123 +1,282 @@
 /* =========================================================
-   content.css — styles for JSK1 info pages
-   (About, Contact, Responsible Gaming) + the connecting nav
-   Loads AFTER style.css so it can rely on the site header.
+   content.css — JSK1 info pages
+   (About, Contact, Responsible Gaming)
+
+   These pages reuse the homepage shell verbatim: .site-header,
+   .header-ticker, .main-nav/.nav-link, .mob-category-nav,
+   .support-section, .site-footer and .whatsapp-float all come
+   from css/style.css + css/responsive.css and are NOT restyled
+   here. This file only adds the article area those pages need,
+   built from the same custom properties as the homepage so the
+   palette, fonts and theming keep working.
+
+   Load order: style.css -> responsive.css -> content.css
    ========================================================= */
 
-/* Connecting nav strip: links all info pages + login/register */
-.info-nav {
-    background: #11151c;
-    border-bottom: 1px solid rgba(255, 255, 255, .08);
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+
+/* ---------------------------------------------------------
+   PAGE SHELL
+   Matches the homepage: page background behind, one white
+   --content-bg panel holding the article.
+   --------------------------------------------------------- */
+
+.info-main {
+    background: var(--page-bg);
+    padding: 10px;
 }
 
-.info-nav-inner {
-    display: flex;
-    gap: 6px;
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 8px 12px;
-    white-space: nowrap;
-}
-
-.info-nav a {
-    color: #cfd6e4;
-    text-decoration: none;
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: .3px;
-    padding: 8px 14px;
-    border-radius: 6px;
-    transition: background .15s, color .15s;
-}
-
-.info-nav a:hover {
-    background: rgba(255, 255, 255, .06);
-    color: #fff;
-}
-
-.info-nav a.active {
-    background: #f5c518;
-    color: #11151c;
-}
-
-/* Content container */
-.content-wrap {
+.info-article {
     max-width: 900px;
     margin: 0 auto;
-    padding: 28px 18px 60px;
-    color: #e7ecf3;
-    line-height: 1.7;
+    background: var(--content-bg);
+    border: 1px solid var(--border-light);
+    padding: 18px 20px 26px;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    line-height: 1.65;
 }
 
-.content-wrap h1 {
-    font-size: 26px;
+
+/* ---------------------------------------------------------
+   DESKTOP NAV BAR
+   css/responsive.css declares its mobile overlay rules
+   (.nav-list{display:none;position:fixed} and the tall
+   .nav-link) OUTSIDE the 768px media query, so .nav-list is
+   hidden at every width. That is why no nav bar shows on a
+   desktop homepage today.
+
+   responsive.css is left alone — fixing it there would change
+   how index.html looks. Instead the design-system values from
+   style.css are restored here for .info-nav-bar only, so the
+   info pages get the working desktop nav the tokens describe
+   (--nav-h: 30px) and index.html is untouched.
+   --------------------------------------------------------- */
+
+@media (min-width: 769px) {
+    .info-nav-bar .nav-list {
+        display: flex;
+        position: static;
+        flex-direction: row;
+        align-items: center;
+        background: transparent;
+        padding-top: 0;
+        overflow-x: auto;
+        scrollbar-width: none;
+        z-index: auto;
+    }
+    .info-nav-bar .nav-list::-webkit-scrollbar {
+        display: none;
+    }
+    .info-nav-bar .nav-link {
+        width: auto;
+        padding: 6px 9px;
+        font-size: 10px;
+        border-bottom: 2px solid transparent;
+    }
+    .info-nav-bar .nav-link:hover,
+    .info-nav-bar .nav-link.active {
+        color: var(--nav-active);
+        border-bottom-color: var(--hdr-bg);
+    }
+}
+
+
+/* ---------------------------------------------------------
+   MOBILE PAGE STRIP
+   Reuses .mob-category-nav / .mob-cat-item from the homepage.
+   The homepage never styles an active item, so the active
+   state is scoped to .info-cat-nav and cannot reach index.html.
+   --------------------------------------------------------- */
+
+.info-cat-nav .mob-cat-item.active {
+    background: rgba(255, 255, 255, 0.18);
+    color: var(--mob-cat-text);
+}
+
+
+/* ---------------------------------------------------------
+   TYPOGRAPHY
+   Same hues as the homepage (--text, --text-dim, --hdr-bg),
+   sized for reading rather than for odds tables.
+   --------------------------------------------------------- */
+
+.info-article h1 {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.25;
+    color: var(--text);
     margin: 0 0 6px;
-    color: #fff;
 }
 
-.content-wrap .lead {
-    color: #a9b2c2;
+.info-article .info-lead {
     font-size: 15px;
-    margin: 0 0 26px;
+    color: var(--text-dim);
+    margin: 0 0 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border-light);
 }
 
-.content-wrap h2 {
-    font-size: 19px;
-    margin: 30px 0 10px;
-    color: #f5c518;
+.info-article h2 {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--hdr-bg);
+    margin: 24px 0 8px;
 }
 
-.content-wrap p {
+.info-article h3 {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+    margin: 18px 0 6px;
+}
+
+.info-article p {
+    margin: 0 0 12px;
+}
+
+.info-article ul,
+.info-article ol {
     margin: 0 0 14px;
-}
-
-.content-wrap ul {
-    margin: 0 0 16px;
     padding-left: 20px;
 }
 
-.content-wrap li {
-    margin-bottom: 6px;
+.info-article ul {
+    list-style: disc;
 }
 
-.content-wrap a.inline {
-    color: #f5c518;
+.info-article ol {
+    list-style: decimal;
+}
+
+.info-article li {
+    margin-bottom: 5px;
+}
+
+.info-article a {
+    color: var(--hdr-bg);
     text-decoration: underline;
 }
 
-/* Simple contact rows */
-.contact-list {
-    list-style: none;
-    padding: 0;
-    margin: 0 0 20px;
+.info-article a:hover {
+    filter: brightness(0.85);
 }
 
-.contact-list li {
+.info-article strong {
+    font-weight: 700;
+}
+
+.info-article hr {
+    border: none;
+    border-top: 1px solid var(--border-light);
+    margin: 22px 0;
+}
+
+.info-article table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0 0 16px;
+    font-size: 13px;
+}
+
+.info-article th,
+.info-article td {
+    border: 1px solid var(--table-border);
+    padding: 7px 9px;
+    text-align: left;
+}
+
+.info-article th {
+    background: var(--table-head-bg);
+    color: var(--table-head-text);
+    font-weight: 700;
+}
+
+
+/* ---------------------------------------------------------
+   CONTACT ROWS — optional list style available to any page
+   --------------------------------------------------------- */
+
+.info-article .contact-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 18px;
+}
+
+.info-article .contact-list li {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 12px 14px;
-    background: #161b24;
-    border: 1px solid rgba(255, 255, 255, .07);
-    border-radius: 8px;
-    margin-bottom: 10px;
-}
-
-.contact-list i {
-    color: #f5c518;
-    width: 20px;
-    text-align: center;
-}
-
-/* Placeholder marker so you can spot demo text to rewrite */
-.rewrite {
-    background: rgba(245, 197, 24, .12);
-    border-left: 3px solid #f5c518;
-    padding: 10px 14px;
+    padding: 11px 13px;
+    background: var(--page-bg);
+    border: 1px solid var(--border-light);
     border-radius: 4px;
+    margin-bottom: 8px;
+}
+
+.info-article .contact-list i {
+    color: var(--hdr-bg);
+    width: 18px;
+    text-align: center;
+    font-size: 15px;
+}
+
+
+/* ---------------------------------------------------------
+   EDITABLE PLACEHOLDER MARKER
+   Anything still waiting on real copy is wrapped in
+   .page-note so it is obvious on the page and in /admin.
+   --------------------------------------------------------- */
+
+.info-article .page-note {
+    display: inline-block;
+    background: #fff8e1;
+    border-left: 3px solid var(--gold);
+    padding: 7px 11px;
+    border-radius: 3px;
     font-size: 13px;
-    color: #d8c98f;
-    margin: 0 0 20px;
+    color: #7a6100;
+}
+
+.info-article p.page-note {
+    display: block;
+}
+
+
+/* ---------------------------------------------------------
+   RESPONSIVE — same breakpoint as the rest of the site
+   --------------------------------------------------------- */
+
+@media (max-width: 768px) {
+    .info-main {
+        padding: 0;
+    }
+    .info-article {
+        border: none;
+        padding: 14px 14px 24px;
+        font-size: 13.5px;
+    }
+    .info-article h1 {
+        font-size: 19px;
+    }
+    .info-article .info-lead {
+        font-size: 14px;
+        margin-bottom: 16px;
+    }
+    .info-article h2 {
+        font-size: 16px;
+        margin-top: 20px;
+    }
+    .info-article h3 {
+        font-size: 14px;
+    }
+}
+
+@media (max-width: 375px) {
+    .info-article {
+        padding: 12px 11px 20px;
+    }
+    .info-article h1 {
+        font-size: 18px;
+    }
 }

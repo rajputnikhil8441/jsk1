@@ -46,6 +46,9 @@
                 <button class="adm-nav-item" data-panel="home">
             <i class="fas fa-house"></i> Home Content
           </button>
+                <button class="adm-nav-item" data-panel="pages">
+            <i class="fas fa-file-lines"></i> Pages
+          </button>
                 <button class="adm-nav-item" data-panel="presets">
             <i class="fas fa-wand-magic-sparkles"></i> Theme Presets
           </button>
@@ -360,6 +363,22 @@
                 <i class="fas fa-plus"></i> Add game
               </button>
         </div>
+    </section>
+
+    <!-- ---------- PAGES (About / Contact / Responsible Gaming) ---------- -->
+    <section class="adm-panel" id="panel-pages">
+        <div class="card">
+            <h2>Info pages</h2>
+            <p class="hint">
+                The content of <code>about.html</code>, <code>contact.html</code> and
+                <code>responsible-gaming.html</code>. Each page keeps its own
+                <code>&lt;title&gt;</code>, meta description and H1, so the global browser
+                title never overwrites them. Edits save and publish with
+                <strong>Save changes</strong>, exactly like every other panel.
+            </p>
+            <div class="pagetabs" id="pageTabs"></div>
+        </div>
+        <div id="pageEditor"></div>
     </section>
 
     <!-- ---------- PRESETS ---------- -->

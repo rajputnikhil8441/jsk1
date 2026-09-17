@@ -204,6 +204,104 @@
             casino: []
         },
 
+        /* ----------------------------------------------------------
+           INFO PAGES — About, Contact, Responsible Gaming.
+           Each page owns its own SEO head (title + metaDescription),
+           its H1, a lead paragraph and a body of free HTML. Everything
+           is edited in /admin > Pages and rides the same save/publish
+           path as every other section of this object.
+           An empty value means "keep whatever the HTML file ships
+           with", so a page is never blank if the CMS cannot be read.
+        ---------------------------------------------------------- */
+        pages: {
+
+            about: {
+                label: 'About',
+                url: 'about.html',
+                title: 'About JSK1 — About the Official JSK1 Website',
+                metaDescription: 'Learn about JSK1, the official JSK1 online gaming website. Find out what JSK1 offers and how to get started at jsk-1.com.',
+                heading: 'About JSK1',
+                lead: 'The official JSK1 website — jsk-1.com.',
+                body:
+                    '<p>JSK1 is an online gaming site. This page is where you tell visitors who you are, ' +
+                    'what the site offers and how to get started. Edit all of it in /admin &gt; Pages &gt; About.</p>\n' +
+                    '<h2>What JSK1 offers</h2>\n' +
+                    '<p class="page-note">Editable placeholder — describe the games and features you actually offer, ' +
+                    'in your own words. Nothing here has been written for you, because only you know what is true of your site.</p>\n' +
+                    '<h2>Getting started with JSK1</h2>\n' +
+                    '<p>To use JSK1, create an account on the <a href="register.html">Register</a> page, then sign in ' +
+                    'from the <a href="login.html">Login</a> page. If you need help, the ways to reach us are listed on ' +
+                    'the <a href="contact.html">Contact</a> page.</p>\n' +
+                    '<h2>Play responsibly</h2>\n' +
+                    '<p>JSK1 is intended for adults aged 18 and over. Please read our ' +
+                    '<a href="responsible-gaming.html">Responsible Gaming</a> page before you play.</p>'
+            },
+
+            contact: {
+                label: 'Contact',
+                url: 'contact.html',
+                title: 'Contact JSK1 — JSK1 Support & Help',
+                metaDescription: 'Contact JSK1 support. Reach the official JSK1 team for help with your JSK1 account at jsk-1.com.',
+                heading: 'Contact JSK1',
+                lead: 'Get in touch with the JSK1 support team.',
+                body:
+                    '<p>Use any of the channels below to reach us about your account, signing in, or a general question.</p>\n' +
+                    '<ul class="contact-list">\n' +
+                    '  <li><i class="fab fa-whatsapp"></i> <span>WhatsApp: ' +
+                    '<span class="page-note">add your real WhatsApp number here</span></span></li>\n' +
+                    '  <li><i class="fas fa-envelope"></i> <span>Email: ' +
+                    '<span class="page-note">add your real support email here</span></span></li>\n' +
+                    '  <li><i class="fas fa-clock"></i> <span>Support hours: ' +
+                    '<span class="page-note">add your real support hours here</span></span></li>\n' +
+                    '</ul>\n' +
+                    '<h2>Before you contact us</h2>\n' +
+                    '<p>If you are trying to sign in, go to the <a href="login.html">JSK1 Login</a> page. ' +
+                    'New here? Create an account on the <a href="register.html">JSK1 Register</a> page. ' +
+                    'You can read more about the site on the <a href="about.html">About JSK1</a> page.</p>'
+            },
+
+            'responsible-gaming': {
+                label: 'Responsible Gaming',
+                url: 'responsible-gaming.html',
+                title: 'Responsible Gaming — JSK1',
+                metaDescription: 'JSK1 responsible gaming information: 18+ only, setting limits, spotting warning signs and where to get help. Official JSK1 site, jsk-1.com.',
+                heading: 'Responsible Gaming',
+                lead: 'Keeping play safe, and knowing where to get help.',
+                body:
+                    '<p>Gaming should stay fun and under control. This page explains how to keep your play responsible ' +
+                    'and where to find help if it stops feeling that way.</p>\n' +
+                    '<h2>18+ only</h2>\n' +
+                    '<p>JSK1 is strictly for adults aged 18 and over. Underage gaming is not permitted. ' +
+                    'If you are under 18, please do not create an account or play.</p>\n' +
+                    '<h2>Play within your limits</h2>\n' +
+                    '<p>A few simple habits keep gaming healthy:</p>\n' +
+                    '<ul>\n' +
+                    '  <li>Set a budget before you play and treat it as entertainment, not a way to make money.</li>\n' +
+                    '  <li>Never play with money you cannot afford to lose.</li>\n' +
+                    '  <li>Set time limits and take regular breaks.</li>\n' +
+                    '  <li>Do not try to win back losses by playing more.</li>\n' +
+                    '  <li>Do not play when stressed, upset, or under the influence of alcohol.</li>\n' +
+                    '</ul>\n' +
+                    '<h2>Warning signs</h2>\n' +
+                    '<p>It may be time to step back if you notice yourself:</p>\n' +
+                    '<ul>\n' +
+                    '  <li>Spending more time or money than you intended.</li>\n' +
+                    '  <li>Chasing losses or borrowing money to play.</li>\n' +
+                    '  <li>Neglecting work, studies, or relationships because of gaming.</li>\n' +
+                    '  <li>Feeling anxious, guilty, or unable to stop.</li>\n' +
+                    '</ul>\n' +
+                    '<h2>Getting help</h2>\n' +
+                    '<p>If gaming is no longer under control, help is available. Support organisations such as ' +
+                    '<a href="https://www.begambleaware.org/" rel="noopener nofollow" target="_blank">BeGambleAware</a> and ' +
+                    '<a href="https://www.gamcare.org.uk/" rel="noopener nofollow" target="_blank">GamCare</a> ' +
+                    'offer free, confidential advice.</p>\n' +
+                    '<p class="page-note">Editable placeholder — add a helpline for your own country or region here.</p>\n' +
+                    '<h2>Talk to us</h2>\n' +
+                    '<p>If you have a question about your account or want to limit your play, reach us through the ' +
+                    '<a href="contact.html">Contact</a> page.</p>'
+            }
+        },
+
         /* Saved white labels. Seeded on first run by the admin panel;
            each entry is { id, name, brand:{}, colors:{}, images:{} }. */
         themes: {},
@@ -428,9 +526,19 @@
        HEAD — title + favicon
     ======================================================== */
     function paintHead() {
-        var isLogin = /login\.html/i.test(location.pathname);
-        var t = isLogin ? get('branding.loginTitle') : get('branding.browserTitle');
+        /* A page that declares its own CMS title owns it — the global
+           browserTitle must not overwrite an info page's SEO title. */
+        var titleEl = document.querySelector('title[data-cms-title]');
+        var t;
+        if (titleEl) {
+            t = get(titleEl.getAttribute('data-cms-title'), '');
+        } else {
+            var isLogin = /login\.html/i.test(location.pathname);
+            t = isLogin ? get('branding.loginTitle') : get('branding.browserTitle');
+        }
         if (t) document.title = t;
+
+        paintPageMeta();
 
         var fav = get('images.favicon');
         if (fav) {
@@ -444,6 +552,36 @@
             link.href = fav;
         }
     }
+
+    /* ========================================================
+       INFO PAGES — path addressed content
+         data-cms-meta="pages.about.metaDescription"  -> <meta content>
+         data-cms-text="pages.about.heading"          -> textContent
+         data-cms-html="pages.about.body"             -> innerHTML
+       Unlike data-cms (flat text keys) these take a full dotted path,
+       so any section of the config can feed a page. An empty stored
+       value leaves the markup alone, which keeps the HTML fallback.
+    ======================================================== */
+    function paintPageMeta() {
+        each(document.querySelectorAll('meta[data-cms-meta]'), function (el) {
+            var v = get(el.getAttribute('data-cms-meta'), '');
+            if (v) el.setAttribute('content', v);
+        });
+    }
+
+    function paintPageContent() {
+        each(document.querySelectorAll('[data-cms-text]'), function (el) {
+            var v = get(el.getAttribute('data-cms-text'), null);
+            if (v != null) el.textContent = v;
+        });
+        /* Body HTML is authored by the signed in admin, so it is written
+           as markup on purpose — that is the point of the field. */
+        each(document.querySelectorAll('[data-cms-html]'), function (el) {
+            var v = get(el.getAttribute('data-cms-html'), null);
+            if (v != null) el.innerHTML = v;
+        });
+    }
+
 
     /* ========================================================
        TEXT + IMAGES + PLACEHOLDERS
@@ -669,6 +807,7 @@
         renderSports();
         renderCasino();
         paintText();
+        paintPageContent();
         paintImages();
         paintMarquee();
         paintFooterSocial();
@@ -956,6 +1095,8 @@
         applyHead: applyHead,
         applyBody: applyBody,
         paintVars: paintVars,
+        paintPageContent: paintPageContent,
+        paintPageMeta: paintPageMeta,
         paintTypography: paintTypography,
         paintRegister: paintRegister,
         TYPO_TARGETS: TYPO_TARGETS,
