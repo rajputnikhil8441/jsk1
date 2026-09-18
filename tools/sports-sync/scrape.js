@@ -25,6 +25,7 @@ const DEFAULTS = {
     stableMs: 1500,      // how long the row count must hold steady before we read
     maxDiagnostics: 12,
     out: '',
+    browser: '',
     headful: false,
     quietJson: false
 };
@@ -42,6 +43,7 @@ function parseArgs(argv) {
             case '--settle': o.settle = parseInt(next(), 10); break;
             case '--stable-for': o.stableMs = parseInt(next(), 10); break;
             case '--out': o.out = next(); break;
+            case '--browser': o.browser = next(); break;
             case '--max-diagnostics': o.maxDiagnostics = parseInt(next(), 10); break;
             case '--headful': o.headful = true; break;
             case '--summary-only': o.quietJson = true; break;
@@ -66,6 +68,8 @@ jsk1 sports-sync - Phase 1 read-only proof of concept
   --settle <ms>            outer budget for the row count to stop changing (default: ${DEFAULTS.settle})
   --stable-for <ms>        how long the row count must hold steady before reading (default: ${DEFAULTS.stableMs})
   --out <file>             also write the JSON to this file
+  --browser <path>         browser executable to launch (default: an installed
+                           Google Chrome if there is one, else Playwright's Chromium)
   --max-diagnostics <n>    how many skipped rows to explain (default: ${DEFAULTS.maxDiagnostics})
   --headful                run a visible browser (useful when the table will not render)
   --summary-only           print the summary only, not the JSON body
@@ -78,6 +82,66 @@ Read-only. It does not modify the website, the CMS or Supabase.
 function resolveUrl(u) {
     if (/^[a-z]+:\/\//i.test(u)) return u;
     return pathToFileURL(path.resolve(u)).href;
+}
+
+/* --------------------------------------------------- browser resolution -- */
+/**
+ * Playwright's bundled Chromium download (cdn.playwright.dev) is blocked or
+ * painfully slow on some networks. When a normal Google Chrome is already
+ * installed we launch that instead, via Playwright's executablePath.
+ *
+ * This only changes which binary is launched. The page is opened, waited on
+ * and read in exactly the same way either way.
+ */
+const SYSTEM_CHROME_PATHS = [
+    // macOS
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Google Chrome Beta.app/Contents/MacOS/Google Chrome Beta',
+    '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    // Linux
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/snap/bin/chromium',
+    // Windows
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
+];
+
+function isExecutableFile(p) {
+    try { return !!p && fs.existsSync(p) && fs.statSync(p).isFile(); }
+    catch (e) { return false; }
+}
+
+/**
+ * Order of preference:
+ *   1. --browser <path>            (explicit, wins outright)
+ *   2. PLAYWRIGHT_CHROMIUM_PATH    (explicit, environment)
+ *   3. an installed Google Chrome / Chromium found on disk
+ *   4. Playwright's own bundled Chromium
+ */
+function resolveBrowser(explicitPath) {
+    if (explicitPath) {
+        if (isExecutableFile(explicitPath)) {
+            return { executablePath: explicitPath, kind: 'explicit' };
+        }
+        console.error(`[sports-sync] warning: no executable at ${explicitPath}, looking for an installed Chrome instead`);
+    }
+
+    const candidates = SYSTEM_CHROME_PATHS.slice();
+    if (process.env.LOCALAPPDATA) {
+        candidates.push(path.join(process.env.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe'));
+    }
+    if (process.env.HOME) {
+        candidates.push(path.join(process.env.HOME, 'Applications', 'Google Chrome.app', 'Contents', 'MacOS', 'Google Chrome'));
+    }
+
+    for (const c of candidates) {
+        if (isExecutableFile(c)) return { executablePath: c, kind: 'system' };
+    }
+    return { executablePath: null, kind: 'playwright' };
 }
 
 /* ------------------------------------------------- in-page DOM extraction -- */
@@ -507,10 +571,32 @@ async function main() {
 
     const { chromium } = require('playwright');
     const launch = { headless: !opts.headful };
-    if (process.env.PLAYWRIGHT_CHROMIUM_PATH) launch.executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH;
+
+    const browserChoice = resolveBrowser(opts.browser || process.env.PLAYWRIGHT_CHROMIUM_PATH || '');
+    if (browserChoice.executablePath) {
+        launch.executablePath = browserChoice.executablePath;
+        const how = browserChoice.kind === 'explicit' ? 'browser you specified' : 'installed system browser';
+        console.error(`[sports-sync] browser: ${how} -> ${browserChoice.executablePath}`);
+    } else {
+        console.error(`[sports-sync] browser: Playwright's bundled Chromium (no system Chrome found)`);
+    }
 
     console.error(`[sports-sync] opening ${url} (read-only)`);
-    const browser = await chromium.launch(launch);
+    let browser;
+    try {
+        browser = await chromium.launch(launch);
+    } catch (e) {
+        const msg = String(e.message || e).split('\n')[0];
+        console.error('\n[sports-sync] FAILED to launch the browser: ' + msg);
+        if (browserChoice.kind === 'playwright') {
+            console.error("[sports-sync] Playwright has no browser downloaded. Either install Google Chrome, or run");
+            console.error('[sports-sync]   npx playwright install chromium');
+            console.error('[sports-sync] or point at an existing browser with --browser <path>.');
+        } else {
+            console.error('[sports-sync] tried: ' + browserChoice.executablePath);
+        }
+        return 1;
+    }
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
     const page = await context.newPage();
 

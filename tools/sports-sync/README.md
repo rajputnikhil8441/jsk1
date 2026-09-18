@@ -38,7 +38,25 @@ repository (there is no Node setup at the repo root).
 ```bash
 cd tools/sports-sync
 npm install
-npx playwright install chromium   # once, if you have no Chromium for Playwright yet
+```
+
+That is usually all you need. **If Google Chrome is already installed, the
+scraper launches it** and no browser download is required — useful when
+`cdn.playwright.dev` is slow or blocked. It looks for the usual locations,
+including `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` on
+macOS, and prints which browser it chose:
+
+```
+[sports-sync] browser: installed system browser -> /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+[sports-sync] browser: Playwright's bundled Chromium (no system Chrome found)
+```
+
+Point it somewhere else with `--browser <path>` (or the
+`PLAYWRIGHT_CHROMIUM_PATH` environment variable). Only if no Chrome is found
+at all does it fall back to Playwright's own Chromium, which needs:
+
+```bash
+npx playwright install chromium   # only when there is no system Chrome
 ```
 
 ## Run
@@ -71,11 +89,13 @@ node scrape.js --headful
 | `--settle <ms>` | `8000` | outer budget for the row count to stop changing |
 | `--stable-for <ms>` | `1500` | how long the row count must hold steady before reading |
 | `--out <file>` | – | also write the JSON here |
+| `--browser <path>` | auto | browser executable to launch; defaults to an installed Google Chrome, else Playwright's Chromium |
 | `--max-diagnostics <n>` | `12` | how many skipped rows to explain |
 | `--headful` | off | run a visible browser |
 | `--summary-only` | off | print the summary only |
 
-If your Chromium lives somewhere unusual, set `PLAYWRIGHT_CHROMIUM_PATH`.
+Browser preference order: `--browser` → `PLAYWRIGHT_CHROMIUM_PATH` → an installed
+Google Chrome / Chromium → Playwright's bundled Chromium.
 
 ## What it extracts
 
