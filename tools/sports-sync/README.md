@@ -52,12 +52,28 @@ macOS, and prints which browser it chose:
 ```
 
 Point it somewhere else with `--browser <path>` (or the
-`PLAYWRIGHT_CHROMIUM_PATH` environment variable). Only if no Chrome is found
-at all does it fall back to Playwright's own Chromium, which needs:
+`PLAYWRIGHT_CHROMIUM_PATH` environment variable); a `.app` bundle works as
+well as the binary inside it.
+
+To see exactly what it found, without launching anything:
 
 ```bash
-npx playwright install chromium   # only when there is no system Chrome
+node scrape.js --browser-info
 ```
+
+```
+  standard macOS Chrome path:
+    /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+    exists: YES
+
+  selected:          /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+  how:               system
+  launch options:    {"headless":true,"executablePath":"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"}
+```
+
+Only when no Chrome is found anywhere does it fall back — first to Playwright's
+`chrome` channel (still no download), and finally to Playwright's own bundled
+Chromium, which is the one case that needs `npx playwright install chromium`.
 
 ## Run
 
@@ -91,11 +107,13 @@ node scrape.js --headful
 | `--out <file>` | – | also write the JSON here |
 | `--browser <path>` | auto | browser executable to launch; defaults to an installed Google Chrome, else Playwright's Chromium |
 | `--max-diagnostics <n>` | `12` | how many skipped rows to explain |
+| `--browser-info` | – | show which browser would be launched, then exit |
 | `--headful` | off | run a visible browser |
 | `--summary-only` | off | print the summary only |
 
 Browser preference order: `--browser` → `PLAYWRIGHT_CHROMIUM_PATH` → an installed
-Google Chrome / Chromium → Playwright's bundled Chromium.
+Google Chrome / Chromium (the standard macOS location is checked first) →
+Playwright's `chrome` channel → Playwright's bundled Chromium.
 
 ## What it extracts
 
@@ -163,6 +181,23 @@ Deliberate choices:
   ]
 }
 ```
+
+## Tests
+
+```bash
+npm test              # browser resolution (18) + fixture extraction (15)
+npm run test:browser  # resolution only, no browser needed
+npm run test:fixture  # end-to-end extraction against the fixture
+```
+
+`test/test-browser-resolution.js` proves the exact path
+`/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` is selected when
+it exists and that it reaches `chromium.launch()` as `executablePath`. The
+filesystem probe is injectable, so the macOS case is covered on any OS, and one
+test uses the real probe against a real file.
+
+Set `SPORTS_SYNC_TEST_BROWSER=/path/to/browser` to force a browser for the
+fixture test.
 
 ## Offline fixture
 

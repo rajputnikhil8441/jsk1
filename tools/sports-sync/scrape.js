@@ -47,6 +47,7 @@ function parseArgs(argv) {
             case '--max-diagnostics': o.maxDiagnostics = parseInt(next(), 10); break;
             case '--headful': o.headful = true; break;
             case '--summary-only': o.quietJson = true; break;
+            case '--browser-info': o.browserInfo = true; break;
             case '-h':
             case '--help': o.help = true; break;
             default:
@@ -71,6 +72,7 @@ jsk1 sports-sync - Phase 1 read-only proof of concept
   --browser <path>         browser executable to launch (default: an installed
                            Google Chrome if there is one, else Playwright's Chromium)
   --max-diagnostics <n>    how many skipped rows to explain (default: ${DEFAULTS.maxDiagnostics})
+  --browser-info           show which browser would be launched, then exit
   --headful                run a visible browser (useful when the table will not render)
   --summary-only           print the summary only, not the JSON body
   -h, --help               this text
@@ -88,60 +90,120 @@ function resolveUrl(u) {
 /**
  * Playwright's bundled Chromium download (cdn.playwright.dev) is blocked or
  * painfully slow on some networks. When a normal Google Chrome is already
- * installed we launch that instead, via Playwright's executablePath.
+ * installed we launch that instead, via Playwright's executablePath, so no
+ * `npx playwright install` is needed.
  *
- * This only changes which binary is launched. The page is opened, waited on
+ * This only decides WHICH BINARY is launched. The page is opened, waited on
  * and read in exactly the same way either way.
  */
-const SYSTEM_CHROME_PATHS = [
-    // macOS
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/Applications/Google Chrome Beta.app/Contents/MacOS/Google Chrome Beta',
-    '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
-    '/Applications/Chromium.app/Contents/MacOS/Chromium',
-    // Linux
-    '/usr/bin/google-chrome',
-    '/usr/bin/google-chrome-stable',
-    '/usr/bin/chromium',
-    '/usr/bin/chromium-browser',
-    '/snap/bin/chromium',
-    // Windows
-    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
-];
 
+// The standard macOS install location, checked explicitly and first.
+const MAC_CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+
+function chromeCandidates(env) {
+    env = env || {};
+    const list = [
+        // macOS - the standard location first
+        MAC_CHROME,
+        '/Applications/Google Chrome Beta.app/Contents/MacOS/Google Chrome Beta',
+        '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
+        '/Applications/Chromium.app/Contents/MacOS/Chromium',
+        '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
+        '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+        // Linux
+        '/usr/bin/google-chrome',
+        '/usr/bin/google-chrome-stable',
+        '/opt/google/chrome/chrome',
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser',
+        '/snap/bin/chromium',
+        // Windows
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
+    ];
+    if (env.HOME) {
+        list.push(path.join(env.HOME, 'Applications', 'Google Chrome.app', 'Contents', 'MacOS', 'Google Chrome'));
+    }
+    if (env.LOCALAPPDATA) {
+        list.push(path.join(env.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe'));
+    }
+    return list;
+}
+
+/**
+ * True when `p` is a real file on disk. statSync follows symlinks, and a file
+ * that exists but is not marked executable for this user still counts as
+ * found - Playwright will then give a precise error rather than us silently
+ * pretending Chrome is absent.
+ */
 function isExecutableFile(p) {
-    try { return !!p && fs.existsSync(p) && fs.statSync(p).isFile(); }
-    catch (e) { return false; }
+    if (!p || typeof p !== 'string') return false;
+    try {
+        return fs.statSync(p).isFile();
+    } catch (e) {
+        return false;
+    }
+}
+
+/**
+ * Accepts either the binary itself or a macOS .app bundle, so
+ * "/Applications/Google Chrome.app" resolves to the binary inside it.
+ */
+function normaliseBrowserPath(p, probe) {
+    if (!p) return null;
+    const exists = probe || isExecutableFile;
+    if (exists(p)) return p;
+    const m = /([^/\\]+)\.app\/?$/.exec(p);
+    if (m) {
+        const inner = path.join(p, 'Contents', 'MacOS', m[1]);
+        if (exists(inner)) return inner;
+    }
+    return null;
 }
 
 /**
  * Order of preference:
  *   1. --browser <path>            (explicit, wins outright)
  *   2. PLAYWRIGHT_CHROMIUM_PATH    (explicit, environment)
- *   3. an installed Google Chrome / Chromium found on disk
- *   4. Playwright's own bundled Chromium
+ *   3. an installed Chrome/Chromium found on disk, macOS standard path first
+ *   4. Playwright's "chrome" channel (still no download)
+ *   5. Playwright's own bundled Chromium
+ *
+ * `deps` exists so the tests can drive this deterministically on any OS.
  */
-function resolveBrowser(explicitPath) {
+function resolveBrowser(explicitPath, deps) {
+    deps = deps || {};
+    const probe = deps.exists || isExecutableFile;
+    const env = deps.env || process.env;
+    const warn = deps.warn || ((m) => console.error(m));
+    const candidates = deps.candidates || chromeCandidates(env);
+
     if (explicitPath) {
-        if (isExecutableFile(explicitPath)) {
-            return { executablePath: explicitPath, kind: 'explicit' };
-        }
-        console.error(`[sports-sync] warning: no executable at ${explicitPath}, looking for an installed Chrome instead`);
+        const resolved = normaliseBrowserPath(explicitPath, probe);
+        if (resolved) return { executablePath: resolved, kind: 'explicit', checked: [explicitPath] };
+        warn(`[sports-sync] warning: no browser executable at ${explicitPath} - looking for an installed Chrome instead`);
     }
 
-    const candidates = SYSTEM_CHROME_PATHS.slice();
-    if (process.env.LOCALAPPDATA) {
-        candidates.push(path.join(process.env.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe'));
-    }
-    if (process.env.HOME) {
-        candidates.push(path.join(process.env.HOME, 'Applications', 'Google Chrome.app', 'Contents', 'MacOS', 'Google Chrome'));
-    }
-
+    const checked = [];
     for (const c of candidates) {
-        if (isExecutableFile(c)) return { executablePath: c, kind: 'system' };
+        checked.push(c);
+        const resolved = normaliseBrowserPath(c, probe);
+        if (resolved) return { executablePath: resolved, kind: 'system', checked };
     }
-    return { executablePath: null, kind: 'playwright' };
+    return { executablePath: null, kind: 'playwright', checked };
+}
+
+/**
+ * The exact object handed to chromium.launch(). Exported so a test can prove
+ * the detected path really reaches Playwright.
+ */
+function buildLaunchOptions(opts, deps) {
+    opts = opts || {};
+    const env = (deps && deps.env) || process.env;
+    const choice = resolveBrowser(opts.browser || env.PLAYWRIGHT_CHROMIUM_PATH || '', deps);
+    const launch = { headless: !opts.headful };
+    if (choice.executablePath) launch.executablePath = choice.executablePath;
+    return { launch, choice };
 }
 
 /* ------------------------------------------------- in-page DOM extraction -- */
@@ -561,41 +623,74 @@ async function waitForTable(page, opts) {
     return { rowsSettled: false, rowCount: last, note: 'row count was still changing when the settle budget ran out' };
 }
 
+function printBrowserInfo(opts) {
+    const { launch, choice } = buildLaunchOptions(opts || {});
+    console.log('sports-sync browser resolution');
+    console.log('  script:            ' + __filename);
+    console.log('  platform:          ' + process.platform);
+    console.log('  --browser:         ' + (opts && opts.browser ? opts.browser : '(not set)'));
+    console.log('  PLAYWRIGHT_CHROMIUM_PATH: ' + (process.env.PLAYWRIGHT_CHROMIUM_PATH || '(not set)'));
+    console.log('  standard macOS Chrome path:');
+    console.log('    ' + MAC_CHROME);
+    console.log('    exists: ' + (isExecutableFile(MAC_CHROME) ? 'YES' : 'no'));
+    console.log('');
+    console.log('  selected:          ' + (choice.executablePath || "(none - will try the 'chrome' channel, then bundled Chromium)"));
+    console.log('  how:               ' + choice.kind);
+    console.log('  launch options:    ' + JSON.stringify(launch));
+    if (!choice.executablePath) {
+        console.log('  paths checked:');
+        choice.checked.forEach((c) => console.log('    - ' + c));
+    }
+}
+
 async function main() {
     const opts = parseArgs(process.argv.slice(2));
     if (opts.help) { usage(); return 0; }
+    if (opts.browserInfo) { printBrowserInfo(opts); return 0; }
 
     const url = resolveUrl(opts.url);
     let host = 'unknown';
     try { host = new URL(url).host || 'local-file'; } catch (e) { /* ignore */ }
 
     const { chromium } = require('playwright');
-    const launch = { headless: !opts.headful };
 
-    const browserChoice = resolveBrowser(opts.browser || process.env.PLAYWRIGHT_CHROMIUM_PATH || '');
-    if (browserChoice.executablePath) {
-        launch.executablePath = browserChoice.executablePath;
-        const how = browserChoice.kind === 'explicit' ? 'browser you specified' : 'installed system browser';
-        console.error(`[sports-sync] browser: ${how} -> ${browserChoice.executablePath}`);
+    const { launch, choice } = buildLaunchOptions(opts);
+    if (choice.executablePath) {
+        const how = choice.kind === 'explicit' ? 'browser you specified' : 'installed system browser';
+        console.error(`[sports-sync] browser: ${how} -> ${choice.executablePath}`);
     } else {
-        console.error(`[sports-sync] browser: Playwright's bundled Chromium (no system Chrome found)`);
+        console.error('[sports-sync] browser: no installed Chrome found at any known path');
+        console.error('[sports-sync]   checked: ' + choice.checked.slice(0, 4).join(', ') + ` (+${Math.max(0, choice.checked.length - 4)} more)`);
+        console.error('[sports-sync]   will try the "chrome" channel, then Playwright\'s bundled Chromium');
     }
 
     console.error(`[sports-sync] opening ${url} (read-only)`);
+
     let browser;
     try {
         browser = await chromium.launch(launch);
     } catch (e) {
-        const msg = String(e.message || e).split('\n')[0];
-        console.error('\n[sports-sync] FAILED to launch the browser: ' + msg);
-        if (browserChoice.kind === 'playwright') {
-            console.error("[sports-sync] Playwright has no browser downloaded. Either install Google Chrome, or run");
-            console.error('[sports-sync]   npx playwright install chromium');
-            console.error('[sports-sync] or point at an existing browser with --browser <path>.');
+        const first = String(e.message || e).split('\n')[0];
+        // No explicit path: try the installed-Chrome channel before giving up,
+        // since that also needs no download.
+        if (!launch.executablePath) {
+            try {
+                console.error('[sports-sync] bundled Chromium unavailable, trying the installed "chrome" channel');
+                browser = await chromium.launch(Object.assign({}, launch, { channel: 'chrome' }));
+                console.error('[sports-sync] browser: installed Chrome via the "chrome" channel');
+            } catch (e2) {
+                console.error('\n[sports-sync] FAILED to launch a browser.');
+                console.error('[sports-sync]   bundled Chromium: ' + first);
+                console.error('[sports-sync]   chrome channel:   ' + String(e2.message || e2).split('\n')[0]);
+                console.error('[sports-sync] Install Google Chrome, or pass one with --browser <path>.');
+                console.error('[sports-sync] Run `node scrape.js --browser-info` to see what was checked.');
+                return 1;
+            }
         } else {
-            console.error('[sports-sync] tried: ' + browserChoice.executablePath);
+            console.error('\n[sports-sync] FAILED to launch ' + launch.executablePath);
+            console.error('[sports-sync]   ' + first);
+            return 1;
         }
-        return 1;
     }
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
     const page = await context.newPage();
@@ -705,7 +800,20 @@ async function main() {
     return c.eventsParsed > 0 ? 0 : 1;
 }
 
-main().then((code) => process.exit(code)).catch((e) => {
-    console.error('[sports-sync] unexpected error: ' + (e && e.stack ? e.stack : e));
-    process.exit(1);
-});
+if (require.main === module) {
+    main().then((code) => process.exit(code)).catch((e) => {
+        console.error('[sports-sync] unexpected error: ' + (e && e.stack ? e.stack : e));
+        process.exit(1);
+    });
+}
+
+// Exported for the tests in ./test. Requiring this file does not launch anything.
+module.exports = {
+    MAC_CHROME,
+    chromeCandidates,
+    isExecutableFile,
+    normaliseBrowserPath,
+    resolveBrowser,
+    buildLaunchOptions,
+    parseArgs
+};

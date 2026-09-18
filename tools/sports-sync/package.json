@@ -5,10 +5,16 @@
   "description": "Phase 1 read-only proof of concept: reads the publicly rendered sports table from the reference site and prints normalised JSON. Does not write anywhere.",
   "license": "UNLICENSED",
   "type": "commonjs",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
+    "test": "node test/test-browser-resolution.js && node test/test-fixture.js",
+    "test:browser": "node test/test-browser-resolution.js",
+    "test:fixture": "node test/test-fixture.js",
     "scrape": "node scrape.js",
-    "scrape:fixture": "node scrape.js --url file://./fixtures/sample-table.html"
+    "scrape:fixture": "node scrape.js --url ./fixtures/sample-table.html",
+    "browser-info": "node scrape.js --browser-info"
   },
   "devDependencies": {
     "playwright": "^1.56.1"
