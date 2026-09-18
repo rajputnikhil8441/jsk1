@@ -27,6 +27,7 @@ const DEFAULTS = {
     out: '',
     browser: '',
     headful: false,
+    netDiagnostics: false,
     quietJson: false
 };
 
@@ -48,6 +49,7 @@ function parseArgs(argv) {
             case '--headful': o.headful = true; break;
             case '--summary-only': o.quietJson = true; break;
             case '--browser-info': o.browserInfo = true; break;
+            case '--net-diagnostics': o.netDiagnostics = true; break;
             case '-h':
             case '--help': o.help = true; break;
             default:
@@ -73,6 +75,8 @@ jsk1 sports-sync - Phase 1 read-only proof of concept
                            Google Chrome if there is one, else Playwright's Chromium)
   --max-diagnostics <n>    how many skipped rows to explain (default: ${DEFAULTS.maxDiagnostics})
   --browser-info           show which browser would be launched, then exit
+  --net-diagnostics        report which of the site's own requests failed, and why
+                           (on automatically with --headful)
   --headful                run a visible browser (useful when the table will not render)
   --summary-only           print the summary only, not the JSON body
   -h, --help               this text
@@ -204,6 +208,173 @@ function buildLaunchOptions(opts, deps) {
     const launch = { headless: !opts.headful };
     if (choice.executablePath) launch.executablePath = choice.executablePath;
     return { launch, choice };
+}
+
+/* ------------------------------------------------- network diagnostics -- */
+/**
+ * Observation only. This records which requests the site itself rejected, so
+ * we can report the exact endpoint to the reference site's team and agree an
+ * authorised integration.
+ *
+ * It deliberately reads nothing sensitive: no cookies, no request or response
+ * headers, no request bodies, no response bodies. Only method, status, URL,
+ * resource type and Playwright's own failure text. Query-string values that
+ * look like credentials are redacted before anything is printed.
+ */
+
+// The endpoint we already know returns data for a normal visitor, so we can
+// say plainly whether this run got a 403 on it.
+const WATCHED_PATH = '/api/front/get_highlight_open_data';
+
+const SENSITIVE_QUERY_KEY = /(token|auth|session|sid|cookie|secret|password|passwd|pwd|jwt|bearer|apikey|api_key|key|signature|sign|otp)/i;
+
+/** Strips credential-looking query values but keeps ordinary ones such as etid. */
+function sanitiseUrl(raw) {
+    try {
+        const u = new URL(raw);
+        let touched = false;
+        for (const k of Array.from(u.searchParams.keys())) {
+            if (SENSITIVE_QUERY_KEY.test(k)) { u.searchParams.set(k, '<redacted>'); touched = true; }
+        }
+        if (u.username || u.password) { u.username = ''; u.password = ''; touched = true; }
+        return touched ? u.href : raw;
+    } catch (e) {
+        return String(raw || '').split('?')[0];
+    }
+}
+
+function urlHost(raw) {
+    try { return new URL(raw).host; } catch (e) { return ''; }
+}
+
+function urlPath(raw) {
+    try { return new URL(raw).pathname; } catch (e) { return ''; }
+}
+
+/**
+ * Collects failed requests for one host. `targetUrl` is the page being read;
+ * requests to other hosts (CDNs, analytics) are ignored so the report stays
+ * about the site itself.
+ */
+/** Diagnostics are on when asked for explicitly, and always during --headful. */
+function wantsNetDiagnostics(opts) {
+    return !!(opts && (opts.netDiagnostics || opts.headful));
+}
+
+function createNetworkDiagnostics(targetUrl) {
+    const host = urlHost(targetUrl);
+    const entries = [];
+    const index = new Map();
+
+    function belongs(rawUrl) {
+        if (!host) return false;
+        const h = urlHost(rawUrl);
+        return !!h && (h === host || h.endsWith('.' + host));
+    }
+
+    function add(entry) {
+        const key = [entry.kind, entry.method, entry.status, entry.url, entry.errorText].join('|');
+        const seen = index.get(key);
+        if (seen) { seen.count++; return seen; }
+        entry.count = 1;
+        index.set(key, entry);
+        entries.push(entry);
+        return entry;
+    }
+
+    return {
+        host,
+        entries,
+
+        /** A completed response. Only 4xx/5xx on this host are kept. */
+        recordResponse(r) {
+            if (!r || !belongs(r.url)) return null;
+            const status = Number(r.status);
+            if (!(status >= 400)) return null;
+            return add({
+                kind: 'status',
+                method: String(r.method || '').toUpperCase(),
+                status,
+                url: sanitiseUrl(r.url),
+                resourceType: r.resourceType || null,
+                errorText: null,
+                watched: urlPath(r.url) === WATCHED_PATH
+            });
+        },
+
+        /** A request Playwright could not complete at all (request.failure()). */
+        recordFailure(r) {
+            if (!r || !belongs(r.url)) return null;
+            return add({
+                kind: 'failure',
+                method: String(r.method || '').toUpperCase(),
+                status: null,
+                url: sanitiseUrl(r.url),
+                resourceType: r.resourceType || null,
+                errorText: r.errorText || 'unknown',
+                watched: urlPath(r.url) === WATCHED_PATH
+            });
+        },
+
+        counts() {
+            const c = { forbidden: 0, otherStatus: 0, failures: 0, watchedForbidden: 0, watchedSeen: 0 };
+            for (const e of entries) {
+                if (e.kind === 'failure') c.failures += e.count;
+                else if (e.status === 403) c.forbidden += e.count;
+                else c.otherStatus += e.count;
+                if (e.watched) {
+                    c.watchedSeen += e.count;
+                    if (e.status === 403) c.watchedForbidden += e.count;
+                }
+            }
+            return c;
+        },
+
+        /** One line per distinct failed request, watched endpoint first. */
+        lines() {
+            const order = entries.slice().sort((a, b) => (b.watched ? 1 : 0) - (a.watched ? 1 : 0));
+            return order.map((e) => {
+                const status = e.kind === 'failure' ? 'FAILED' : String(e.status);
+                const type = e.resourceType ? ' [' + e.resourceType + ']' : '';
+                const why = e.errorText ? ' (' + e.errorText + ')' : '';
+                const times = e.count > 1 ? ' x' + e.count : '';
+                return `${e.method} ${status} ${e.url}${type}${why}${times}`;
+            });
+        },
+
+        report(maxLines) {
+            const c = this.counts();
+            const out = [];
+            out.push('');
+            out.push('Network diagnostics');
+            out.push('-------------------');
+            out.push(`403 responses: ${c.forbidden}`);
+            out.push(`other 4xx/5xx responses: ${c.otherStatus}`);
+            out.push(`request failures: ${c.failures}`);
+            out.push('');
+            if (c.watchedSeen === 0) {
+                out.push(`${WATCHED_PATH}: not observed during this run`);
+            } else if (c.watchedForbidden > 0) {
+                out.push(`${WATCHED_PATH}: REJECTED WITH 403 (${c.watchedForbidden} of ${c.watchedSeen})`);
+            } else {
+                out.push(`${WATCHED_PATH}: seen ${c.watchedSeen}x, not a 403`);
+            }
+            const ls = this.lines();
+            if (ls.length) {
+                const cap = maxLines || 20;
+                out.push('');
+                out.push('Relevant failed requests:');
+                ls.slice(0, cap).forEach((l) => out.push('  ' + l));
+                if (ls.length > cap) out.push(`  ... and ${ls.length - cap} more distinct requests`);
+            } else {
+                out.push('');
+                out.push(`No failed requests recorded for ${this.host || 'this page'}.`);
+            }
+            out.push('');
+            out.push('Recorded from method/status/URL/resource type only - no cookies, headers or bodies.');
+            return out.join('\n');
+        }
+    };
 }
 
 /* ------------------------------------------------- in-page DOM extraction -- */
@@ -698,6 +869,32 @@ async function main() {
     const pageErrors = [];
     page.on('pageerror', (e) => pageErrors.push(String(e.message || e).split('\n')[0]));
 
+    // Observation only: which of the site's own requests were rejected.
+    // Nothing sensitive is read - see createNetworkDiagnostics().
+    const wantNetDiagnostics = wantsNetDiagnostics(opts);
+    const netDiag = createNetworkDiagnostics(url);
+    if (wantNetDiagnostics) {
+        page.on('response', (response) => {
+            const request = response.request();
+            netDiag.recordResponse({
+                method: request.method(),
+                status: response.status(),
+                url: response.url(),
+                resourceType: request.resourceType()
+            });
+        });
+        page.on('requestfailed', (request) => {
+            const failure = request.failure();
+            netDiag.recordFailure({
+                method: request.method(),
+                url: request.url(),
+                resourceType: request.resourceType(),
+                errorText: failure ? failure.errorText : null
+            });
+        });
+        console.error('[sports-sync] network diagnostics on for ' + (netDiag.host || 'this page'));
+    }
+
     let result = null;
     let wait = null;
     let failure = null;
@@ -726,6 +923,7 @@ async function main() {
             console.error('[sports-sync] or raise --timeout if the table is just slow.');
         }
         if (pageErrors.length) console.error('[sports-sync] page errors: ' + pageErrors.slice(0, 3).join(' | '));
+        if (wantNetDiagnostics) console.error(netDiag.report(opts.maxDiagnostics));
         return 1;
     }
 
@@ -797,6 +995,8 @@ async function main() {
     }
     console.error('---------------------------------------------');
 
+    if (wantNetDiagnostics) console.error(netDiag.report(opts.maxDiagnostics));
+
     return c.eventsParsed > 0 ? 0 : 1;
 }
 
@@ -815,5 +1015,9 @@ module.exports = {
     normaliseBrowserPath,
     resolveBrowser,
     buildLaunchOptions,
-    parseArgs
+    parseArgs,
+    createNetworkDiagnostics,
+    wantsNetDiagnostics,
+    sanitiseUrl,
+    WATCHED_PATH
 };

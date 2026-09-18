@@ -108,12 +108,56 @@ node scrape.js --headful
 | `--browser <path>` | auto | browser executable to launch; defaults to an installed Google Chrome, else Playwright's Chromium |
 | `--max-diagnostics <n>` | `12` | how many skipped rows to explain |
 | `--browser-info` | – | show which browser would be launched, then exit |
+| `--net-diagnostics` | off | report which of the site's own requests failed, and why (on automatically with `--headful`) |
 | `--headful` | off | run a visible browser |
 | `--summary-only` | off | print the summary only |
 
 Browser preference order: `--browser` → `PLAYWRIGHT_CHROMIUM_PATH` → an installed
 Google Chrome / Chromium (the standard macOS location is checked first) →
 Playwright's `chrome` channel → Playwright's bundled Chromium.
+
+## Network diagnostics
+
+The reference site can answer a headless visit with `No Record Found` while
+rejecting its own data request. To see which request is being refused, run
+with `--net-diagnostics` (it is on automatically during `--headful`):
+
+```bash
+node scrape.js --headful
+node scrape.js --net-diagnostics          # same report, headless
+```
+
+```
+Network diagnostics
+-------------------
+403 responses: 2
+other 4xx/5xx responses: 2
+request failures: 1
+
+/api/front/get_highlight_open_data: REJECTED WITH 403 (2 of 2)
+
+Relevant failed requests:
+  POST 403 https://jsk1.com/api/front/get_highlight_open_data?etid=4 [xhr] x2
+  GET 404 https://jsk1.com/missing.png [image]
+  GET FAILED https://jsk1.com/api/front/dropped [fetch] (net::ERR_EMPTY_RESPONSE)
+
+Recorded from method/status/URL/resource type only - no cookies, headers or bodies.
+```
+
+This is **observation only**, to identify the endpoint to raise with the
+reference site's team. It makes no attempt to get around a 403, and nothing
+about the requests is altered.
+
+What it records, per failed request: HTTP method, status code, URL, resource
+type, and - for requests that never completed - Playwright's own
+`request.failure().errorText`. Requests to other hosts (CDNs, the browser's
+own telemetry) are ignored so the report stays about the site itself.
+
+What it never reads or prints: cookies, request or response headers, request
+or response bodies, tokens or any other credential. Query-string values whose
+key looks like a credential (`token`, `session`, `key`, `signature`, ...) are
+replaced with `<redacted>` before printing, while ordinary parameters such as
+`etid=4` are kept so the endpoint stays identifiable.
 
 ## What it extracts
 
@@ -185,8 +229,9 @@ Deliberate choices:
 ## Tests
 
 ```bash
-npm test              # browser resolution (18) + fixture extraction (15)
+npm test              # browser resolution (18) + network diagnostics (23) + fixture extraction (15)
 npm run test:browser  # resolution only, no browser needed
+npm run test:net      # network-diagnostics filtering and formatting
 npm run test:fixture  # end-to-end extraction against the fixture
 ```
 

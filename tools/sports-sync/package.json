@@ -9,12 +9,13 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node test/test-browser-resolution.js && node test/test-fixture.js",
+    "test": "node test/test-browser-resolution.js && node test/test-network-diagnostics.js && node test/test-fixture.js",
     "test:browser": "node test/test-browser-resolution.js",
     "test:fixture": "node test/test-fixture.js",
     "scrape": "node scrape.js",
     "scrape:fixture": "node scrape.js --url ./fixtures/sample-table.html",
-    "browser-info": "node scrape.js --browser-info"
+    "browser-info": "node scrape.js --browser-info",
+    "test:net": "node test/test-network-diagnostics.js"
   },
   "devDependencies": {
     "playwright": "^1.56.1"
