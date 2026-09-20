@@ -1,0 +1,147 @@
+/* =========================================================
+   sections.css — Page Builder v1 rendering
+   ---------------------------------------------------------
+   Every selector here is scoped to .pb-* classes that only the
+   builder emits, so none of it can reach the existing site.
+   Values come from --pb-* custom properties written per section
+   and per element by js/cms.js; each has a shipped fallback so a
+   section with no styling set still renders sensibly.
+   ========================================================= */
+
+.pb-section {
+    background: var(--pb-bg, transparent);
+    background-image: var(--pb-bg-image, none);
+    background-size: cover;
+    background-position: center;
+    color: var(--pb-color, inherit);
+    padding: var(--pb-padding, 40px 16px);
+    margin: var(--pb-margin, 0);
+    border: var(--pb-border, 0);
+    border-radius: var(--pb-radius, 0);
+    box-shadow: var(--pb-shadow, none);
+    text-align: var(--pb-align, left);
+}
+
+.pb-inner {
+    max-width: var(--pb-max-width, 1100px);
+    margin-inline: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--pb-gap, 16px);
+}
+
+/* ---------- elements ---------- */
+
+.pb-heading {
+    margin: var(--pb-margin, 0);
+    padding: var(--pb-padding, 0);
+    font-size: var(--pb-font-size, 28px);
+    font-weight: var(--pb-font-weight, 700);
+    color: var(--pb-color, inherit);
+    text-align: var(--pb-align, inherit);
+    line-height: 1.25;
+}
+
+.pb-textblock {
+    margin: var(--pb-margin, 0);
+    padding: var(--pb-padding, 0);
+    font-size: var(--pb-font-size, 16px);
+    font-weight: var(--pb-font-weight, 400);
+    color: var(--pb-color, inherit);
+    text-align: var(--pb-align, inherit);
+    line-height: 1.6;
+    white-space: pre-line;      /* authored line breaks survive without markup */
+}
+
+.pb-img {
+    display: block;
+    max-width: 100%;
+    height: var(--pb-height, auto);
+    object-fit: var(--pb-object-fit, cover);
+    border: var(--pb-border, 0);
+    border-radius: var(--pb-radius, 0);
+    box-shadow: var(--pb-shadow, none);
+    margin: var(--pb-margin, 0);
+}
+
+.pb-img-link { display: inline-block; }
+
+.pb-btn {
+    display: inline-block;
+    align-self: flex-start;
+    background: var(--pb-bg, #1a73e8);
+    color: var(--pb-color, #ffffff);
+    padding: var(--pb-padding, 10px 20px);
+    margin: var(--pb-margin, 0);
+    border: var(--pb-border, 0);
+    border-radius: var(--pb-radius, 4px);
+    font-size: var(--pb-font-size, 15px);
+    font-weight: var(--pb-font-weight, 600);
+    text-decoration: none;
+    line-height: 1.2;
+}
+
+.pb-btn:hover { filter: brightness(1.08); }
+
+.pb-card {
+    background: var(--pb-bg, #ffffff);
+    color: var(--pb-color, inherit);
+    padding: var(--pb-padding, 16px);
+    border: var(--pb-border, 1px solid rgba(0, 0, 0, .12));
+    border-radius: var(--pb-radius, 6px);
+    box-shadow: var(--pb-shadow, none);
+    display: flex;
+    flex-direction: column;
+    gap: var(--pb-gap, 10px);
+}
+
+.pb-card-title  { margin: 0; font-size: 18px; font-weight: 700; line-height: 1.3; }
+.pb-card-text   { margin: 0; font-size: 15px; line-height: 1.55; white-space: pre-line; }
+.pb-card .pb-img { width: 100%; }
+
+.pb-columns {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--pb-gap, 16px);
+}
+
+.pb-column { display: flex; flex-direction: column; gap: var(--pb-gap, 12px); }
+
+/* ---------- section layouts ---------- */
+
+.pb-hero .pb-inner      { align-items: var(--pb-align-items, flex-start); gap: var(--pb-gap, 20px); }
+.pb-banner              { text-align: var(--pb-align, center); }
+.pb-banner .pb-inner    { align-items: center; }
+
+.pb-cards .pb-inner,
+.pb-cols  .pb-inner {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--pb-gap, 16px);
+}
+
+.pb-image-text .pb-inner {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+    gap: var(--pb-gap, 24px);
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 1024px) {
+    .pb-image-text .pb-inner { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+    .pb-section          { padding: var(--pb-padding, 24px 16px); }
+    .pb-cards .pb-inner,
+    .pb-cols  .pb-inner,
+    .pb-columns          { grid-template-columns: 1fr; }
+}
+
+/* ---------- per-breakpoint visibility ---------- */
+
+@media (min-width: 1025px) { .pb-section.pb-hide-desktop { display: none; } }
+@media (max-width: 1024px) and (min-width: 769px) { .pb-section.pb-hide-tablet { display: none; } }
+@media (max-width: 768px)  { .pb-section.pb-hide-mobile  { display: none; } }

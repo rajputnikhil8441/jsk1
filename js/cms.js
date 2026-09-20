@@ -275,6 +275,11 @@
            An empty value means "keep whatever the HTML file ships
            with", so a page is never blank if the CMS cannot be read.
         ---------------------------------------------------------- */
+        /* Page Builder drafts. Never rendered on the public site — the
+           renderer only ever reads pages.<slug>.builder with a published
+           status. Editing here cannot change what visitors see. */
+        builderDrafts: {},
+
         pages: {
 
             /* The homepage is part of the SEO system too — its title is
@@ -1055,6 +1060,271 @@
     }
 
     /* ========================================================
+       PAGE BUILDER (v1)
+       ------------------------------------------------------
+       Renders pages.<slug>.builder.sections into a mount point
+       <div data-cms-sections="slug">. Three guards keep existing
+       pages safe: no mount point means no builder; a builder whose
+       status is not "published" is ignored; an empty sections list
+       is ignored. In every one of those cases the markup already in
+       the page is left exactly as the browser parsed it.
+
+       Content is written with textContent and controlled attributes.
+       No element type in v1 injects markup.
+    ======================================================== */
+
+    var PB_SCHEMA = 1;
+
+    /* style key -> [custom property, unit appended to bare numbers] */
+    var PB_TOKENS = {
+        bg:        ['--pb-bg', ''],
+        bgImage:   ['--pb-bg-image', ''],
+        color:     ['--pb-color', ''],
+        fontSize:  ['--pb-font-size', 'px'],
+        fontWeight:['--pb-font-weight', ''],
+        align:     ['--pb-align', ''],
+        padding:   ['--pb-padding', 'px'],
+        margin:    ['--pb-margin', 'px'],
+        maxWidth:  ['--pb-max-width', 'px'],
+        height:    ['--pb-height', 'px'],
+        border:    ['--pb-border', ''],
+        radius:    ['--pb-radius', 'px'],
+        shadow:    ['--pb-shadow', ''],
+        gap:       ['--pb-gap', 'px']
+    };
+
+    var PB_SECTION_CLASS = {
+        hero:      'pb-hero',
+        text:      'pb-text',
+        image:     'pb-image',
+        imageText: 'pb-image-text',
+        cards:     'pb-cards',
+        columns:   'pb-cols',
+        banner:    'pb-banner'
+    };
+
+    /* Only these schemes may reach an href or src. Anything else —
+       javascript:, data:, vbscript: — is dropped. */
+    function pbUrl(u) {
+        u = str(u).trim();
+        if (!u) return '';
+        if (/^(https?:\/\/|mailto:|tel:)/i.test(u)) return u;
+        if (/^[#/]/.test(u)) return u;
+        if (/^[\w][\w./?=&%+-]*$/.test(u)) return u;
+        return '';
+    }
+
+    function pbEl(tag, cls) {
+        var e = document.createElement(tag);
+        if (cls) e.className = cls;
+        return e;
+    }
+
+    /* ---- element renderers. Each returns a node or null. ---- */
+    var PB_ELEMENTS = {
+
+        heading: function (el) {
+            var c = el.content || {};
+            var lvl = String(c.level || 'h2').toLowerCase();
+            if (['h1','h2','h3','h4','h5','h6'].indexOf(lvl) === -1) lvl = 'h2';
+            var n = pbEl(lvl, 'pb-heading');
+            n.textContent = str(c.text);
+            return n;
+        },
+
+        text: function (el) {
+            var n = pbEl('p', 'pb-textblock');
+            n.textContent = str((el.content || {}).text);
+            return n;
+        },
+
+        image: function (el) {
+            var c = el.content || {};
+            var src = pbUrl(c.src);
+            if (!src) return null;
+            var img = pbEl('img', 'pb-img');
+            img.setAttribute('src', src);
+            img.setAttribute('alt', str(c.alt));
+            img.setAttribute('loading', 'lazy');
+            img.setAttribute('decoding', 'async');
+            if (c.width)  img.setAttribute('width', String(parseInt(c.width, 10) || ''));
+            if (c.height) img.setAttribute('height', String(parseInt(c.height, 10) || ''));
+            var href = pbUrl(c.href);
+            if (!href) return img;
+            var a = pbEl('a', 'pb-img-link');
+            a.setAttribute('href', href);
+            if (c.newTab) { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); }
+            a.appendChild(img);
+            return a;
+        },
+
+        button: function (el) {
+            var c = el.content || {};
+            var a = pbEl('a', 'pb-btn');
+            a.textContent = str(c.text);
+            var href = pbUrl(c.href);
+            a.setAttribute('href', href || '#');
+            if (c.newTab) { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); }
+            return a;
+        },
+
+        card: function (el, depth) {
+            var c = el.content || {};
+            var box = pbEl('div', 'pb-card');
+            if (pbUrl(c.image)) {
+                box.appendChild(PB_ELEMENTS.image({ content: { src: c.image, alt: c.imageAlt,
+                    width: c.imageWidth, height: c.imageHeight } }));
+            }
+            if (str(c.title)) {
+                var h = pbEl('h3', 'pb-card-title');
+                h.textContent = str(c.title);
+                box.appendChild(h);
+            }
+            if (str(c.text)) {
+                var p = pbEl('p', 'pb-card-text');
+                p.textContent = str(c.text);
+                box.appendChild(p);
+            }
+            if (str(c.buttonText)) {
+                box.appendChild(PB_ELEMENTS.button({ content: {
+                    text: c.buttonText, href: c.buttonHref, newTab: c.buttonNewTab } }));
+            }
+            return box;
+        },
+
+        columns: function (el, depth) {
+            var cols = (el.content || {}).columns;
+            if (!isArr(cols) || !cols.length) return null;
+            var wrap = pbEl('div', 'pb-columns');
+            for (var i = 0; i < cols.length; i++) {
+                var col = pbEl('div', 'pb-column');
+                pbRenderElements(col, (cols[i] || {}).elements, depth + 1);
+                wrap.appendChild(col);
+            }
+            return wrap;
+        }
+    };
+
+    function isArr(v) { return Object.prototype.toString.call(v) === '[object Array]'; }
+
+    function pbRenderElements(host, list, depth) {
+        if (!isArr(list) || depth > 3) return;        /* depth guard */
+        for (var i = 0; i < list.length; i++) {
+            var el = list[i];
+            if (!el || el.enabled === false) continue;
+            var make = PB_ELEMENTS[el.type];
+            if (!make) continue;                      /* unknown type: skip, never throw */
+            var node = make(el, depth);
+            if (!node) continue;
+            if (el.id) node.setAttribute('data-el', String(el.id));
+            host.appendChild(node);
+        }
+    }
+
+    /* ---- CSS: one scoped block per section/element, three breakpoints ---- */
+    function pbDecls(style) {
+        var out = '', k;
+        if (!style) return out;
+        for (k in PB_TOKENS) {
+            if (!Object.prototype.hasOwnProperty.call(PB_TOKENS, k)) continue;
+            if (!Object.prototype.hasOwnProperty.call(style, k)) continue;
+            var v = str(style[k]).trim();
+            if (!v) continue;
+            var unit = PB_TOKENS[k][1];
+            if (unit && /^-?[0-9.]+$/.test(v)) v += unit;
+            if (k === 'bgImage') { var u = pbUrl(v); v = u ? 'url("' + u + '")' : ''; if (!v) continue; }
+            out += PB_TOKENS[k][0] + ':' + v + ';';
+        }
+        return out;
+    }
+
+    function pbScopedCSS(sel, node) {
+        var base = pbDecls(node.style);
+        var r = node.responsive || {};
+        var tab = pbDecls(r.tablet), mob = pbDecls(r.mobile);
+        var css = '';
+        if (base) css += sel + '{' + base + '}';
+        if (tab)  css += '@media (max-width:1024px){' + sel + '{' + tab + '}}';
+        if (mob)  css += '@media (max-width:768px){'  + sel + '{' + mob + '}}';
+        return css;
+    }
+
+    function builderCSS(sections) {
+        var css = '', i, j;
+        if (!isArr(sections)) return css;
+        for (i = 0; i < sections.length; i++) {
+            var sec = sections[i];
+            if (!sec || !sec.id) continue;
+            css += pbScopedCSS('[data-sec="' + sec.id + '"]', sec);
+            var els = sec.elements;
+            if (!isArr(els)) continue;
+            for (j = 0; j < els.length; j++) {
+                if (els[j] && els[j].id) {
+                    css += pbScopedCSS('[data-el="' + els[j].id + '"]', els[j]);
+                }
+            }
+        }
+        return css;
+    }
+
+    /* ---- the public entry point ---- */
+    function publishedSections(slug) {
+        var page = (load().pages || {})[slug];
+        var b = page && page.builder;
+        if (!b || b.status !== 'published') return null;
+        if (!isArr(b.sections) || !b.sections.length) return null;
+        return b.sections;
+    }
+
+    function renderSectionsInto(host, sections) {
+        var frag = document.createDocumentFragment();
+        for (var i = 0; i < sections.length; i++) {
+            var sec = sections[i];
+            if (!sec || sec.enabled === false) continue;
+            var cls = PB_SECTION_CLASS[sec.type] || 'pb-generic';
+            var node = pbEl('section', 'pb-section ' + cls);
+            if (sec.id) node.setAttribute('data-sec', String(sec.id));
+            var vis = sec.visibility || {};
+            if (vis.desktop === false) node.className += ' pb-hide-desktop';
+            if (vis.tablet  === false) node.className += ' pb-hide-tablet';
+            if (vis.mobile  === false) node.className += ' pb-hide-mobile';
+            var inner = pbEl('div', 'pb-inner');
+            pbRenderElements(inner, sec.elements, 0);
+            node.appendChild(inner);
+            frag.appendChild(node);
+        }
+        host.textContent = '';
+        host.appendChild(frag);
+    }
+
+    /* Renders every mount point on the page. Returns the number rendered.
+       `override` lets the admin preview draft sections without touching
+       what is published. */
+    function paintSections(override) {
+        var hosts = document.querySelectorAll('[data-cms-sections]');
+        var css = '', painted = 0, i;
+        for (i = 0; i < hosts.length; i++) {
+            var host = hosts[i];
+            var slug = host.getAttribute('data-cms-sections');
+            var sections = (override && override.slug === slug) ? override.sections
+                                                                : publishedSections(slug);
+            if (!sections) continue;                  /* leave the static markup alone */
+            renderSectionsInto(host, sections);
+            css += builderCSS(sections);
+            painted++;
+        }
+        var tag = document.getElementById('cmsBuilder');
+        if (!css) { if (tag) tag.textContent = ''; return painted; }
+        if (!tag) {
+            tag = document.createElement('style');
+            tag.id = 'cmsBuilder';
+            (document.head || document.documentElement).appendChild(tag);
+        }
+        tag.textContent = css;
+        return painted;
+    }
+
+    /* ========================================================
        INFO PAGES — path addressed content
          data-cms-meta="pages.about.metaDescription"  -> <meta content>
          data-cms-text="pages.about.heading"          -> textContent
@@ -1313,6 +1583,7 @@
         renderCasino();
         paintText();
         paintPageContent();
+        paintSections();
         paintImages();
         paintMarquee();
         paintFooterSocial();
@@ -1628,6 +1899,17 @@
         },
         exportJSON: function () { return JSON.stringify(load(), null, 2); },
         themes: Themes,
+        /* Page Builder surface for the admin. `paint` with an override
+           renders draft sections for preview without publishing them. */
+        sections: {
+            schema: PB_SCHEMA,
+            types: PB_SECTION_CLASS,
+            elementTypes: PB_ELEMENTS,
+            paint: paintSections,
+            css: builderCSS,
+            published: publishedSections,
+            safeUrl: pbUrl
+        },
         preview: preview,
         remote: Remote,
         clone: clone,
