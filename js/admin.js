@@ -2473,6 +2473,12 @@
     var pbDraft = [];       /* the working sections */
     var pbOpen = null;      /* id of the expanded section */
 
+    /* Which sub-tab / breakpoint each node is showing. Kept out of the
+       section objects on purpose: those are serialised straight into the
+       saved draft, and UI state has no business being published. */
+    var pbView = {};
+    var pbDevice = {};
+
     function pbUid(prefix) {
         return prefix + '_' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
     }
@@ -2485,6 +2491,7 @@
     }
 
     function pbSelect(slug) {
+        pbFlush();
         pbSlug = slug;
         pbDraft = CMS.sections.draft(slug).sections;
         pbOpen = null;
@@ -2754,12 +2761,542 @@
         });
     }
 
-    /* Filled in by the element editors. */
     function pbSectionBody(host, sec) {
-        var p = document.createElement('p');
-        p.className = 'hint';
-        p.textContent = pbCount(sec) + ' in this section.';
-        host.appendChild(p);
+        var tabs = document.createElement('div');
+        tabs.className = 'pb-subtabs';
+        var body = document.createElement('div');
+        body.className = 'pb-subbody';
+
+        var VIEWS = [['content', 'Content'], ['design', 'Design'], ['visibility', 'Visibility']];
+        function show(view) {
+            pbView[sec.id] = view;
+            Array.prototype.forEach.call(tabs.children, function (b) {
+                b.classList.toggle('active', b.getAttribute('data-view') === view);
+            });
+            body.innerHTML = '';
+            if (view === 'content') {
+                if (!sec.elements) sec.elements = [];
+                pbElementList(body, sec.elements, 0);
+            } else if (view === 'design') {
+                pbDesignEditor(body, sec, null);
+            } else {
+                pbVisibilityEditor(body, sec);
+            }
+        }
+        VIEWS.forEach(function (v) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'pb-subtab';
+            b.setAttribute('data-view', v[0]);
+            b.textContent = v[1];
+            b.addEventListener('click', function () { show(v[0]); });
+            tabs.appendChild(b);
+        });
+        host.appendChild(tabs);
+        host.appendChild(body);
+        show(pbView[sec.id] || 'content');
+    }
+
+    /* ---------- element + style editors ---------- */
+
+    var PB_EL_TYPES = [
+        ['heading', 'Heading'],
+        ['text',    'Text'],
+        ['image',   'Image'],
+        ['button',  'Button'],
+        ['card',    'Card'],
+        ['columns', 'Columns']
+    ];
+    var PB_EL_LABEL = {};
+    PB_EL_TYPES.forEach(function (t) { PB_EL_LABEL[t[0]] = t[1]; });
+
+    /* [key, label, kind, options] -- kind maps onto the input built below.
+       Every key here is one the renderer in js/cms.js already understands. */
+    var PB_CONTENT_FIELDS = {
+        heading: [['text', 'Text', 'text'],
+                  ['level', 'Level', 'select', ['h1', 'h2', 'h3', 'h4']]],
+        text:    [['text', 'Text', 'area']],
+        image:   [['src', 'Image URL', 'url'], ['alt', 'Alt text', 'text'],
+                  ['width', 'Width (px)', 'num'], ['height', 'Height (px)', 'num'],
+                  ['href', 'Links to', 'url'], ['newTab', 'Open in a new tab', 'bool']],
+        button:  [['text', 'Label', 'text'], ['href', 'Links to', 'url'],
+                  ['newTab', 'Open in a new tab', 'bool']],
+        card:    [['title', 'Title', 'text'], ['text', 'Text', 'area'],
+                  ['image', 'Image URL', 'url'], ['imageAlt', 'Image alt', 'text'],
+                  ['buttonText', 'Button label', 'text'], ['buttonHref', 'Button links to', 'url'],
+                  ['buttonNewTab', 'Open in a new tab', 'bool']]
+    };
+
+    var PB_STYLE_FIELDS = [
+        ['bg',         'Background',        'color'],
+        ['color',      'Text colour',       'color'],
+        ['bgImage',    'Background image',  'url'],
+        ['fontSize',   'Font size (px)',    'num'],
+        ['fontWeight', 'Font weight',       'select', ['', '300', '400', '500', '600', '700', '800']],
+        ['align',      'Align',             'select', ['', 'left', 'center', 'right']],
+        ['padding',    'Padding (px)',      'num'],
+        ['margin',     'Outer space (px)',  'num'],
+        ['gap',        'Gap (px)',          'num'],
+        ['maxWidth',   'Max width (px)',    'num'],
+        ['height',     'Min height (px)',   'num'],
+        ['radius',     'Corner radius (px)', 'num'],
+        ['border',     'Border',            'text'],
+        ['shadow',     'Shadow',            'text']
+    ];
+
+    /* Narrower set for a single element -- box sizing is the section's job. */
+    var PB_EL_STYLE_KEYS = { bg: 1, color: 1, fontSize: 1, fontWeight: 1, align: 1,
+                             padding: 1, margin: 1, maxWidth: 1, radius: 1, border: 1, shadow: 1 };
+
+    var PB_DEVICES = [['base', 'Desktop'], ['tablet', 'Tablet'], ['mobile', 'Mobile']];
+
+    /* Where a device's overrides live on a section or element. */
+    function pbStyleBag(node, device) {
+        if (device === 'base') { return node.style || (node.style = {}); }
+        if (!node.responsive) node.responsive = {};
+        return node.responsive[device] || (node.responsive[device] = {});
+    }
+
+    /* A field edit never rebuilds the list -- that would steal focus mid-typing.
+       Typing repaints the preview at once and saves the draft shortly after,
+       so work is not lost if the admin leaves the panel without blurring. */
+    var pbSaveTimer = null;
+
+    function pbFlush() {
+        if (!pbSaveTimer) return;
+        clearTimeout(pbSaveTimer);
+        pbSaveTimer = null;
+        pbPersist();
+    }
+
+    function pbEdited(live) {
+        pbPaintPreview();
+        if (pbSaveTimer) { clearTimeout(pbSaveTimer); pbSaveTimer = null; }
+        if (live) {
+            pbSaveTimer = setTimeout(function () {
+                pbSaveTimer = null;
+                pbPersist();
+                pbPaintState();
+            }, 250);
+            return;
+        }
+        pbPersist();
+        pbPaintState();
+    }
+
+    function pbRow(label, control, note) {
+        var w = document.createElement('label');
+        w.className = 'pb-field';
+        var s = document.createElement('span');
+        s.className = 'pb-field-label';
+        s.textContent = label;
+        w.appendChild(s);
+        w.appendChild(control);
+        if (note) {
+            var n = document.createElement('em');
+            n.className = 'pb-field-note';
+            n.textContent = note;
+            w.appendChild(n);
+        }
+        return w;
+    }
+
+    /* One bound input. `get`/`set` keep the widget away from the data shape. */
+    function pbInput(kind, opts, get, set, hintEl) {
+        var el;
+        if (kind === 'area') {
+            el = document.createElement('textarea');
+            el.rows = 4;
+            el.spellcheck = true;
+        } else if (kind === 'select') {
+            el = document.createElement('select');
+            (opts || []).forEach(function (o) {
+                var op = document.createElement('option');
+                op.value = o;
+                op.textContent = o === '' ? '(inherit)' : o;
+                el.appendChild(op);
+            });
+        } else if (kind === 'bool') {
+            el = document.createElement('input');
+            el.type = 'checkbox';
+        } else if (kind === 'color') {
+            el = document.createElement('input');
+            el.type = 'text';
+            el.placeholder = '#rrggbb or empty';
+        } else if (kind === 'num') {
+            el = document.createElement('input');
+            el.type = 'number';
+            el.step = '1';
+        } else {
+            el = document.createElement('input');
+            el.type = 'text';
+        }
+        el.className = 'pb-in pb-in-' + kind;
+
+        var v = get();
+        if (kind === 'bool') el.checked = !!v;
+        else el.value = v == null ? '' : String(v);
+
+        function warn() {
+            if (!hintEl) return;
+            var raw = String(el.value || '').trim();
+            if (kind === 'url' && raw && !CMS.sections.safeUrl(raw)) {
+                hintEl.textContent = 'That address is not allowed and will be dropped. ' +
+                    'Use https://, /, #, mailto: or a file name.';
+                hintEl.hidden = false;
+            } else {
+                hintEl.hidden = true;
+            }
+        }
+
+        function read() { return kind === 'bool' ? el.checked : el.value; }
+        el.addEventListener('input', function () { set(read()); warn(); pbEdited(true); });
+        el.addEventListener('change', function () { set(read()); warn(); pbEdited(false); });
+        warn();
+
+        /* A colour text box gets a swatch next to it. */
+        if (kind === 'color') {
+            var wrap = document.createElement('span');
+            wrap.className = 'pb-color';
+            var sw = document.createElement('input');
+            sw.type = 'color';
+            sw.className = 'pb-swatch';
+            sw.value = /^#[0-9a-f]{6}$/i.test(el.value) ? el.value : '#ffffff';
+            sw.addEventListener('input', function () {
+                el.value = sw.value;
+                set(sw.value);
+                pbEdited(true);
+            });
+            sw.addEventListener('change', function () { set(sw.value); pbEdited(false); });
+            el.addEventListener('input', function () {
+                if (/^#[0-9a-f]{6}$/i.test(el.value)) sw.value = el.value;
+            });
+            wrap.appendChild(el);
+            wrap.appendChild(sw);
+            return wrap;
+        }
+        return el;
+    }
+
+    function pbFieldFor(spec, bag, key) {
+        var hint = document.createElement('em');
+        hint.className = 'pb-warn';
+        hint.hidden = true;
+        var input = pbInput(spec[2], spec[3],
+            function () { return bag[key]; },
+            function (v) {
+                if (v === '' || v === false) delete bag[key];
+                else bag[key] = v;
+            }, hint);
+        var row = pbRow(spec[1], input);
+        row.appendChild(hint);
+        return row;
+    }
+
+    /* ---------- design + responsive ---------- */
+
+    function pbDesignEditor(host, node, keys) {
+        var device = pbDevice[node.id] || 'base';
+
+        var tabs = document.createElement('div');
+        tabs.className = 'pb-devtabs';
+        PB_DEVICES.forEach(function (d) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'pb-devtab' + (d[0] === device ? ' active' : '');
+            b.setAttribute('data-device', d[0]);
+            b.textContent = d[1];
+            b.addEventListener('click', function () {
+                pbDevice[node.id] = d[0];
+                host.innerHTML = '';
+                pbDesignEditor(host, node, keys);
+            });
+            tabs.appendChild(b);
+        });
+        host.appendChild(tabs);
+
+        var note = document.createElement('p');
+        note.className = 'hint';
+        note.textContent = device === 'base'
+            ? 'These apply everywhere unless a narrower screen overrides them.'
+            : (device === 'tablet'
+                ? 'Applied at 1024px and below. Leave a box empty to keep the desktop value.'
+                : 'Applied at 768px and below. Leave a box empty to keep the wider value.');
+        host.appendChild(note);
+
+        var bag = pbStyleBag(node, device);
+        var grid = document.createElement('div');
+        grid.className = 'pb-grid';
+        PB_STYLE_FIELDS.forEach(function (spec) {
+            if (keys && !keys[spec[0]]) return;
+            grid.appendChild(pbFieldFor(spec, bag, spec[0]));
+        });
+        host.appendChild(grid);
+
+        if (device !== 'base') {
+            var clr = document.createElement('button');
+            clr.type = 'button';
+            clr.className = 'adm-btn ghost pb-clear';
+            clr.setAttribute('data-act', 'clear-device');
+            clr.innerHTML = '<i class="fas fa-eraser"></i> Clear ' + (device === 'tablet' ? 'tablet' : 'mobile') + ' overrides';
+            clr.addEventListener('click', function () {
+                node.responsive[device] = {};
+                pbPersist();
+                host.innerHTML = '';
+                pbDesignEditor(host, node, keys);
+                pbPaintPreview();
+            });
+            host.appendChild(clr);
+        }
+    }
+
+    function pbVisibilityEditor(host, sec) {
+        var box = document.createElement('div');
+        box.className = 'pb-vis';
+        var lead = document.createElement('p');
+        lead.className = 'hint';
+        lead.textContent = 'Hide this section on a screen size without deleting it.';
+        box.appendChild(lead);
+        if (!sec.visibility) sec.visibility = { desktop: true, tablet: true, mobile: true };
+        [['desktop', 'Show on desktop'], ['tablet', 'Show on tablet'], ['mobile', 'Show on mobile']]
+            .forEach(function (v) {
+                var l = document.createElement('label');
+                l.className = 'pb-check';
+                var cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.setAttribute('data-vis', v[0]);
+                cb.checked = sec.visibility[v[0]] !== false;
+                cb.addEventListener('change', function () {
+                    sec.visibility[v[0]] = cb.checked;
+                    pbPersist();
+                    pbPaintPreview();
+                });
+                l.appendChild(cb);
+                l.appendChild(document.createTextNode(v[1]));
+                box.appendChild(l);
+            });
+        host.appendChild(box);
+    }
+
+    /* ---------- elements ---------- */
+
+    function pbBlankElement(type) {
+        var el = { id: pbUid('el'), type: type, style: {}, responsive: {}, content: {} };
+        if (type === 'heading') el.content = { text: 'Heading', level: 'h2' };
+        else if (type === 'text') el.content = { text: 'Write something here.' };
+        else if (type === 'button') el.content = { text: 'Button', href: '#' };
+        else if (type === 'image') el.content = { src: '', alt: '' };
+        else if (type === 'card') el.content = { title: 'Card title', text: 'Card text.' };
+        else if (type === 'columns') el.content = { columns: [
+            { elements: [{ id: pbUid('el'), type: 'text', content: { text: 'Left column.' }, style: {} }] },
+            { elements: [{ id: pbUid('el'), type: 'text', content: { text: 'Right column.' }, style: {} }] }
+        ] };
+        return el;
+    }
+
+    function pbElementList(host, list, depth) {
+        var wrap = document.createElement('div');
+        wrap.className = 'pb-els';
+        host.appendChild(wrap);
+
+        function repaint() {
+            wrap.innerHTML = '';
+            list.forEach(function (el, i) {
+                wrap.appendChild(pbElementCard(el, i, list, depth, repaint));
+            });
+            if (!list.length) {
+                var e = document.createElement('p');
+                e.className = 'hint';
+                e.textContent = 'Nothing in here yet.';
+                wrap.appendChild(e);
+            }
+        }
+        repaint();
+
+        var add = document.createElement('div');
+        add.className = 'pb-add pb-add-el';
+        PB_EL_TYPES.forEach(function (t) {
+            /* columns inside columns is the one nesting the renderer refuses */
+            if (t[0] === 'columns' && depth > 0) return;
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'pb-addbtn small';
+            b.setAttribute('data-el-type', t[0]);
+            b.innerHTML = '<i class="fas fa-plus"></i><span>' + esc(t[1]) + '</span>';
+            b.addEventListener('click', function () {
+                list.push(pbBlankElement(t[0]));
+                pbPersist();
+                repaint();
+                pbPaintPreview();
+                pbRefreshSummary();
+            });
+            add.appendChild(b);
+        });
+        host.appendChild(add);
+    }
+
+    function pbElementCard(el, i, list, depth, repaint) {
+        var card = document.createElement('div');
+        card.className = 'pb-el';
+        card.setAttribute('data-el-id', el.id);
+
+        var head = document.createElement('div');
+        head.className = 'pb-el-head';
+        var name = document.createElement('strong');
+        name.textContent = PB_EL_LABEL[el.type] || el.type;
+        head.appendChild(name);
+
+        var tools = document.createElement('div');
+        tools.className = 'pb-sec-tools';
+
+        var on = document.createElement('label');
+        on.className = 'pb-onoff';
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = el.enabled !== false;
+        cb.setAttribute('data-act', 'el-enable');
+        cb.addEventListener('change', function () {
+            el.enabled = cb.checked;
+            card.classList.toggle('off', !cb.checked);
+            pbPersist();
+            pbPaintPreview();
+        });
+        on.appendChild(cb);
+        on.appendChild(document.createTextNode('On'));
+        tools.appendChild(on);
+
+        var up = pbBtn('fa-arrow-up', 'Move up');
+        up.disabled = i === 0;
+        up.setAttribute('data-act', 'el-up');
+        up.addEventListener('click', function () {
+            var t = list[i - 1]; list[i - 1] = list[i]; list[i] = t;
+            pbPersist(); repaint(); pbPaintPreview();
+        });
+        tools.appendChild(up);
+
+        var down = pbBtn('fa-arrow-down', 'Move down');
+        down.disabled = i === list.length - 1;
+        down.setAttribute('data-act', 'el-down');
+        down.addEventListener('click', function () {
+            var t = list[i + 1]; list[i + 1] = list[i]; list[i] = t;
+            pbPersist(); repaint(); pbPaintPreview();
+        });
+        tools.appendChild(down);
+
+        var dup = pbBtn('fa-clone', 'Duplicate');
+        dup.setAttribute('data-act', 'el-dup');
+        dup.addEventListener('click', function () {
+            var copy = CMS.clone(el);
+            (function walk(e) {
+                e.id = pbUid('el');
+                var cols = (e.content || {}).columns;
+                if (cols) cols.forEach(function (c) { (c.elements || []).forEach(walk); });
+            })(copy);
+            list.splice(i + 1, 0, copy);
+            pbPersist(); repaint(); pbPaintPreview(); pbRefreshSummary();
+        });
+        tools.appendChild(dup);
+
+        var del = pbBtn('fa-trash', 'Delete', 'danger');
+        del.setAttribute('data-act', 'el-del');
+        del.addEventListener('click', function () {
+            list.splice(i, 1);
+            pbPersist(); repaint(); pbPaintPreview(); pbRefreshSummary();
+        });
+        tools.appendChild(del);
+
+        head.appendChild(tools);
+        card.appendChild(head);
+        if (el.enabled === false) card.className += ' off';
+
+        var body = document.createElement('div');
+        body.className = 'pb-el-body';
+
+        if (el.type === 'columns') {
+            var cols = (el.content && el.content.columns) || (el.content = { columns: [] }).columns;
+            var bar = document.createElement('div');
+            bar.className = 'pb-colbar';
+            var addCol = document.createElement('button');
+            addCol.type = 'button';
+            addCol.className = 'adm-btn ghost';
+            addCol.setAttribute('data-act', 'add-col');
+            addCol.innerHTML = '<i class="fas fa-plus"></i> Add column';
+            addCol.addEventListener('click', function () {
+                cols.push({ elements: [] });
+                pbPersist(); repaint(); pbPaintPreview();
+            });
+            bar.appendChild(addCol);
+            body.appendChild(bar);
+
+            cols.forEach(function (col, ci) {
+                var box = document.createElement('div');
+                box.className = 'pb-col';
+                box.setAttribute('data-col', String(ci));
+                var h = document.createElement('div');
+                h.className = 'pb-col-head';
+                h.innerHTML = '<strong>Column ' + (ci + 1) + '</strong>';
+                var rm = pbBtn('fa-trash', 'Remove column', 'danger');
+                rm.setAttribute('data-act', 'del-col');
+                rm.addEventListener('click', function () {
+                    cols.splice(ci, 1);
+                    pbPersist(); repaint(); pbPaintPreview();
+                });
+                h.appendChild(rm);
+                box.appendChild(h);
+                if (!col.elements) col.elements = [];
+                pbElementList(box, col.elements, depth + 1);
+                body.appendChild(box);
+            });
+        } else {
+            if (!el.content) el.content = {};
+            var grid = document.createElement('div');
+            grid.className = 'pb-grid';
+            (PB_CONTENT_FIELDS[el.type] || []).forEach(function (spec) {
+                grid.appendChild(pbFieldFor(spec, el.content, spec[0]));
+            });
+            body.appendChild(grid);
+
+            /* Images without alt text cost the page in search and in
+               screen readers, so the admin is told while editing. */
+            if (el.type === 'image' || el.type === 'card') {
+                var altKey = el.type === 'image' ? 'src' : 'image';
+                var altVal = el.type === 'image' ? 'alt' : 'imageAlt';
+                var w = document.createElement('p');
+                w.className = 'pb-warn';
+                w.setAttribute('data-warn', 'alt');
+                function sync() {
+                    var has = String(el.content[altKey] || '').trim();
+                    var alt = String(el.content[altVal] || '').trim();
+                    w.hidden = !(has && !alt);
+                    w.textContent = 'This image has no alt text. Search engines and screen readers cannot read it.';
+                }
+                sync();
+                body.addEventListener('input', sync);
+                body.addEventListener('change', sync);
+                body.appendChild(w);
+            }
+        }
+
+        var design = document.createElement('details');
+        design.className = 'pb-details';
+        design.innerHTML = '<summary>Design</summary>';
+        var dhost = document.createElement('div');
+        pbDesignEditor(dhost, el, PB_EL_STYLE_KEYS);
+        design.appendChild(dhost);
+        body.appendChild(design);
+
+        card.appendChild(body);
+        return card;
+    }
+
+    /* Keeps the "n elements" line in the collapsed header honest without
+       rebuilding the list and losing the cursor. */
+    function pbRefreshSummary() {
+        if (!pbOpen) return;
+        var i = pbIndexOf(pbOpen);
+        if (i < 0) return;
+        var row = document.querySelector('.pb-sec[data-sec-id="' + pbOpen + '"] .pb-sec-sum');
+        if (row) row.textContent = pbCount(pbDraft[i]);
     }
 
     /* Filled in by the live preview. */
@@ -2769,12 +3306,14 @@
     function wireBuilder() {
         var b;
         if ((b = $('#pbSaveDraft'))) b.addEventListener('click', function () {
+            pbFlush();
             pbPersist();
             buildBuilder();
             toast('Draft saved on this device. The live site is unchanged.');
         });
 
         if ((b = $('#pbPublish'))) b.addEventListener('click', function () {
+            pbFlush();
             CMS.sections.saveDraft(pbSlug, pbDraft);
             CMS.sections.publish(pbSlug);
             commit();                 /* the one action here that goes live */
@@ -2783,6 +3322,7 @@
         });
 
         if ((b = $('#pbDiscard'))) b.addEventListener('click', function () {
+            pbFlush();
             if (!window.confirm('Throw away the draft and start again from what is published?')) return;
             CMS.sections.discard(pbSlug);
             pbDraft = CMS.sections.draft(pbSlug).sections;
@@ -2833,6 +3373,7 @@
 
     wireSeoButtons();
     wireBuilder();
+    window.addEventListener('beforeunload', pbFlush);
     refreshAll();
 
     /* First run with no harvested content? Tell the admin how to fill it. */
