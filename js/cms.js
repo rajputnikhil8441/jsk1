@@ -1297,17 +1297,26 @@
         host.appendChild(frag);
     }
 
+    /* The admin preview's draft, for this window only. Set by passing an
+       override to paintSections() and remembered afterwards, so a later
+       repaint -- apply(), a remote refresh, or the storage event the admin
+       fires when it saves -- does not drop the preview back to what is
+       published. A public page never sets it. Pass null to clear. */
+    var previewOverride = null;
+
     /* Renders every mount point on the page. Returns the number rendered.
        `override` lets the admin preview draft sections without touching
        what is published. */
     function paintSections(override) {
+        if (override !== undefined) previewOverride = override;
+        var use = previewOverride;
         var hosts = document.querySelectorAll('[data-cms-sections]');
         var css = '', painted = 0, i;
         for (i = 0; i < hosts.length; i++) {
             var host = hosts[i];
             var slug = host.getAttribute('data-cms-sections');
-            var sections = (override && override.slug === slug) ? override.sections
-                                                                : publishedSections(slug);
+            var sections = (use && use.slug === slug) ? use.sections
+                                                      : publishedSections(slug);
             if (!sections) continue;                  /* leave the static markup alone */
             renderSectionsInto(host, sections);
             css += builderCSS(sections);

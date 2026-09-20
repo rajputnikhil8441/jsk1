@@ -2643,7 +2643,9 @@
         pbPaintState();
         pbPaintAdd();
         pbPaintList();
+        pbPaintDevices();
         pbPaintPreview();
+        pbFitPreview();
     }
 
     function pbPaintState() {
@@ -3299,8 +3301,109 @@
         if (row) row.textContent = pbCount(pbDraft[i]);
     }
 
-    /* Filled in by the live preview. */
-    function pbPaintPreview() {}
+    /* ---------- live preview ----------
+       The preview is the real page in an iframe, painted with the draft
+       through CMS.sections.paint({slug, sections}). That override renders
+       sections the public gate would refuse, so the admin sees the draft
+       while visitors keep seeing what is published. Nothing is written. */
+
+    var PB_VIEWPORTS = [['desktop', 'Desktop', 1280, 'fa-desktop'],
+                        ['tablet',  'Tablet',   900, 'fa-tablet-screen-button'],
+                        ['mobile',  'Mobile',   390, 'fa-mobile-screen-button']];
+    var pbViewport = 'desktop';
+    var PB_FRAME_H = 900;
+
+    function pbViewportWidth() {
+        for (var i = 0; i < PB_VIEWPORTS.length; i++) {
+            if (PB_VIEWPORTS[i][0] === pbViewport) return PB_VIEWPORTS[i][2];
+        }
+        return 1280;
+    }
+
+    function pbPaintDevices() {
+        var host = $('#pbDevices');
+        if (!host) return;
+        host.innerHTML = '';
+        PB_VIEWPORTS.forEach(function (v) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'pb-devtab' + (v[0] === pbViewport ? ' active' : '');
+            b.setAttribute('data-viewport', v[0]);
+            b.innerHTML = '<i class="fas ' + v[3] + '"></i> ' + esc(v[1]) +
+                          ' <em>' + v[2] + '</em>';
+            b.addEventListener('click', function () {
+                pbViewport = v[0];
+                pbPaintDevices();
+                pbFitPreview();
+            });
+            host.appendChild(b);
+        });
+    }
+
+    /* Scale the real viewport width down to whatever room the column has,
+       so the section really is laid out at 390px on the mobile setting
+       rather than just squeezed. */
+    function pbFitPreview() {
+        var stage = $('#pbStage'), f = $('#pbFrame');
+        if (!stage || !f) return;
+        var w = pbViewportWidth();
+        var avail = stage.clientWidth - 20;
+        var k = avail > 0 ? Math.min(1, avail / w) : 1;
+        f.style.width = w + 'px';
+        f.style.height = PB_FRAME_H + 'px';
+        f.style.transform = 'scale(' + k + ')';
+        f.style.transformOrigin = 'top left';
+        f.setAttribute('data-viewport', pbViewport);
+        stage.style.height = Math.round(PB_FRAME_H * k) + 'px';
+    }
+
+    function pbFrameWin() {
+        var f = $('#pbFrame');
+        try { return f && f.contentWindow ? f.contentWindow : null; } catch (e) { return null; }
+    }
+
+    function pbPaintFrame() {
+        var w = pbFrameWin();
+        if (!w || !w.CMS || !w.CMS.sections) return;
+        try { w.CMS.sections.paint({ slug: pbSlug, sections: pbDraft }); } catch (e) {}
+    }
+
+    /* Links in the preview must not navigate the admin away from the panel. */
+    function pbTameFrame() {
+        var w = pbFrameWin();
+        if (!w || !w.document) return;
+        try {
+            w.document.addEventListener('click', function (e) {
+                var a = e.target && e.target.closest ? e.target.closest('a') : null;
+                if (a) e.preventDefault();
+            }, true);
+            /* A remote refresh repaints from what is published; put the
+               draft back afterwards. */
+            w.document.addEventListener('cms:remote-loaded', pbPaintFrame);
+        } catch (e) {}
+    }
+
+    function pbPaintPreview() {
+        var f = $('#pbFrame');
+        if (!f) return;
+        var page = CMS.data().pages[pbSlug] || {};
+        var tag = $('#pbPrevTag');
+        if (tag) {
+            var st = CMS.sections.status(pbSlug);
+            tag.textContent = (!st.live || st.dirty) ? 'Draft' : 'Live';
+            tag.className = 'pill' + ((!st.live || st.dirty) ? ' warn' : '');
+        }
+        if (!page.url) { f.removeAttribute('src'); return; }
+        var url = '../' + page.url;
+        if (f.getAttribute('data-page') !== url) {
+            f.setAttribute('data-page', url);
+            f.onload = function () { pbTameFrame(); pbPaintFrame(); pbFitPreview(); };
+            f.src = url;
+            return;
+        }
+        pbPaintFrame();
+    }
+
 
     /* ---------- draft / publish buttons ---------- */
     function wireBuilder() {
@@ -3374,6 +3477,7 @@
     wireSeoButtons();
     wireBuilder();
     window.addEventListener('beforeunload', pbFlush);
+    window.addEventListener('resize', pbFitPreview);
     refreshAll();
 
     /* First run with no harvested content? Tell the admin how to fill it. */
