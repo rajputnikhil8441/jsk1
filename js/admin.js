@@ -1978,6 +1978,7 @@
             '    <link rel="stylesheet" href="css/menu.css" />\n' +
             '    <link rel="stylesheet" href="css/responsive.css" />\n' +
             '    <link rel="stylesheet" href="css/content.css" />\n' +
+            '    <link rel="stylesheet" href="css/sections.css" />\n' +
             '    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" />\n' +
             '    <link rel="icon" id="cmsFavicon" />\n\n' +
             '    <script src="js/cms-config.js"></scr' + 'ipt>\n' +
@@ -1991,6 +1992,8 @@
             '            <h1 data-cms-text="pages.' + e(key) + '.heading">' + e(p.heading) + '</h1>\n' +
             '            <p class="info-lead" data-cms-text="pages.' + e(key) + '.lead">' + e(p.lead) + '</p>\n' +
             '            <div class="info-body" data-cms-html="pages.' + e(key) + '.body"></div>\n' +
+            '            <!-- Page Builder mount. Stays empty until sections are published. -->\n' +
+            '            <div data-cms-sections="' + e(key) + '"></div>\n' +
             '        </article>\n' +
             '    </main>\n\n' +
             '    <script src="js/menu.js"></scr' + 'ipt>\n' +
@@ -2029,9 +2032,13 @@
                 breadcrumb: { label: sstr(newPageDraft.label) || slug, show: true },
                 schema: { webPage: true, breadcrumb: true, contactPage: false },
                 inSitemap: true,
-                updatedAt: todayIso()
+                updatedAt: todayIso(),
+                /* the generated stub carries a <div data-cms-sections>, so the
+                   Page Builder can offer this page too */
+                builderMount: true
             };
             markDirty();
+            buildBuilder();
             $('#btnDownloadPage').hidden = false;
             $('#btnDownloadPage').setAttribute('data-key', slug);
             toast('Page created in the CMS. Download the HTML file and add it to the site.');
@@ -2438,6 +2445,361 @@
     };
 
     /* ========================================================
+       PAGE BUILDER
+       Sections are edited as a draft and only reach visitors when the
+       admin presses Publish. Every draft write goes through commit(true),
+       which saves locally and deliberately skips remote publishing, so
+       saving a draft cannot change the live site. Publish is the one
+       action here that calls commit() normally.
+
+       The other panels are untouched: nothing below writes anything
+       except builderDrafts[slug] and pages[slug].builder.
+    ======================================================== */
+
+    var PB_TYPES = [
+        ['hero',      'Hero',         'fa-star'],
+        ['text',      'Text',         'fa-align-left'],
+        ['image',     'Image',        'fa-image'],
+        ['imageText', 'Image + text', 'fa-table-columns'],
+        ['cards',     'Cards',        'fa-grip'],
+        ['columns',   'Columns',      'fa-table-columns'],
+        ['banner',    'Banner',       'fa-bullhorn']
+    ];
+
+    var PB_TYPE_LABEL = {};
+    PB_TYPES.forEach(function (t) { PB_TYPE_LABEL[t[0]] = t[1]; });
+
+    var pbSlug = null;      /* slug being edited */
+    var pbDraft = [];       /* the working sections */
+    var pbOpen = null;      /* id of the expanded section */
+
+    function pbUid(prefix) {
+        return prefix + '_' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
+    }
+
+    /* Local save only. commit(true) skips CMS.remote.publish(), which is
+       what keeps a draft off the live site. */
+    function pbPersist() {
+        CMS.sections.saveDraft(pbSlug, pbDraft);
+        commit(true);
+    }
+
+    function pbSelect(slug) {
+        pbSlug = slug;
+        pbDraft = CMS.sections.draft(slug).sections;
+        pbOpen = null;
+        buildBuilder();
+    }
+
+    function pbBlankSection(type) {
+        var sec = { id: pbUid('sec'), type: type, enabled: true,
+                    visibility: { desktop: true, tablet: true, mobile: true },
+                    style: {}, responsive: { tablet: {}, mobile: {} }, elements: [] };
+        /* A new section starts with something visible, so the preview is
+           never an empty box the admin has to guess at. */
+        if (type === 'image') {
+            sec.elements.push({ id: pbUid('el'), type: 'image',
+                content: { src: '', alt: '' }, style: {} });
+        } else if (type === 'cards') {
+            sec.elements.push({ id: pbUid('el'), type: 'card',
+                content: { title: 'Card title', text: 'Card text.' }, style: {} });
+        } else if (type === 'columns') {
+            sec.elements.push({ id: pbUid('el'), type: 'columns', style: {}, content: { columns: [
+                { elements: [{ id: pbUid('el'), type: 'text', content: { text: 'Left column.' }, style: {} }] },
+                { elements: [{ id: pbUid('el'), type: 'text', content: { text: 'Right column.' }, style: {} }] }
+            ] } });
+        } else {
+            sec.elements.push({ id: pbUid('el'), type: 'heading',
+                content: { text: PB_TYPE_LABEL[type] + ' heading', level: 'h2' }, style: {} });
+            sec.elements.push({ id: pbUid('el'), type: 'text',
+                content: { text: 'Write something here.' }, style: {} });
+        }
+        return sec;
+    }
+
+    function pbIndexOf(id) {
+        for (var i = 0; i < pbDraft.length; i++) { if (pbDraft[i].id === id) return i; }
+        return -1;
+    }
+
+    function pbAddSection(type) {
+        var sec = pbBlankSection(type);
+        pbDraft.push(sec);
+        pbOpen = sec.id;
+        pbPersist();
+        buildBuilder();
+        toast(PB_TYPE_LABEL[type] + ' section added to the draft.');
+    }
+
+    function pbMove(id, delta) {
+        var i = pbIndexOf(id), j = i + delta;
+        if (i < 0 || j < 0 || j >= pbDraft.length) return;
+        var tmp = pbDraft[i]; pbDraft[i] = pbDraft[j]; pbDraft[j] = tmp;
+        pbPersist();
+        buildBuilder();
+    }
+
+    function pbDuplicate(id) {
+        var i = pbIndexOf(id);
+        if (i < 0) return;
+        var copy = CMS.clone(pbDraft[i]);
+        pbReid(copy);
+        pbDraft.splice(i + 1, 0, copy);
+        pbOpen = copy.id;
+        pbPersist();
+        buildBuilder();
+    }
+
+    /* A duplicated section must not reuse ids: they address the generated CSS. */
+    function pbReid(sec) {
+        sec.id = pbUid('sec');
+        (function walk(list) {
+            if (!list || !list.length) return;
+            list.forEach(function (el) {
+                el.id = pbUid('el');
+                var cols = (el.content || {}).columns;
+                if (cols && cols.length) cols.forEach(function (c) { walk(c.elements); });
+            });
+        })(sec.elements);
+    }
+
+    function pbRemove(id) {
+        var i = pbIndexOf(id);
+        if (i < 0) return;
+        if (!window.confirm('Delete this section from the draft? The live page is not affected until you publish.')) return;
+        pbDraft.splice(i, 1);
+        if (pbOpen === id) pbOpen = null;
+        pbPersist();
+        buildBuilder();
+    }
+
+    function pbToggle(id, on) {
+        var i = pbIndexOf(id);
+        if (i < 0) return;
+        pbDraft[i].enabled = !!on;
+        pbPersist();
+        buildBuilder();
+    }
+
+    /* ---------- rendering ---------- */
+
+    function pbBtn(icon, title, cls) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'pb-ico' + (cls ? ' ' + cls : '');
+        b.title = title;
+        b.setAttribute('aria-label', title);
+        b.innerHTML = '<i class="fas ' + icon + '"></i>';
+        return b;
+    }
+
+    function pbCount(sec) {
+        var n = (sec.elements || []).length;
+        return n === 1 ? '1 element' : n + ' elements';
+    }
+
+    function buildBuilder() {
+        var tabs = $('#pbTabs');
+        if (!tabs) return;
+
+        var slugs = CMS.sections.pages();
+        if (!slugs.length) {
+            tabs.innerHTML = '';
+            $('#pbList').innerHTML = '<p class="hint">No page in this site has a builder mount yet.</p>';
+            return;
+        }
+        if (slugs.indexOf(pbSlug) === -1) {
+            pbSlug = slugs[0];
+            pbDraft = CMS.sections.draft(pbSlug).sections;
+        }
+
+        /* page tabs */
+        tabs.innerHTML = '';
+        slugs.forEach(function (s) {
+            var page = CMS.data().pages[s] || {};
+            var st = CMS.sections.status(s);
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'pagetab' + (s === pbSlug ? ' active' : '');
+            b.setAttribute('data-slug', s);
+            b.textContent = page.label || s;
+            if (st.live) {
+                var dot = document.createElement('span');
+                dot.className = 'pb-dot' + (st.dirty ? ' dirty' : '');
+                dot.title = st.dirty ? 'Published, with unpublished changes' : 'Published';
+                b.appendChild(dot);
+            }
+            b.addEventListener('click', function () { pbSelect(s); });
+            tabs.appendChild(b);
+        });
+
+        pbPaintState();
+        pbPaintAdd();
+        pbPaintList();
+        pbPaintPreview();
+    }
+
+    function pbPaintState() {
+        var st = CMS.sections.status(pbSlug);
+        var page = CMS.data().pages[pbSlug] || {};
+        var el = $('#pbState');
+        var label, cls;
+        if (!st.live && !pbDraft.length)      { label = 'Not built — the page shows its shipped content'; cls = 'off'; }
+        else if (!st.live)                    { label = 'Draft only — nothing is live for this page'; cls = 'draft'; }
+        else if (st.dirty)                    { label = 'Live, with unpublished draft changes'; cls = 'dirty'; }
+        else                                  { label = 'Live and up to date'; cls = 'live'; }
+        el.className = 'pb-state ' + cls;
+        el.textContent = label;
+
+        $('#pbPublish').disabled  = !pbDraft.length;
+        $('#pbDiscard').disabled  = !CMS.sections.dirty(pbSlug);
+        $('#pbUnpublish').disabled = !st.live;
+
+        var open = $('#pbOpen');
+        if (page.url) { open.href = '../' + page.url; open.hidden = false; }
+        else { open.hidden = true; }
+    }
+
+    function pbPaintAdd() {
+        var host = $('#pbAdd');
+        host.innerHTML = '';
+        PB_TYPES.forEach(function (t) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'pb-addbtn';
+            b.setAttribute('data-type', t[0]);
+            b.innerHTML = '<i class="fas ' + t[2] + '"></i><span>' + esc(t[1]) + '</span>';
+            b.addEventListener('click', function () { pbAddSection(t[0]); });
+            host.appendChild(b);
+        });
+    }
+
+    function pbPaintList() {
+        var host = $('#pbList');
+        host.innerHTML = '';
+        if (!pbDraft.length) {
+            host.innerHTML = '<p class="hint">This draft has no sections. Add one above. ' +
+                'Until you publish, visitors keep seeing the content that ships in the page’s HTML file.</p>';
+            return;
+        }
+
+        pbDraft.forEach(function (sec, i) {
+            var row = document.createElement('div');
+            row.className = 'pb-sec' + (sec.enabled === false ? ' off' : '') +
+                            (pbOpen === sec.id ? ' open' : '');
+            row.setAttribute('data-sec-id', sec.id);
+
+            var head = document.createElement('div');
+            head.className = 'pb-sec-head';
+
+            var expand = document.createElement('button');
+            expand.type = 'button';
+            expand.className = 'pb-sec-title';
+            expand.innerHTML = '<i class="fas fa-chevron-' + (pbOpen === sec.id ? 'down' : 'right') + '"></i>' +
+                '<strong>' + esc(PB_TYPE_LABEL[sec.type] || sec.type) + '</strong>' +
+                '<span class="pb-sec-sum">' + esc(pbCount(sec)) + '</span>';
+            expand.addEventListener('click', function () {
+                pbOpen = (pbOpen === sec.id) ? null : sec.id;
+                buildBuilder();
+            });
+            head.appendChild(expand);
+
+            var tools = document.createElement('div');
+            tools.className = 'pb-sec-tools';
+
+            var on = document.createElement('label');
+            on.className = 'pb-onoff';
+            on.title = 'Show this section';
+            var cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.checked = sec.enabled !== false;
+            cb.setAttribute('data-act', 'enable');
+            cb.addEventListener('change', function () { pbToggle(sec.id, cb.checked); });
+            on.appendChild(cb);
+            on.appendChild(document.createTextNode('On'));
+            tools.appendChild(on);
+
+            var up = pbBtn('fa-arrow-up', 'Move up');
+            up.disabled = i === 0;
+            up.setAttribute('data-act', 'up');
+            up.addEventListener('click', function () { pbMove(sec.id, -1); });
+            tools.appendChild(up);
+
+            var down = pbBtn('fa-arrow-down', 'Move down');
+            down.disabled = i === pbDraft.length - 1;
+            down.setAttribute('data-act', 'down');
+            down.addEventListener('click', function () { pbMove(sec.id, 1); });
+            tools.appendChild(down);
+
+            var dup = pbBtn('fa-clone', 'Duplicate');
+            dup.setAttribute('data-act', 'dup');
+            dup.addEventListener('click', function () { pbDuplicate(sec.id); });
+            tools.appendChild(dup);
+
+            var del = pbBtn('fa-trash', 'Delete', 'danger');
+            del.setAttribute('data-act', 'del');
+            del.addEventListener('click', function () { pbRemove(sec.id); });
+            tools.appendChild(del);
+
+            head.appendChild(tools);
+            row.appendChild(head);
+
+            if (pbOpen === sec.id) {
+                var body = document.createElement('div');
+                body.className = 'pb-sec-body';
+                pbSectionBody(body, sec);
+                row.appendChild(body);
+            }
+            host.appendChild(row);
+        });
+    }
+
+    /* Filled in by the element editors. */
+    function pbSectionBody(host, sec) {
+        var p = document.createElement('p');
+        p.className = 'hint';
+        p.textContent = pbCount(sec) + ' in this section.';
+        host.appendChild(p);
+    }
+
+    /* Filled in by the live preview. */
+    function pbPaintPreview() {}
+
+    /* ---------- draft / publish buttons ---------- */
+    function wireBuilder() {
+        var b;
+        if ((b = $('#pbSaveDraft'))) b.addEventListener('click', function () {
+            pbPersist();
+            buildBuilder();
+            toast('Draft saved on this device. The live site is unchanged.');
+        });
+
+        if ((b = $('#pbPublish'))) b.addEventListener('click', function () {
+            CMS.sections.saveDraft(pbSlug, pbDraft);
+            CMS.sections.publish(pbSlug);
+            commit();                 /* the one action here that goes live */
+            buildBuilder();
+            if (!CMS.remote.enabled) toast('Published. This page now shows your sections.');
+        });
+
+        if ((b = $('#pbDiscard'))) b.addEventListener('click', function () {
+            if (!window.confirm('Throw away the draft and start again from what is published?')) return;
+            CMS.sections.discard(pbSlug);
+            pbDraft = CMS.sections.draft(pbSlug).sections;
+            commit(true);
+            buildBuilder();
+            toast('Draft discarded.');
+        });
+
+        if ((b = $('#pbUnpublish'))) b.addEventListener('click', function () {
+            if (!window.confirm('Take these sections off the live page? It goes back to the content in its HTML file. The draft is kept.')) return;
+            CMS.sections.unpublish(pbSlug);
+            commit();
+            buildBuilder();
+        });
+    }
+
+    /* ========================================================
        BOOT
     ======================================================== */
     function esc(v) {
@@ -2458,6 +2820,7 @@
         buildPages();
         buildSeo();
         buildSportsTable();
+        buildBuilder();
         buildPresets();
         renderPreview();
         $('#brandLabel').textContent = CMS.get('branding.siteName', 'BRAND');
@@ -2469,6 +2832,7 @@
     }
 
     wireSeoButtons();
+    wireBuilder();
     refreshAll();
 
     /* First run with no harvested content? Tell the admin how to fill it. */
