@@ -33,16 +33,24 @@
     transform: rotate(180deg);
 }
 
-/* The white dropdown box */
+/* The white dropdown box.
+   Compact popup proportions taken from the reference: 160px wide,
+   4px corners, a subtle 1px hairline and a soft shadow, 8px of
+   vertical padding. min-width rather than width so a longer label
+   ("Responsible Gaming") widens the box just enough instead of
+   wrapping; max-width keeps it inside a narrow viewport. */
 .pagemenu-list {
     position: absolute;
     top: calc(100% + 6px);
     right: 0;
-    min-width: 210px;
+    min-width: 160px;
+    max-width: calc(100vw - 16px);
+    box-sizing: border-box;
     background: #ffffff;
-    border-radius: 10px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, .28);
-    padding: 6px 0;
+    border: 1px solid rgba(0, 0, 0, .15);
+    border-radius: 4px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .20);
+    padding: 8px 0;
     margin: 0;
     list-style: none;
     display: none;
@@ -57,13 +65,18 @@
     margin: 0;
 }
 
+/* Menu rows. 19px line-height + 6px padding top and bottom gives the
+   reference's 31px row. Roboto Condensed is scoped to the dropdown so
+   the site's global font is untouched. */
 .pagemenu-list a {
     display: block;
-    padding: 13px 22px;
-    color: #1a1a1a;
+    padding: 6px 12px;
+    color: #000000;
     text-decoration: none;
-    font-size: 15px;
-    font-weight: 500;
+    font-family: "Roboto Condensed", Arial, sans-serif;
+    font-size: 16px;
+    font-weight: 400;
+    line-height: 19px;
     white-space: nowrap;
 }
 
@@ -71,8 +84,9 @@
     background: #f2f4f7;
 }
 
+/* Full-width hairline separating the last group, as in the reference. */
 .pagemenu-list .menu-divider {
     height: 1px;
-    background: #e5e7eb;
-    margin: 6px 0;
+    background: #dddddd;
+    margin: 8px 0;
 }
