@@ -1325,6 +1325,127 @@
     }
 
     /* ========================================================
+       PAGE BUILDER -- DRAFT / PUBLISH
+         builderDrafts[slug]   the admin's working copy. Never read by the
+                               public renderer, so saving one cannot change
+                               the live site.
+         pages[slug].builder   what is live. Only written when the admin
+                               explicitly presses Publish.
+       Nothing here touches the save/publish behaviour of the other admin
+       panels: draft writes go through save() only, and the caller decides
+       whether to push anything to remote storage.
+    ======================================================== */
+
+    /* Slugs whose shipped HTML carries a <div data-cms-sections="..."> mount.
+       A page the admin creates sets builderMount on its own pages entry,
+       because the generated stub includes the mount. */
+    var PB_MOUNTED = { about: true, contact: true, 'responsible-gaming': true };
+
+    function pbToday() {
+        var d = new Date();
+        function two(n) { return (n < 10 ? '0' : '') + n; }
+        return d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate());
+    }
+
+    function pbBlank() {
+        return { schemaVersion: PB_SCHEMA, status: 'draft', sections: [], updatedAt: '' };
+    }
+
+    /* The live block for a slug, whatever its status (null when there is none). */
+    function builderBlock(slug) {
+        var page = (load().pages || {})[slug];
+        return (page && page.builder) || null;
+    }
+
+    /* The admin's working copy. Falls back to a copy of what is live, so
+       opening a published page in the builder starts from what visitors see. */
+    function draftBlock(slug) {
+        var d = (load().builderDrafts || {})[slug];
+        if (d && isArr(d.sections)) {
+            return { schemaVersion: PB_SCHEMA, status: 'draft',
+                     sections: clone(d.sections), updatedAt: str(d.updatedAt) };
+        }
+        var pub = builderBlock(slug);
+        if (pub && isArr(pub.sections) && pub.sections.length) {
+            return { schemaVersion: PB_SCHEMA, status: 'draft',
+                     sections: clone(pub.sections), updatedAt: str(pub.updatedAt) };
+        }
+        return pbBlank();
+    }
+
+    /* Save the working copy. The live page is deliberately left alone. */
+    function saveDraft(slug, sections) {
+        var st = load();
+        if (!st.builderDrafts) st.builderDrafts = {};
+        st.builderDrafts[slug] = { schemaVersion: PB_SCHEMA, status: 'draft',
+                                   sections: isArr(sections) ? clone(sections) : [],
+                                   updatedAt: pbToday() };
+        return save();
+    }
+
+    /* Copy the working copy onto the live page. This is the only call that
+       changes what a visitor can see. */
+    function publishDraft(slug) {
+        var st = load();
+        var sections = draftBlock(slug).sections;
+        if (!st.pages) st.pages = {};
+        if (!st.pages[slug]) st.pages[slug] = {};
+        st.pages[slug].builder = { schemaVersion: PB_SCHEMA, status: 'published',
+                                   sections: clone(sections), updatedAt: pbToday() };
+        if (!st.builderDrafts) st.builderDrafts = {};
+        st.builderDrafts[slug] = { schemaVersion: PB_SCHEMA, status: 'draft',
+                                   sections: clone(sections), updatedAt: pbToday() };
+        return save();
+    }
+
+    /* Take the page back to its shipped HTML. The draft is kept, so the
+       work is not lost and can be published again. */
+    function unpublishPage(slug) {
+        var page = (load().pages || {})[slug];
+        if (!page || !page.builder) return true;
+        page.builder.status = 'draft';
+        page.builder.updatedAt = pbToday();
+        return save();
+    }
+
+    /* Throw the working copy away and start again from what is live. */
+    function discardDraft(slug) {
+        var st = load();
+        if (st.builderDrafts) delete st.builderDrafts[slug];
+        return save();
+    }
+
+    function liveSections(slug) {
+        var pub = builderBlock(slug);
+        return (pub && pub.status === 'published' && isArr(pub.sections)) ? pub.sections : [];
+    }
+
+    /* True when the draft says something different from what is live. */
+    function draftDiffers(slug) {
+        return JSON.stringify(draftBlock(slug).sections) !== JSON.stringify(liveSections(slug));
+    }
+
+    function builderStatus(slug) {
+        var pub = builderBlock(slug);
+        var isLive = !!(pub && pub.status === 'published' &&
+                        isArr(pub.sections) && pub.sections.length);
+        return { live: isLive, dirty: draftDiffers(slug),
+                 sections: draftBlock(slug).sections.length,
+                 updatedAt: (pub && str(pub.updatedAt)) || '' };
+    }
+
+    /* Slugs the builder can edit: the shipped mounts plus admin-created pages. */
+    function builderPages() {
+        var pages = load().pages || {}, out = [], k;
+        for (k in pages) {
+            if (!Object.prototype.hasOwnProperty.call(pages, k)) continue;
+            if (PB_MOUNTED[k] || (pages[k] && pages[k].builderMount)) out.push(k);
+        }
+        out.sort();
+        return out;
+    }
+
+    /* ========================================================
        INFO PAGES — path addressed content
          data-cms-meta="pages.about.metaDescription"  -> <meta content>
          data-cms-text="pages.about.heading"          -> textContent
@@ -1908,7 +2029,20 @@
             paint: paintSections,
             css: builderCSS,
             published: publishedSections,
-            safeUrl: pbUrl
+            safeUrl: pbUrl,
+
+            /* draft / publish */
+            mounted: PB_MOUNTED,
+            pages: builderPages,
+            draft: draftBlock,
+            live: liveSections,
+            saveDraft: saveDraft,
+            publish: publishDraft,
+            unpublish: unpublishPage,
+            discard: discardDraft,
+            dirty: draftDiffers,
+            status: builderStatus,
+            blank: pbBlank
         },
         preview: preview,
         remote: Remote,
