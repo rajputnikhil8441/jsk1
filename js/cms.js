@@ -1267,6 +1267,19 @@
         '4':          ['1fr 1fr 1fr 1fr', 4]
     };
 
+    /* Reading an allow-list by a name that came from stored content.
+
+       A bare map[name] is not a membership test: every object inherits
+       "constructor", "toString" and the rest from Object.prototype, so
+       PB_ICONS['constructor'] hands back a function, which then gets
+       stringified into a class attribute. Every lookup keyed by author
+       data goes through here. */
+    function pbPick(map, name) {
+        var k = str(name);
+        if (!k || !Object.prototype.hasOwnProperty.call(map, k)) return null;
+        return map[k] || null;
+    }
+
     function pbColLayout(name) {
         var k = str(name);
         if (!k || !Object.prototype.hasOwnProperty.call(PB_COL_LAYOUTS, k)) return null;
@@ -1508,7 +1521,7 @@
 
         icon: function (el) {
             var c = el.content || {};
-            var cls = PB_ICONS[str(c.icon)];
+            var cls = pbPick(PB_ICONS, c.icon);
             if (!cls) return null;            /* unknown name renders nothing */
             var glyph = pbEl('i', 'pb-icon-glyph ' + cls);
             glyph.setAttribute('aria-hidden', 'true');
@@ -1539,13 +1552,13 @@
 
         notice: function (el) {
             var c = el.content || {};
-            var variant = PB_NOTICE_VARIANTS[str(c.variant)] ? str(c.variant) : 'info';
+            var variant = pbPick(PB_NOTICE_VARIANTS, c.variant) ? str(c.variant) : 'info';
             var box = pbEl('div', 'pb-el pb-notice pb-notice-' + variant);
             /* "note" is the advisory role. Deliberately not "alert": that is
                assertive and interrupts a screen reader, which is wrong for
                text that was on the page before the reader arrived. */
             box.setAttribute('role', 'note');
-            var cls = PB_ICONS[str(c.icon)];
+            var cls = pbPick(PB_ICONS, c.icon);
             if (cls) {
                 var i = pbEl('i', 'pb-notice-icon ' + cls);
                 i.setAttribute('aria-hidden', 'true');
@@ -1572,7 +1585,7 @@
         featureBox: function (el) {
             var c = el.content || {};
             var box = pbEl('div', 'pb-el pb-feature');
-            var cls = PB_ICONS[str(c.icon)];
+            var cls = pbPick(PB_ICONS, c.icon);
             if (cls) {
                 var i = pbEl('i', 'pb-feature-icon ' + cls);
                 i.setAttribute('aria-hidden', 'true');
@@ -1584,7 +1597,7 @@
                 if (img) { img.className += ' pb-feature-img'; box.appendChild(img); }
             }
             if (str(c.title)) {
-                var lvl = PB_HEADING_LEVELS[String(c.titleLevel || 'h3').toLowerCase()]
+                var lvl = pbPick(PB_HEADING_LEVELS, String(c.titleLevel || 'h3').toLowerCase())
                     ? String(c.titleLevel).toLowerCase() : 'h3';
                 var h = pbEl(lvl, 'pb-feature-title');
                 h.textContent = str(c.title);
@@ -1667,7 +1680,7 @@
             var made = 0;
             for (var i = 0; i < items.length; i++) {
                 var it = items[i] || {};
-                var plat = PB_SOCIAL[str(it.platform)];
+                var plat = pbPick(PB_SOCIAL, it.platform);
                 if (!plat) continue;           /* platform not on the list */
                 var href = pbUrl(it.url);
                 if (!href) continue;           /* and the URL must pass too */

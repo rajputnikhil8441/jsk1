@@ -494,14 +494,17 @@ window.PBAdmin = function (host) {
     var PB_ITEM_FIELDS = {
         faq: {
             key: 'items', label: 'Questions', addLabel: 'Add question',
-            blank: function () { return { question: 'New question', answer: '', open: false }; },
+            blank: function () { return { question: 'New question', answer: 'Answer', open: false }; },
             title: function (it) { return String((it && it.question) || 'Question'); },
             fields: [['question', 'Question', 'text'], ['answer', 'Answer', 'area'],
                      ['open', 'Open by default', 'bool']]
         },
         socialLinks: {
             key: 'items', label: 'Links', addLabel: 'Add link',
-            blank: function () { return { platform: 'whatsapp', url: '' }; },
+            /* "#" for the same reason as the element default above: a row
+               that renders the moment it is added, without inventing a
+               link to somewhere real. */
+            blank: function () { return { platform: 'whatsapp', url: '#' }; },
             title: function (it) { return String((it && it.platform) || 'Link'); },
             fields: [['platform', 'Platform', 'socialSelect'], ['url', 'URL', 'url'],
                      ['label', 'Accessible label (optional)', 'text']]
@@ -1088,18 +1091,54 @@ window.PBAdmin = function (host) {
 
     /* ---------- elements ---------- */
 
+    /* What a newly added element starts with.
+
+       Every entry here has to make the element render something the moment
+       it is added. Several of the V2 factories refuse to draw anything at
+       all without content -- an icon with no icon name, a FAQ with no
+       question and a social row with no usable URL each return null by
+       design -- so shipping them with {} meant adding one and seeing
+       nothing, with every design control apparently dead.
+
+       The placeholder values are deliberately plain, and are chosen from
+       the renderer's own allow-lists (PB_ICONS, PB_SOCIAL,
+       PB_NOTICE_VARIANTS) rather than invented here, so a default can
+       never be a value the renderer would refuse. The social link points
+       at "#" rather than a real profile: it is visibly a placeholder and
+       cannot send a visitor anywhere. None of this changes what the
+       renderer accepts -- stored content that is empty or malformed still
+       fails exactly as safely as before. */
+    var PB_BLANK_CONTENT = {
+        heading: function () { return { text: 'Heading', level: 'h2' }; },
+        text:    function () { return { text: 'Write something here.' }; },
+        button:  function () { return { text: 'Button', href: '#' }; },
+        image:   function () { return { src: '', alt: '' }; },
+        card:    function () { return { title: 'Card title', text: 'Card text.' }; },
+        columns: function () {
+            return { columns: [
+                { elements: [{ id: pbUid('el'), type: 'text', content: { text: 'Left column.' }, style: {} }] },
+                { elements: [{ id: pbUid('el'), type: 'text', content: { text: 'Right column.' }, style: {} }] }
+            ] };
+        },
+
+        /* V2. Divider and Spacer are pure styling: they draw themselves with
+           no content at all, so they stay empty. */
+        icon:        function () { return { icon: 'star', label: 'Icon' }; },
+        notice:      function () { return { text: 'Notice', variant: 'info', icon: 'info' }; },
+        featureBox:  function () {
+            return { icon: 'star', title: 'Feature title', text: 'Feature description' };
+        },
+        faq:         function () {
+            return { items: [{ question: 'Frequently asked question', answer: 'Answer', open: false }] };
+        },
+        socialLinks: function () { return { items: [{ platform: 'whatsapp', url: '#' }] }; }
+    };
+
     function pbBlankElement(type) {
-        var el = { id: pbUid('el'), type: type, style: {}, responsive: {}, content: {} };
-        if (type === 'heading') el.content = { text: 'Heading', level: 'h2' };
-        else if (type === 'text') el.content = { text: 'Write something here.' };
-        else if (type === 'button') el.content = { text: 'Button', href: '#' };
-        else if (type === 'image') el.content = { src: '', alt: '' };
-        else if (type === 'card') el.content = { title: 'Card title', text: 'Card text.' };
-        else if (type === 'columns') el.content = { columns: [
-            { elements: [{ id: pbUid('el'), type: 'text', content: { text: 'Left column.' }, style: {} }] },
-            { elements: [{ id: pbUid('el'), type: 'text', content: { text: 'Right column.' }, style: {} }] }
-        ] };
-        return el;
+        var make = Object.prototype.hasOwnProperty.call(PB_BLANK_CONTENT, type)
+            ? PB_BLANK_CONTENT[type] : null;
+        return { id: pbUid('el'), type: type, style: {}, responsive: {},
+                 content: make ? make() : {} };
     }
 
     function pbElementList(host, list, depth) {
