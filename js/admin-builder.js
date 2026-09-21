@@ -515,8 +515,10 @@ window.PBAdmin = function (host) {
         /* V2: column tracks. First in the list because it is the control
            that decides what the element looks like. */
         ['columns',    'Column layout',     'colsSelect'],
-        ['bg',         'Background colour', 'color'],
-        ['color',      'Text colour',       'color'],
+        /* Stage 6: a role or a custom value, in one control. */
+        ['typography', 'Typography role',   'typoRef'],
+        ['bg',         'Background colour', 'colorRef'],
+        ['color',      'Text colour',       'colorRef'],
         ['bgImage',    'Background image',  'url'],
         ['fontSize',   'Text size (px)',    'num'],
         ['fontWeight', 'Text weight',       'select',
@@ -545,7 +547,7 @@ window.PBAdmin = function (host) {
         ['lineStyle',  'Line style',        'select',
             [['', '(inherit)'], ['solid', 'Solid'], ['dashed', 'Dashed'],
              ['dotted', 'Dotted'], ['double', 'Double']]],
-        ['lineColor',  'Line colour',       'color']
+        ['lineColor',  'Line colour',       'colorRef']
     ];
 
     /* ---------- Stage 5: the seven control groups ----------
@@ -555,7 +557,7 @@ window.PBAdmin = function (host) {
     var PB_STYLE_GROUPS = [
         ['layout',     'Layout',     ['columns', 'align', 'maxWidth', 'height', 'gap']],
         ['spacing',    'Spacing',    ['padding', 'margin']],
-        ['typography', 'Typography', ['fontSize', 'fontWeight', 'lineHeight', 'letterSpacing']],
+        ['typography', 'Typography', ['typography', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing']],
         ['colors',     'Colors',     ['color', 'bg']],
         ['border',     'Border',     ['border', 'lineWidth', 'lineStyle', 'lineColor', 'radius']],
         ['shadow',     'Shadow',     ['shadow']],
@@ -794,7 +796,122 @@ window.PBAdmin = function (host) {
         return el;
     }
 
-    /* ---------- Stage 5: composite controls over an existing key ----------
+    /* ---------- Stage 6: global design references ----------
+
+       A colour control offers the global roles and a custom value in one
+       place. Choosing a role stores "@primary"; choosing Custom reveals
+       the colour box and leaves whatever was stored alone until something
+       is actually typed, so flipping between the two does not throw the
+       reference away.
+
+       The role names come from the renderer, so this list cannot drift
+       from the one the stylesheet will accept. */
+
+    function pbColorRoles() {
+        var m = CMS.sections.colorRoles || {}, out = [];
+        for (var k in m) { if (Object.prototype.hasOwnProperty.call(m, k)) out.push(k); }
+        return out;
+    }
+
+    function pbTypoRoleNames() {
+        var m = CMS.sections.typoRoles || {}, out = [];
+        for (var k in m) { if (Object.prototype.hasOwnProperty.call(m, k)) out.push(k); }
+        return out;
+    }
+
+    function pbTitle(s) { return String(s).charAt(0).toUpperCase() + String(s).slice(1); }
+
+    /* Words for the roles. A role with no wording here still appears under
+       its own name, so the two can never quietly fall out of step. */
+    var PB_ROLE_WORDS = {
+        primary: 'Primary', secondary: 'Secondary', text: 'Text', muted: 'Muted text',
+        border: 'Border', background: 'Page background', surface: 'Surface',
+        success: 'Success', warning: 'Warning', danger: 'Danger'
+    };
+    var PB_TYPO_WORDS = {
+        body: 'Body text', h1: 'Heading 1', h2: 'Heading 2', h3: 'Heading 3',
+        h4: 'Heading 4', h5: 'Heading 5', h6: 'Heading 6', button: 'Button'
+    };
+
+    /* Select + colour box, writing one value: either "@role" or a literal. */
+    function pbColorControl(get, set, emptyLabel) {
+        var box = document.createElement('span');
+        box.className = 'pb-parts';
+        var custom = null;               /* assigned below; referenced early */
+
+        var isRef = function () { return String(get() || '').charAt(0) === '@'; };
+        /* Remembered so switching to a role and back offers the colour the
+           author had, rather than an empty box. */
+        var lastCustom = isRef() ? '' : String(get() || '');
+
+        var opts = [['', emptyLabel || '(inherit)']]
+            .concat(pbColorRoles().map(function (r) {
+                return ['@' + r, 'Global: ' + (PB_ROLE_WORDS[r] || pbTitle(r))];
+            }))
+            .concat([['custom', 'Custom\u2026']]);
+
+        var sel = pbInput('select', opts,
+            function () {
+                var v = String(get() || '');
+                if (!v) return '';
+                return v.charAt(0) === '@' ? v : 'custom';
+            },
+            function (v) {
+                if (v === 'custom') {
+                    custom.hidden = false;
+                    /* Deliberately not clearing the stored reference: until
+                       a colour is typed there is nothing better to show. */
+                    if (lastCustom) { set(lastCustom); custom.value = lastCustom; }
+                    custom.focus();
+                    return;
+                }
+                custom.hidden = true;
+                set(v);
+            }, null);
+        sel.setAttribute('data-part', 'role');
+        box.appendChild(sel);
+
+        custom = pbInput('color', null,
+            function () { return isRef() ? '' : get(); },
+            function (v) { lastCustom = v; set(v); }, null);
+        custom.setAttribute('data-part', 'value');
+        custom.hidden = isRef() || !String(get() || '');
+        box.appendChild(custom);
+
+        return box;
+    }
+
+    function pbColorRefField(spec, bag, key, ctx) {
+        var box = pbColorControl(
+            function () { return bag[key]; },
+            function (v) {
+                if (v === '' || v == null) delete bag[key];
+                else bag[key] = v;
+                if (ctx && ctx.onChange) ctx.onChange(key, v);
+            },
+            (ctx && ctx.device && ctx.device !== 'base') ? '(inherit)' : '(default)');
+        return pbRow(spec[1], box);
+    }
+
+    /* The typography role: one select, no custom half. An author who wants
+       exact numbers uses the size and weight controls below it, which are
+       written after the role in the same rule and therefore win. */
+    function pbTypoRefField(spec, bag, key, ctx) {
+        var opts = [['', '(none)']].concat(pbTypoRoleNames().map(function (r) {
+            return ['@' + r, 'Global: ' + (PB_TYPO_WORDS[r] || pbTitle(r))];
+        }));
+        var input = pbInput('select', opts,
+            function () { return bag[key]; },
+            function (v) {
+                if (v === '') delete bag[key]; else bag[key] = v;
+                if (ctx && ctx.onChange) ctx.onChange(key, v);
+            }, null);
+        input.setAttribute('data-part', 'typo');
+        return pbRow(spec[1], input,
+            'Sets size, weight and spacing together. Anything you set below wins over it.');
+    }
+
+    /* ---------- Stage 5: composite controls over an existing key ----------    /* ---------- Stage 5: composite controls over an existing key ----------
 
        Both of these keep the stored wire format exactly as it was -- one
        string under `border`, one under `shadow` -- and only change how that
@@ -855,7 +972,13 @@ window.PBAdmin = function (host) {
         sub('select', [['', 'Solid']].concat(PB_BORDER_STYLES.map(function (x) {
             return [x, x.charAt(0).toUpperCase() + x.slice(1)];
         })), 'style');
-        sub('color', null, 'color');
+        /* The colour half takes a global role too, so a border can follow
+           the palette like any other colour. */
+        var colorBox = pbColorControl(
+            function () { return parts.color; },
+            function (v) { parts.color = v; write(); }, '(default)');
+        colorBox.setAttribute('data-part', 'color');
+        box.appendChild(colorBox);
 
         return pbRow(spec[1], box, 'Thickness, style and colour.');
     }
@@ -904,6 +1027,8 @@ window.PBAdmin = function (host) {
         if (spec[2] === 'colsSelect') {
             spec = [spec[0], spec[1], 'select', pbColOptions((ctx && ctx.device) || 'base')];
         }
+        if (spec[2] === 'colorRef')     return pbColorRefField(spec, bag, key, ctx);
+        if (spec[2] === 'typoRef')      return pbTypoRefField(spec, bag, key, ctx);
         if (spec[2] === 'borderParts')  return pbBorderField(spec, bag, key, ctx);
         if (spec[2] === 'shadowPreset') return pbShadowField(spec, bag, key, ctx);
 

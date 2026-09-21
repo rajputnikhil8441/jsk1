@@ -195,6 +195,133 @@ out as flex or grid items rather than as blocks of text.
 Headings get a default size per level (h1 34px … h6 15px). Any authored
 `fontSize` still wins.
 
+## Global design (stage 6)
+
+Ten semantic colour roles and eight typography roles that a section or element
+points at by name, so one change moves everything using them.
+
+### Schema
+
+One top-level `design` key, in the same JSON object as everything else — no new
+Supabase table, no change to RLS or authentication:
+
+```js
+design: {
+  colors:     { <role>: "<css colour>" },     // Page-Builder-only overrides
+  typography: { <role>: { fontSize, fontWeight, lineHeight, letterSpacing } }
+}
+```
+
+Both maps ship **empty**, and a record that has no `design` key at all resolves
+exactly the same way. A role only appears once someone sets it.
+
+### Colour roles and where they come from
+
+| Role | Resolves from | Shipped value |
+| --- | --- | --- |
+| `primary` | site colour `hdr-bg` | `#0088cc` |
+| `text` | site colour `text` | `#222222` |
+| `muted` | site colour `text-dim` | `#777777` |
+| `border` | site colour `border` | `#d4d4d4` |
+| `background` | site colour `page-bg` | `#eef0f3` |
+| `surface` | site colour `content-bg` | `#ffffff` |
+| `secondary` | — | `#5a6b7c` |
+| `success` | — | `#1e7e34` |
+| `warning` | — | `#b8860b` |
+| `danger` | — | `#c62828` |
+
+The first six are **aliases**: the Colors panel stays their source of truth and
+nothing is copied. The last four name concepts the site has no colour for, so
+they carry a constant in `PB_COLOR_ROLES`.
+
+Resolution order for every role: `design.colors[role]` → the site colour it
+aliases → the shipped constant. Each candidate goes through `pbCssValue()`, so
+a broken saved value is skipped rather than emitted.
+
+### Typography roles
+
+`body`, `h1`–`h6`, `button`, each carrying `fontSize`, `fontWeight`,
+`lineHeight` and `letterSpacing`. The `h1`–`h6` defaults are the same numbers
+`css/sections.css` already falls back to, so pointing a heading at its matching
+role changes nothing until the role is edited.
+
+Only `body` maps into the site's own typography system (`typography.base`);
+`TYPO_TARGETS` has no `h1`–`h6`, and its `headerBtns` targets the site's header
+buttons rather than anything the Page Builder draws. Resolution order:
+`design.typography[role][prop]` → `typography.base[prop]` for `body` only →
+the shipped constant.
+
+### Heading level is not a typography role
+
+`content.level` decides the HTML tag (`<h2>`), `style.typography` decides how it
+looks (`@h1`). They are independent: choosing a role never rewrites the level,
+and changing the level never rewrites a style value.
+
+### How a reference reaches the page
+
+`designCSS()` builds one `:root` block into `<style id="cmsDesign">`:
+
+```
+:root{--pbg-primary:#0088cc;…;--pbg-h2-size:28px;--pbg-h2-weight:700;…}
+```
+
+An element storing `color: "@primary"` emits
+`--pbe-color:var(--pbg-primary,#0088cc)` — **the reference, never the resolved
+colour**. Changing a global value therefore repaints ~900 bytes of `:root` and
+moves every element at once; no element rule is regenerated. `paintVars()`
+calls `paintDesign()`, so a role that aliases a site colour follows it live.
+
+A typography role expands into the four font properties, written through the
+same token map (so a section gets `--pbs-*` and an element `--pbe-*`) and only
+for the properties that element type actually reads. It is emitted **before**
+the individual size/weight/spacing keys, so an explicit value later in the same
+rule wins. That is the whole override mechanism: local beats global by source
+order, not by specificity.
+
+### Global vs local
+
+| Stored | Result |
+| --- | --- |
+| `color: "@primary"` | follows the global role |
+| `color: "#ff0000"` | custom; unaffected by global changes |
+| `typography: "@h2"` | size, weight, line and letter spacing from the role |
+| `typography: "@h2", fontSize: 30` | role supplies the rest; `30px` wins |
+| nothing | the element's shipped default, exactly as in V1 |
+
+Switching a control from a role to Custom does not clear the stored reference
+until a colour is actually typed, and the previous custom colour is offered
+back when switching again — so flipping between the two loses neither.
+
+### Scope
+
+A `design.colors` override is written to `--pbg-*`, which only the Page Builder
+reads. Overriding the builder's Primary cannot repaint the navigation, the odds
+table or the footer. Editing the site colour in the **Colors** panel does move
+both, because they are the same value by definition.
+
+### Token security
+
+- A name is only ever a **key** into `PB_COLOR_ROLES` / `PB_TYPO_ROLES`, read
+  with `hasOwnProperty`, so `@constructor`, `@toString`, `@__proto__` and
+  `@hasOwnProperty` resolve to nothing.
+- What is emitted is built from the map. The stored text never reaches the
+  stylesheet.
+- An unrecognised name emits **no declaration at all**, leaving the element's
+  shipped default in charge.
+- `pbCssValue()` refuses any value containing `var(`, so author text cannot
+  reach a custom property that the design tokens do not own.
+- In a border shorthand a role is accepted only as the final colour word;
+  `2px @primary solid` is refused outright rather than half-resolved.
+
+### Fallback
+
+Every emitted reference carries the shipped constant as its `var()` fallback,
+so a page whose `:root` block never arrived still paints a sensible colour. A
+`design` key that is missing, `null`, a string, or half-built resolves to the
+shipped values without throwing.
+
+---
+
 ## Safety
 
 - **No arbitrary HTML.** Every element is built with `document.createElement`

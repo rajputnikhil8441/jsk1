@@ -332,6 +332,11 @@
         });
         var btn = $('.adm-nav-item[data-panel="' + name + '"]');
         if (btn) $('#panelTitle').textContent = btn.textContent.trim();
+        /* Six of the design roles report what the Colors panel currently
+           holds, so the text is stale the moment a colour is edited
+           elsewhere. Rebuilt on the way in rather than on every keystroke
+           over there. */
+        if (name === 'design') buildDesign();
         $('#admSide').classList.remove('open');
         window.scrollTo(0, 0);
     }
@@ -391,6 +396,10 @@
         var val = CMS.get('colors.' + key, '#000000');
         var row = document.createElement('div');
         row.className = 'crow';
+        /* Inert, but it gives this row a stable handle -- the Page Builder's
+           colour roles alias some of these keys, and a test has to be able
+           to change the right one. */
+        row.setAttribute('data-color-key', key);
         row.innerHTML =
             '<input type="color" ' + (isHex(val) ? 'value="' + val + '"' : '') + '>' +
             '<label>' + label + '</label>' +
@@ -414,6 +423,12 @@
         CMS.paintVars();      /* repaints the admin preview instantly */
         renderPreview();
         markDirty();
+        /* A Page Builder colour role that follows this colour now resolves
+           to something else, so the Global Design panel's "resolves to"
+           lines are stale. Rebuilt here only while that panel is the one on
+           screen; otherwise showPanel() does it on the way in. */
+        var d = $('#panel-design');
+        if (d && d.classList.contains('active')) buildDesign();
     }
 
 
@@ -480,6 +495,184 @@
         data.typography[section][key] = val;
         CMS.paintTypography();
         markDirty();
+    }
+
+    /* ---------- Global Design (Page Builder) ----------
+       Two cards: the ten colour roles and the eight typography roles.
+
+       Six colour roles are aliases of colours that already exist in the
+       Colors panel, and that panel stays their source of truth: the row
+       says which colour it follows and shows what it currently resolves
+       to. Overriding one writes to design.colors, which only the Page
+       Builder reads -- so an override here cannot repaint the rest of the
+       site, and clearing it hands the role back to Colors. */
+
+    var DESIGN_ROLE_WORDS = {
+        primary: 'Primary', secondary: 'Secondary', text: 'Text', muted: 'Muted text',
+        border: 'Border', background: 'Page background', surface: 'Surface',
+        success: 'Success', warning: 'Warning', danger: 'Danger'
+    };
+    var DESIGN_SITE_WORDS = {
+        'hdr-bg': 'Header background', 'text': 'Body text', 'text-dim': 'Dimmed text',
+        'border': 'Border', 'page-bg': 'Page background', 'content-bg': 'Content background'
+    };
+    var DESIGN_TYPO_WORDS = {
+        body: 'Body text', h1: 'Heading 1', h2: 'Heading 2', h3: 'Heading 3',
+        h4: 'Heading 4', h5: 'Heading 5', h6: 'Heading 6', button: 'Button'
+    };
+    var DESIGN_TYPO_FIELDS = [
+        ['fontSize', 'Size (px)'], ['fontWeight', 'Weight'],
+        ['lineHeight', 'Line spacing'], ['letterSpacing', 'Letter spacing (px)']
+    ];
+
+    function designData() {
+        var d = CMS.data();
+        if (!d.design || typeof d.design !== 'object') d.design = {};
+        if (!d.design.colors) d.design.colors = {};
+        if (!d.design.typography) d.design.typography = {};
+        return d.design;
+    }
+
+    /* Every edit repaints the one :root block the references read -- in this
+       document, which is what the admin itself shows -- and then saves
+       locally, because the Page Builder preview is a separate document that
+       repaints off the storage event. Debounced so that typing a colour
+       does not write on every keystroke, exactly as the builder's own draft
+       autosave does. Publishing to other devices still waits for Save
+       changes, as it does for every other panel. */
+    var designSaveTimer = null;
+    function designTouched() {
+        CMS.sections.paintDesign();
+        markDirty();
+        if (designSaveTimer) clearTimeout(designSaveTimer);
+        designSaveTimer = setTimeout(function () {
+            designSaveTimer = null;
+            commit(true);
+        }, 250);
+    }
+
+    function buildDesign() {
+        var wrap = $('#designRoles');
+        if (!wrap) return;
+        wrap.innerHTML = '';
+
+        var roles = CMS.sections.colorRoles || {};
+        var colorCard = document.createElement('div');
+        colorCard.className = 'card';
+        colorCard.innerHTML = '<h2>Colors</h2>' +
+            '<p class="hint">Point a Page Builder element at one of these and it follows ' +
+            'whatever this is set to.</p>';
+        var cgrid = document.createElement('div');
+        cgrid.className = 'typo-grid design-grid';
+
+        Object.keys(roles).forEach(function (role) {
+            var siteKey = roles[role][0];
+            var row = document.createElement('div');
+            row.className = 'design-role';
+            row.setAttribute('data-role', role);
+
+            var head = document.createElement('div');
+            head.className = 'design-role-head';
+            head.innerHTML = '<strong>' + esc(DESIGN_ROLE_WORDS[role] || role) + '</strong>';
+            var src = document.createElement('em');
+            src.className = 'design-role-src';
+            row.appendChild(head);
+
+            var sw = document.createElement('span');
+            sw.className = 'design-swatch';
+
+            var input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'design-role-in';
+            input.setAttribute('data-role-input', role);
+            input.placeholder = siteKey ? 'Follows Colors' : 'Leave blank for the default';
+
+            function sync() {
+                var stored = designData().colors[role];
+                input.value = stored == null ? '' : String(stored);
+                var resolved = CMS.sections.roleColor(role);
+                sw.style.background = resolved;
+                sw.setAttribute('data-resolved', resolved);
+                src.textContent = stored
+                    ? 'Overridden for the Page Builder \u2014 ' + resolved
+                    : (siteKey
+                        ? 'Uses the site \u201c' + (DESIGN_SITE_WORDS[siteKey] || siteKey) +
+                          '\u201d colour \u2014 ' + resolved
+                        : 'Page Builder only \u2014 ' + resolved);
+                clear.hidden = !stored;
+            }
+
+            input.addEventListener('input', function () {
+                var v = input.value.trim();
+                if (v) designData().colors[role] = v;
+                else delete designData().colors[role];
+                designTouched();
+                sync();
+            });
+
+            var clear = document.createElement('button');
+            clear.type = 'button';
+            clear.className = 'adm-btn ghost design-clear';
+            clear.textContent = siteKey ? 'Use the site colour' : 'Use the default';
+            clear.addEventListener('click', function () {
+                delete designData().colors[role];
+                designTouched();
+                sync();
+            });
+
+            var line = document.createElement('div');
+            line.className = 'design-role-line';
+            line.appendChild(sw);
+            line.appendChild(input);
+            row.appendChild(line);
+            row.appendChild(src);
+            row.appendChild(clear);
+            sync();
+            cgrid.appendChild(row);
+        });
+        colorCard.appendChild(cgrid);
+        wrap.appendChild(colorCard);
+
+        var typo = CMS.sections.typoRoles || {};
+        var typoCard = document.createElement('div');
+        typoCard.className = 'card';
+        typoCard.innerHTML = '<h2>Typography</h2>' +
+            '<p class="hint">Text styles a Page Builder element can point at. These do not ' +
+            'change the rest of the site \u2014 the <strong>Typography</strong> panel still ' +
+            'owns that. Leave a box blank to keep the shipped value.</p>';
+
+        Object.keys(typo).forEach(function (role) {
+            var block = document.createElement('div');
+            block.className = 'design-typo';
+            block.setAttribute('data-typo-role', role);
+            block.innerHTML = '<strong>' + esc(DESIGN_TYPO_WORDS[role] || role) + '</strong>';
+            var g = document.createElement('div');
+            g.className = 'typo-grid';
+            DESIGN_TYPO_FIELDS.forEach(function (f) {
+                var lab = document.createElement('label');
+                lab.className = 'typo-field';
+                lab.innerHTML = '<span>' + esc(f[1]) + '</span>';
+                var inp = document.createElement('input');
+                inp.type = 'text';
+                inp.setAttribute('data-typo-input', role + '.' + f[0]);
+                inp.placeholder = String(typo[role][f[0]]);
+                var store = designData().typography;
+                inp.value = (store[role] && store[role][f[0]] != null) ? String(store[role][f[0]]) : '';
+                inp.addEventListener('input', function () {
+                    var t = designData().typography;
+                    if (!t[role]) t[role] = {};
+                    var v = inp.value.trim();
+                    if (v) t[role][f[0]] = v; else delete t[role][f[0]];
+                    if (!Object.keys(t[role]).length) delete t[role];
+                    designTouched();
+                });
+                lab.appendChild(inp);
+                g.appendChild(lab);
+            });
+            block.appendChild(g);
+            typoCard.appendChild(block);
+        });
+        wrap.appendChild(typoCard);
     }
 
     function buildTypography() {
@@ -2478,6 +2671,7 @@
         hydrateBindings();
         buildColors();
         buildTypography();
+        buildDesign();
         buildRegister();
         buildText();
         buildImages();

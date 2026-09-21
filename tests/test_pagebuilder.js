@@ -1030,8 +1030,14 @@ const el  = (id, type, content, style, responsive) =>
     await p.$$eval(`${TOP2} > .pb-els > .pb-elcard > .pb-elcard-body > .pb-details .pb-group`,
       gs => gs.forEach(g => { g.open = true; }));
     await p.waitForTimeout(120);
-    const colorIn = `${TOP2} > .pb-els > .pb-elcard > .pb-elcard-body > .pb-details .pb-field:has(> span:text-is("Text colour")) .pb-in`;
-    if (await p.$(colorIn)) {
+    /* Stage 6 made every colour control "a global role or a custom value",
+       so reaching the colour box means choosing Custom first, as a person
+       would. The assertion below is unchanged. */
+    const colorField = `${TOP2} > .pb-els > .pb-elcard > .pb-elcard-body > .pb-details .pb-field:has(> span:text-is("Text colour"))`;
+    const colorIn = `${colorField} [data-part="value"] input[type="text"]`;
+    if (await p.$(colorField)) {
+      await p.selectOption(`${colorField} [data-part="role"]`, 'custom');
+      await p.waitForTimeout(250);
       await p.fill(colorIn, '#ff0055'); await p.waitForTimeout(700);
       fr = p.frame({ url: u => /about\.html/.test(u) });
       check('a colour set in the admin is the computed colour in the preview',

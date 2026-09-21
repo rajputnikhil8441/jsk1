@@ -503,6 +503,18 @@
         /* Per-section typography. Empty string = inherit existing CSS. */
         typography: {},
 
+        /* ---- Page Builder global design (stage 6) ----
+           Deliberately empty. Six of the ten colour roles are aliases of
+           colours that already exist above, so storing anything here by
+           default would duplicate them; a role only appears once someone
+           overrides it FOR THE PAGE BUILDER, which is the only thing a
+           value here affects. The four roles the site has no equivalent
+           for, and every typography role, carry shipped constants in
+           PB_COLOR_ROLES / PB_TYPO_ROLES rather than in saved data, so an
+           older record that has no `design` key at all resolves exactly
+           the same way. See docs/page-builder.md. */
+        design: { colors: {}, typography: {} },
+
         /* Registration page — toggles + appearance (see /admin > Registration) */
         registerPage: {
             enabled: true,
@@ -768,6 +780,7 @@
         tag.textContent = css;
 
         paintTypography();
+        paintDesign();      /* roles that alias a site colour follow it live */
         paintRegister();
         paintSportsTable();
     }
@@ -1140,6 +1153,10 @@
        --pbe-* it might have inherited (see .pb-el in css/sections.css), so a
        value can only ever style the node it was set on. */
     var PB_SEC_TOKENS = {
+        /* Stage 6. Expands into the font properties below, so it is listed
+           first: a rule emits declarations in this order, and an explicit
+           value written later wins over the role's. */
+        typography: ['', ''],
         bg:         ['--pbs-bg', ''],
         bgImage:    ['--pbs-bg-image', ''],
         color:      ['--pbs-color', ''],
@@ -1162,6 +1179,8 @@
     };
 
     var PB_EL_TOKENS = {
+        /* Stage 6 -- see the note on PB_SEC_TOKENS above. */
+        typography: ['', ''],
         bg:         ['--pbe-bg', ''],
         color:      ['--pbe-color', ''],
         fontSize:   ['--pbe-font-size', 'px'],
@@ -1193,21 +1212,22 @@
        builds its Design tab from this, so a control is never offered for an
        element whose CSS would ignore it. */
     var PB_EL_STYLE_KEYS = {
-        heading: ['color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+        heading: ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
                   'align', 'bg', 'padding',
                   'margin', 'maxWidth', 'border', 'radius', 'shadow'],
-        text:    ['color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+        text:    ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
                   'align', 'bg', 'padding',
                   'margin', 'maxWidth', 'border', 'radius', 'shadow'],
         image:   ['align', 'margin', 'maxWidth', 'height', 'border', 'radius', 'shadow'],
-        button:  ['bg', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+        button:  ['typography', 'bg', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
                   'align', 'padding',
                   'margin', 'border', 'radius', 'shadow'],
         /* A card's title and text carry .pb-el of their own, which resets the
            element namespace -- so the card's line height would stop at the
-           wrapper and never reach the words. Letter spacing still reaches
-           them, because that is an inherited CSS property and the children
-           do not declare it. */
+           wrapper and never reach the words, and a typography role, which is
+           mostly size and weight, would have nothing left to set. Letter
+           spacing still reaches them, because that is an inherited CSS
+           property and the children do not declare it. */
         card:    ['bg', 'color', 'letterSpacing', 'align', 'padding', 'margin',
                   'maxWidth', 'gap', 'border', 'radius', 'shadow'],
         columns: ['columns', 'align', 'margin', 'maxWidth', 'gap'],
@@ -1218,13 +1238,13 @@
         divider:     ['lineWidth', 'lineStyle', 'lineColor', 'maxWidth', 'align', 'margin'],
         spacer:      ['height', 'maxWidth'],
         icon:        ['color', 'fontSize', 'align', 'bg', 'padding', 'margin', 'radius'],
-        notice:      ['bg', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+        notice:      ['typography', 'bg', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
                       'align', 'padding', 'margin',
                       'maxWidth', 'gap', 'border', 'radius', 'shadow'],
-        featureBox:  ['bg', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+        featureBox:  ['typography', 'bg', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
                       'align', 'padding', 'margin',
                       'maxWidth', 'gap', 'border', 'radius', 'shadow'],
-        faq:         ['bg', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+        faq:         ['typography', 'bg', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
                       'align', 'padding', 'margin',
                       'maxWidth', 'gap', 'border', 'radius', 'shadow'],
         socialLinks: ['color', 'fontSize', 'align', 'bg', 'padding', 'margin', 'gap', 'radius']
@@ -1266,6 +1286,189 @@
         '3-25-25-50': ['25fr 25fr 50fr', 3],
         '4':          ['1fr 1fr 1fr 1fr', 4]
     };
+
+    /* =====================================================
+       PAGE BUILDER GLOBAL DESIGN (stage 6)
+       -----------------------------------------------------
+       Ten semantic colour roles and eight typography roles that a
+       section or element can reference by name -- "@primary" rather than
+       "#0088cc" -- so changing the global value moves everything that
+       points at it.
+
+       WHERE THE VALUES COME FROM. Six of the colour roles are aliases of
+       colours the site already has; the Colors panel stays their single
+       source of truth and this layer never copies them. The other four
+       name concepts the site has no colour for, so they carry a shipped
+       constant here. Either way a role can be overridden in
+       design.colors, and that override reaches the Page Builder ONLY:
+       it is written to a --pbg-* property that nothing outside the
+       builder reads, so setting the builder's Primary cannot repaint the
+       navigation, the odds table or the footer.
+
+       HOW A REFERENCE REACHES THE PAGE. A stored "@primary" is emitted
+       as var(--pbg-primary, <shipped constant>), never as the resolved
+       colour, so every element that references a role is updated by one
+       :root block rather than by regenerating its rule. The fallback in
+       that var() is the constant from this map, so a page whose design
+       block never loaded still renders a sensible colour instead of
+       nothing.
+
+       SECURITY. A name is only ever a key into these maps, read with
+       hasOwnProperty, and what gets emitted is built from the map -- the
+       stored text itself never reaches the stylesheet. An unrecognised
+       name emits no declaration at all, which leaves the element's
+       shipped default in charge. */
+
+    /* role -> [existing colors key it aliases (null if none), shipped value] */
+    var PB_COLOR_ROLES = {
+        primary:    ['hdr-bg',     '#0088cc'],
+        secondary:  [null,         '#5a6b7c'],
+        text:       ['text',       '#222222'],
+        muted:      ['text-dim',   '#777777'],
+        border:     ['border',     '#d4d4d4'],
+        background: ['page-bg',    '#eef0f3'],
+        surface:    ['content-bg', '#ffffff'],
+        success:    [null,         '#1e7e34'],
+        warning:    [null,         '#b8860b'],
+        danger:     [null,         '#c62828']
+    };
+
+    /* role -> the shipped typography it stands for. The heading numbers are
+       the same ones css/sections.css already falls back to, so pointing a
+       heading at its matching role changes nothing until the role is
+       edited. */
+    var PB_TYPO_ROLES = {
+        body:   { fontSize: '16px', fontWeight: '400', lineHeight: '1.6',  letterSpacing: 'inherit' },
+        h1:     { fontSize: '34px', fontWeight: '700', lineHeight: '1.25', letterSpacing: 'inherit' },
+        h2:     { fontSize: '28px', fontWeight: '700', lineHeight: '1.25', letterSpacing: 'inherit' },
+        h3:     { fontSize: '22px', fontWeight: '700', lineHeight: '1.25', letterSpacing: 'inherit' },
+        h4:     { fontSize: '19px', fontWeight: '700', lineHeight: '1.25', letterSpacing: 'inherit' },
+        h5:     { fontSize: '17px', fontWeight: '700', lineHeight: '1.25', letterSpacing: 'inherit' },
+        h6:     { fontSize: '15px', fontWeight: '700', lineHeight: '1.25', letterSpacing: 'inherit' },
+        button: { fontSize: '15px', fontWeight: '600', lineHeight: '1.2',  letterSpacing: 'inherit' }
+    };
+
+    /* Where a role has an equivalent in the site's own typography system,
+       that system stays its source, exactly as the Colors panel does for
+       the six mapped colours. Only Body has one: TYPO_TARGETS has no h1-h6,
+       and its headerBtns targets the site's own header buttons rather than
+       anything the Page Builder draws, so mapping the Button role onto it
+       would tie together two things an author thinks of separately. */
+    var PB_TYPO_SITE = { body: 'base' };
+
+    /* The four typography properties a role carries, and the --pbg-* suffix
+       each one is published under. */
+    var PB_TYPO_PROPS = {
+        fontSize:      'size',
+        fontWeight:    'weight',
+        lineHeight:    'line',
+        letterSpacing: 'letter'
+    };
+
+    function pbDesignBlock() {
+        var d = load().design;
+        return (d && typeof d === 'object') ? d : {};
+    }
+
+    /* What a colour role currently resolves to. Order: an override stored
+       for the Page Builder, then the site colour it aliases, then the
+       shipped constant. Anything that fails the value check is ignored
+       rather than emitted, so a broken saved value cannot break the page. */
+    function pbRoleColor(role) {
+        var spec = pbPick(PB_COLOR_ROLES, role);
+        if (!spec) return '';
+        var own = (pbDesignBlock().colors || {})[role];
+        var v = pbCssValue(own);
+        if (v) return v;
+        if (spec[0]) {
+            v = pbCssValue((load().colors || {})[spec[0]]);
+            if (v) return v;
+        }
+        return spec[1];
+    }
+
+    function pbRoleTypo(role, prop) {
+        var spec = pbPick(PB_TYPO_ROLES, role);
+        if (!spec) return '';
+        function use(raw) {
+            var v = pbCssValue(raw);
+            if (!v) return '';
+            if ((prop === 'fontSize' || prop === 'letterSpacing') && /^-?[0-9.]+$/.test(v)) v += 'px';
+            return v;
+        }
+        var v = use(((pbDesignBlock().typography || {})[role] || {})[prop]);
+        if (v) return v;
+        var site = pbPick(PB_TYPO_SITE, role);
+        if (site) {
+            v = use(((load().typography || {})[site] || {})[prop]);
+            if (v) return v;
+        }
+        return spec[prop];
+    }
+
+    /* The one :root block every reference points at. Repainted by
+       paintVars(), so editing a site colour moves the roles that alias it
+       without anything else having to know. */
+    function designCSS() {
+        var css = ':root{', role, prop;
+        for (role in PB_COLOR_ROLES) {
+            if (!Object.prototype.hasOwnProperty.call(PB_COLOR_ROLES, role)) continue;
+            css += '--pbg-' + role + ':' + pbRoleColor(role) + ';';
+        }
+        for (role in PB_TYPO_ROLES) {
+            if (!Object.prototype.hasOwnProperty.call(PB_TYPO_ROLES, role)) continue;
+            for (prop in PB_TYPO_PROPS) {
+                if (!Object.prototype.hasOwnProperty.call(PB_TYPO_PROPS, prop)) continue;
+                css += '--pbg-' + role + '-' + PB_TYPO_PROPS[prop] + ':' +
+                       pbRoleTypo(role, prop) + ';';
+            }
+        }
+        return css + '}';
+    }
+
+    function paintDesign() {
+        var tag = document.getElementById('cmsDesign');
+        if (!tag) {
+            tag = document.createElement('style');
+            tag.id = 'cmsDesign';
+            (document.head || document.documentElement).appendChild(tag);
+        }
+        tag.textContent = designCSS();
+    }
+
+    /* "@primary" -> var(--pbg-primary, #0088cc). Returns '' for anything
+       that is not a role on the list, including every name inherited from
+       Object.prototype. */
+    function pbColorRef(raw) {
+        var v = str(raw);
+        if (v.charAt(0) !== '@') return '';
+        var spec = pbPick(PB_COLOR_ROLES, v.slice(1));
+        if (!spec) return '';
+        return 'var(--pbg-' + v.slice(1) + ',' + spec[1] + ')';
+    }
+
+    /* A colour-valued style value: a role reference, or a literal that has
+       to pass the ordinary value check. A reference that names nothing
+       yields '' and the caller drops the declaration. */
+    function pbColorValue(raw) {
+        var v = str(raw);
+        if (v.charAt(0) === '@') return pbColorRef(v);
+        return pbCssValue(v);
+    }
+
+    /* The border shorthand keeps its own wire format, so a role reference
+       arrives as the last word of "2px solid @primary". */
+    function pbBorderValue(raw) {
+        var v = pbCssValue(raw);
+        if (!v || v.indexOf('@') === -1) return v;
+        var parts = v.split(/\s+/);
+        var last = parts[parts.length - 1];
+        if (last.charAt(0) !== '@') return '';    /* @ anywhere else: refuse */
+        var ref = pbColorRef(last);
+        if (!ref) return '';
+        parts[parts.length - 1] = ref;
+        return parts.join(' ');
+    }
 
     /* Reading an allow-list by a name that came from stored content.
 
@@ -1394,6 +1597,11 @@
         if (/[;{}<>\\"']/.test(v)) return '';
         if (/[\u0000-\u001f\u007f]/.test(v)) return '';
         if (/url\s*\(|expression\s*\(|@import|javascript:/i.test(v)) return '';
+        /* var() is how the global design tokens reach the page, and those
+           are built here from a trusted map -- never from typed text. A
+           value that arrives already containing var() would be able to read
+           any custom property on the page, so it is refused outright. */
+        if (/var\s*\(/i.test(v)) return '';
         return v;
     }
 
@@ -1751,6 +1959,27 @@
        that chain can only exist if the three tiers are distinguishable. */
     var PB_COL_PROP = { '': '--pbe-cols', tablet: '--pbe-cols-t', mobile: '--pbe-cols-m' };
 
+    /* One typography role, written out as the properties it stands for.
+       Nothing here comes from the stored value except the role name, which
+       is only ever a key into PB_TYPO_ROLES. */
+    function pbTypoDecls(raw, tokens, allow) {
+        var v = str(raw);
+        if (v.charAt(0) !== '@') return '';
+        var role = v.slice(1);
+        if (!pbPick(PB_TYPO_ROLES, role)) return '';
+        var out = '', k;
+        for (k in PB_TYPO_PROPS) {
+            if (!Object.prototype.hasOwnProperty.call(PB_TYPO_PROPS, k)) continue;
+            /* Only properties this element type reads, so a role never
+               leaves a declaration on a type whose CSS would ignore it. */
+            if (!Object.prototype.hasOwnProperty.call(tokens, k)) continue;
+            if (allow && allow.indexOf(k) === -1) continue;
+            out += tokens[k][0] + ':var(--pbg-' + role + '-' + PB_TYPO_PROPS[k] + ',' +
+                   PB_TYPO_ROLES[role][k] + ');';
+        }
+        return out;
+    }
+
     function pbDecls(style, tokens, allow, tier) {
         var out = '', k;
         if (!style) return out;
@@ -1759,7 +1988,21 @@
             if (allow && allow.indexOf(k) === -1) continue;
             if (!Object.prototype.hasOwnProperty.call(style, k)) continue;
             var v, prop = tokens[k][0];
-            if (k === 'columns') {
+            if (k === 'typography') {
+                /* A role is not one declaration but four, written through
+                   this same token map so a section gets --pbs-* and an
+                   element --pbe-*, and only for the properties this type
+                   actually reads. */
+                out += pbTypoDecls(style[k], tokens, allow);
+                continue;
+            }
+            if (k === 'color' || k === 'bg' || k === 'lineColor') {
+                v = pbColorValue(style[k]);
+                if (!v) continue;
+            } else if (k === 'border') {
+                v = pbBorderValue(style[k]);
+                if (!v) continue;
+            } else if (k === 'columns') {
                 /* Never the author's string: a preset name is looked up and
                    the constant track list stored against it is what gets
                    emitted. An unknown name emits nothing, which leaves the
@@ -2644,6 +2887,17 @@
             icons: PB_ICONS,
             social: PB_SOCIAL,
             colLayouts: PB_COL_LAYOUTS,
+            /* Global design (stage 6). `roleColor`/`roleTypo` resolve a role
+               the way the stylesheet does, which is what lets the admin show
+               an author the colour a role is currently worth. */
+            colorRoles: PB_COLOR_ROLES,
+            typoRoles: PB_TYPO_ROLES,
+            typoProps: PB_TYPO_PROPS,
+            typoSite: PB_TYPO_SITE,
+            roleColor: pbRoleColor,
+            roleTypo: pbRoleTypo,
+            designCSS: designCSS,
+            paintDesign: paintDesign,
             sectionTokens: PB_SEC_TOKENS,
             elementTokens: PB_EL_TOKENS,
 

@@ -72,7 +72,9 @@ const PROBE = {
   fontSize: 41, fontWeight: '800', lineHeight: '2.4', letterSpacing: 4,
   align: 'right', padding: 37, margin: 29, gap: 33, maxWidth: 311, height: 97,
   radius: 13, border: '3px dashed #ff0000', shadow: '0 10px 30px rgba(0, 0, 0, 0.22)',
-  lineWidth: 5, lineStyle: 'dotted', lineColor: '#ff0000', columns: '4'
+  lineWidth: 5, lineStyle: 'dotted', lineColor: '#ff0000', columns: '4',
+  /* Stage 6: a role has to move the rendering like any other control. */
+  typography: '@h1'
 };
 
 /* Computed style of a node and everything under it, as one comparable blob.
@@ -441,7 +443,10 @@ const fingerprint = (p, sel) => p.$eval(sel, (root, props) => {
 
     const BW = `${DES} .pb-parts [data-part="width"]`;
     const BS = `${DES} .pb-parts [data-part="style"]`;
-    const BC = `${DES} .pb-parts [data-part="color"] input[type="text"]`;
+    /* Stage 6 gave the colour half a global-role selector, so reaching the
+       custom box means choosing "Custom" first, as a person would. */
+    const BCsel = `${DES} .pb-parts [data-part="color"] [data-part="role"]`;
+    const BC = `${DES} .pb-parts [data-part="color"] [data-part="value"] input[type="text"]`;
     check('the border control is three inputs, not a CSS box',
       (await p.$$(`${DES} .pb-parts [data-part]`)).length >= 3);
     await p.fill(BW, '3'); await p.waitForTimeout(350);
@@ -449,6 +454,7 @@ const fingerprint = (p, sel) => p.$eval(sel, (root, props) => {
       (await draftOf(ids.heading)).style.border === '3px solid currentColor',
       (await draftOf(ids.heading)).style);
     await p.selectOption(BS, 'dashed'); await p.waitForTimeout(350);
+    await p.selectOption(BCsel, 'custom'); await p.waitForTimeout(250);
     await p.fill(BC, '#ff0000'); await p.waitForTimeout(400);
     check('the three parts write one shorthand into the existing key',
       (await draftOf(ids.heading)).style.border === '3px dashed #ff0000',

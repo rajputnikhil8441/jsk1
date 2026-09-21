@@ -2142,6 +2142,11 @@ input[type="password"]:focus {
 .pb-parts > .pb-in-select { flex: 0 0 110px; }
 .pb-parts > .pb-color { flex: 1 1 140px; }
 .pb-parts-col { flex-direction: column; align-items: stretch; }
+
+/* A colour control nested inside another composite (the border row). */
+.pb-parts .pb-parts { flex: 1 1 200px; gap: 6px; }
+.pb-parts .pb-parts > .pb-in-select { flex: 1 1 110px; }
+.pb-parts .pb-parts > .pb-color { flex: 1 1 110px; }
 .pb-parts-col > .pb-in { flex: 1 1 auto; }
 
 .pb-field-note {
@@ -2235,3 +2240,66 @@ input[type="password"]:focus {
 .pb-item-add {
     margin-top: 10px;
 }
+
+
+/* ---------- Global Design panel (stage 6) ---------- */
+
+/* Wider than the typography grid: each role carries a swatch, a value and a
+   line of explanation, which do not fit in a narrow column. */
+.design-grid { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+
+.design-role {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 10px;
+    border: 1px solid var(--a-line);
+    border-radius: 7px;
+}
+
+.design-role-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.design-swatch {
+    flex: none;
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--a-line);
+    border-radius: 5px;
+}
+
+.design-role-in {
+    flex: 1 1 auto;
+    min-width: 0;
+    border: 1px solid var(--a-line);
+    border-radius: 6px;
+    padding: 6px 8px;
+    background: rgba(0, 0, 0, .2);
+    color: var(--a-text);
+    font: inherit;
+    font-size: 13px;
+}
+
+.design-role-src {
+    color: var(--a-dim);
+    font-size: 11px;
+    font-style: normal;
+    line-height: 1.35;
+}
+
+.design-role .design-clear {
+    align-self: flex-start;
+    font-size: 11px;
+    padding: 3px 8px;
+}
+
+.design-typo {
+    padding: 10px 0;
+    border-top: 1px solid var(--a-line);
+}
+
+.design-typo:first-of-type { border-top: 0; }
+.design-typo > strong { display: block; margin-bottom: 6px; font-size: 13px; }
