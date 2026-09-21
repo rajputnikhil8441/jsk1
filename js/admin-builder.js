@@ -400,7 +400,12 @@ window.PBAdmin = function (host) {
                 if (!sec.elements) sec.elements = [];
                 pbElementList(body, sec.elements, 0);
             } else if (view === 'design') {
-                pbDesignEditor(body, sec, null);
+                /* Same invariant the element cards hold to: the section
+                   renderer owns which keys do something, so the admin cannot
+                   offer a control the section would ignore. Passing null used
+                   to mean "everything", which offered a section the divider
+                   and column controls that only elements react to. */
+                pbDesignEditor(body, sec, pbSectionStyleKeys());
             } else {
                 pbVisibilityEditor(body, sec);
             }
@@ -504,6 +509,9 @@ window.PBAdmin = function (host) {
     };
 
     var PB_STYLE_FIELDS = [
+        /* V2: column tracks. First in the list because it is the control
+           that decides what the element looks like. */
+        ['columns',    'Column layout',     'colsSelect'],
         ['bg',         'Background',        'color'],
         ['color',      'Text colour',       'color'],
         ['bgImage',    'Background image',  'url'],
@@ -525,10 +533,63 @@ window.PBAdmin = function (host) {
         ['lineColor',  'Line colour',       'color']
     ];
 
+    /* Human wording for the column presets. The list of presets itself is
+       owned by js/cms.js -- this only supplies the words, and a preset with
+       no wording here still appears, labelled by its key, so the two can
+       never silently fall out of step. */
+    var PB_COL_WORDS = {
+        '1':          'Single column',
+        '2':          '2 columns \u2014 equal',
+        '2-30-70':    '2 columns \u2014 30 / 70',
+        '2-70-30':    '2 columns \u2014 70 / 30',
+        '2-40-60':    '2 columns \u2014 40 / 60',
+        '2-60-40':    '2 columns \u2014 60 / 40',
+        '2-25-75':    '2 columns \u2014 25 / 75',
+        '2-75-25':    '2 columns \u2014 75 / 25',
+        '3':          '3 columns \u2014 equal',
+        '3-25-50-25': '3 columns \u2014 25 / 50 / 25',
+        '3-50-25-25': '3 columns \u2014 50 / 25 / 25',
+        '3-25-25-50': '3 columns \u2014 25 / 25 / 50',
+        '4':          '4 columns \u2014 equal'
+    };
+
+    function pbColLayoutMap() { return CMS.sections.colLayouts || {}; }
+
+    /* Option list for the layout select. The empty option is worded for the
+       breakpoint it sits on, because "automatic" and "inherit" are not the
+       same promise. */
+    function pbColOptions(device) {
+        var map = pbColLayoutMap();
+        var opts = [['', device === 'base'
+            ? 'Automatic \u2014 fit to width (default)'
+            : (device === 'mobile'
+                ? 'Stacked \u2014 one column (default)'
+                : 'Inherit the desktop layout')]];
+        for (var k in map) {
+            if (!Object.prototype.hasOwnProperty.call(map, k)) continue;
+            opts.push([k, PB_COL_WORDS[k] || k]);
+        }
+        return opts;
+    }
+
+    /* How many tracks a preset draws, for the mismatch hint below. */
+    function pbColCount(name) {
+        var map = pbColLayoutMap();
+        var k = String(name || '');
+        if (!k || !Object.prototype.hasOwnProperty.call(map, k)) return 0;
+        return (map[k] && map[k][1]) || 0;
+    }
+
     /* Which controls an element type actually reacts to. Owned by
        js/cms.js so the admin cannot offer a control the renderer ignores. */
     function pbStyleKeysFor(type) {
         return (CMS.sections.elementStyleKeys || {})[type] || [];
+    }
+
+    function pbSectionStyleKeys() {
+        var t = CMS.sections.sectionTokens || {}, out = [];
+        for (var k in t) { if (Object.prototype.hasOwnProperty.call(t, k)) out.push(k); }
+        return out;
     }
 
     /* The shared field list carries one label per key, but the same key can
@@ -557,6 +618,9 @@ window.PBAdmin = function (host) {
        Typing repaints the preview at once and saves the draft shortly after,
        so work is not lost if the admin leaves the panel without blurring. */
     var pbSaveTimer = null;
+
+    /* Which element cards have their Design panel open, keyed by element id. */
+    var pbDesignOpen = {};
 
     function pbFlush() {
         if (!pbSaveTimer) return;
@@ -607,9 +671,15 @@ window.PBAdmin = function (host) {
         } else if (kind === 'select') {
             el = document.createElement('select');
             (opts || []).forEach(function (o) {
+                /* An option is either a bare value or a [value, label] pair,
+                   which the column layouts need because "2-30-70" is not a
+                   sentence anyone should have to read. */
+                var pair = Object.prototype.toString.call(o) === '[object Array]';
+                var val = pair ? o[0] : o;
+                var txt = pair ? o[1] : o;
                 var op = document.createElement('option');
-                op.value = o;
-                op.textContent = o === '' ? '(inherit)' : o;
+                op.value = val;
+                op.textContent = (!pair && val === '') ? '(inherit)' : txt;
                 el.appendChild(op);
             });
         } else if (kind === 'bool') {
@@ -674,13 +744,16 @@ window.PBAdmin = function (host) {
         return el;
     }
 
-    function pbFieldFor(spec, bag, key) {
+    function pbFieldFor(spec, bag, key, ctx) {
         /* iconSelect and socialSelect are ordinary selects whose options
            come from the renderer, resolved here so the two lists can never
            drift apart. A blank option is offered for icons because an icon
            is optional on a notice and a feature box. */
         if (spec[2] === 'iconSelect')   spec = [spec[0], spec[1], 'select', [''].concat(pbIconNames())];
         if (spec[2] === 'socialSelect') spec = [spec[0], spec[1], 'select', pbSocialNames()];
+        if (spec[2] === 'colsSelect') {
+            spec = [spec[0], spec[1], 'select', pbColOptions((ctx && ctx.device) || 'base')];
+        }
 
         var hint = document.createElement('em');
         hint.className = 'pb-warn';
@@ -690,6 +763,7 @@ window.PBAdmin = function (host) {
             function (v) {
                 if (v === '' || v === false) delete bag[key];
                 else bag[key] = v;
+                if (ctx && ctx.onChange) ctx.onChange(key, v);
             }, hint);
         var row = pbRow(spec[1], input);
         row.appendChild(hint);
@@ -698,7 +772,11 @@ window.PBAdmin = function (host) {
 
     /* ---------- design + responsive ---------- */
 
-    function pbDesignEditor(host, node, keys, labels) {
+    /* `onLayout` is called when a columns element's base layout changes and
+       the element has fewer column containers than the layout has tracks.
+       Supplied by the element card, which is the only place that can bring
+       the content list back in step with the data. */
+    function pbDesignEditor(host, node, keys, labels, onLayout) {
         var device = pbDevice[node.id] || 'base';
 
         var tabs = document.createElement('div');
@@ -712,7 +790,7 @@ window.PBAdmin = function (host) {
             b.addEventListener('click', function () {
                 pbDevice[node.id] = d[0];
                 host.innerHTML = '';
-                pbDesignEditor(host, node, keys, labels);
+                pbDesignEditor(host, node, keys, labels, onLayout);
             });
             tabs.appendChild(b);
         });
@@ -730,12 +808,22 @@ window.PBAdmin = function (host) {
         var bag = pbStyleBag(node, device);
         var grid = document.createElement('div');
         grid.className = 'pb-grid';
+        var ctx = {
+            device: device,
+            onChange: function (key) {
+                if (key !== 'columns') return;
+                /* Containers first, then the warning: adding a container is
+                   what decides whether there is anything left to warn about. */
+                if (onLayout) onLayout(device);
+                syncColsWarn();
+            }
+        };
         PB_STYLE_FIELDS.forEach(function (spec) {
             if (keys && keys.indexOf(spec[0]) === -1) return;
             if (labels && labels[spec[0]]) {
                 spec = [spec[0], labels[spec[0]], spec[2], spec[3]];
             }
-            grid.appendChild(pbFieldFor(spec, bag, spec[0]));
+            grid.appendChild(pbFieldFor(spec, bag, spec[0], ctx));
         });
         if (!grid.children.length) {
             var none = document.createElement('p');
@@ -744,6 +832,34 @@ window.PBAdmin = function (host) {
             grid.appendChild(none);
         }
         host.appendChild(grid);
+
+        /* A layout draws a fixed number of tracks; the columns themselves
+           are content. Saying so beats leaving an author to work out why a
+           quarter of the row is empty. The paragraph is created once and
+           kept in step by syncColsWarn, because picking a layout with fewer
+           tracks than there are columns adds nothing and so rebuilds
+           nothing -- which is exactly the case worth warning about. */
+        var colsWarn = null;
+        if (keys && keys.indexOf('columns') > -1) {
+            colsWarn = document.createElement('p');
+            colsWarn.className = 'pb-warn';
+            colsWarn.setAttribute('data-warn', 'cols');
+            host.appendChild(colsWarn);
+            syncColsWarn();
+        }
+
+        function syncColsWarn() {
+            if (!colsWarn) return;
+            var tracks = pbColCount(bag.columns);
+            var have = (((node.content || {}).columns) || []).length;
+            colsWarn.hidden = !tracks || tracks === have;
+            if (colsWarn.hidden) { colsWarn.textContent = ''; return; }
+            colsWarn.textContent = tracks > have
+                ? 'This layout draws ' + tracks + ' columns but the element has ' +
+                  have + '. Add ' + (tracks - have) + ' more above, or the extra space stays empty.'
+                : 'This layout draws ' + tracks + ' columns and the element has ' +
+                  have + '. The rest wrap onto a new row.';
+        }
 
         if (device !== 'base') {
             var clr = document.createElement('button');
@@ -755,7 +871,7 @@ window.PBAdmin = function (host) {
                 node.responsive[device] = {};
                 pbPersist();
                 host.innerHTML = '';
-                pbDesignEditor(host, node, keys, labels);
+                pbDesignEditor(host, node, keys, labels, onLayout);
                 pbPaintPreview();
             });
             host.appendChild(clr);
@@ -1002,8 +1118,27 @@ window.PBAdmin = function (host) {
         var design = document.createElement('details');
         design.className = 'pb-details';
         design.innerHTML = '<summary>Design</summary>';
+        /* Remembered across a repaint: choosing a column layout rebuilds the
+           card to show the new columns, and the panel it was chosen in
+           should still be open afterwards. */
+        design.open = !!pbDesignOpen[el.id];
+        design.addEventListener('toggle', function () { pbDesignOpen[el.id] = design.open; });
         var dhost = document.createElement('div');
-        pbDesignEditor(dhost, el, pbStyleKeysFor(el.type), PB_LABEL_OVERRIDE[el.type]);
+        pbDesignEditor(dhost, el, pbStyleKeysFor(el.type), PB_LABEL_OVERRIDE[el.type],
+            function (device) {
+                /* Only the desktop choice owns how many containers exist;
+                   tablet and mobile re-flow the containers that are there.
+                   Containers are only ever added -- removing one would throw
+                   away whatever an author had put in it. */
+                if (el.type !== 'columns' || device !== 'base') { pbPaintPreview(); return; }
+                var want = pbColCount((el.style || {}).columns);
+                var list = (el.content && el.content.columns) || (el.content = { columns: [] }).columns;
+                var added = false;
+                while (want > list.length) { list.push({ elements: [] }); added = true; }
+                pbPersist();
+                if (added) repaint();
+                pbPaintPreview();
+            });
         design.appendChild(dhost);
         body.appendChild(design);
 

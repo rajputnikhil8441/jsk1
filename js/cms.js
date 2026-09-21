@@ -1173,7 +1173,10 @@
         /* V2: a divider's rule is its own thing, not the element's border */
         lineWidth:  ['--pbe-line-width', 'px'],
         lineStyle:  ['--pbe-line-style', ''],
-        lineColor:  ['--pbe-line-color', '']
+        lineColor:  ['--pbe-line-color', ''],
+        /* V2: column tracks. The value written is never the author's text;
+           it is a constant looked up from PB_COL_LAYOUTS (see pbDecls). */
+        columns:    ['--pbe-cols', '']
     };
 
     /* Which controls actually do something for each element type. The admin
@@ -1189,7 +1192,7 @@
                   'margin', 'border', 'radius', 'shadow'],
         card:    ['bg', 'color', 'align', 'padding', 'margin', 'maxWidth', 'gap',
                   'border', 'radius', 'shadow'],
-        columns: ['align', 'margin', 'maxWidth', 'gap'],
+        columns: ['columns', 'align', 'margin', 'maxWidth', 'gap'],
 
         /* V2 elements. Same rule as above: a key appears here only if the
            CSS below actually reads it, so the admin can never offer a
@@ -1205,6 +1208,37 @@
                       'maxWidth', 'gap', 'border', 'radius', 'shadow'],
         socialLinks: ['color', 'fontSize', 'align', 'bg', 'padding', 'margin', 'gap', 'radius']
     };
+
+    /* ---- V2: column layout presets ----
+       A layout is chosen by NAME from this map. The value emitted into
+       grid-template-columns is always the constant string stored here, so
+       no author-entered text can ever reach that property. The second
+       entry is how many column containers the preset expects, which the
+       admin uses to keep the containers and the tracks in step.
+
+       The key is also the wire format stored in style.columns, so these
+       names are part of the saved data: do not rename an existing one. */
+    var PB_COL_LAYOUTS = {
+        '1':          ['1fr', 1],
+        '2':          ['1fr 1fr', 2],
+        '2-30-70':    ['30fr 70fr', 2],
+        '2-70-30':    ['70fr 30fr', 2],
+        '2-40-60':    ['40fr 60fr', 2],
+        '2-60-40':    ['60fr 40fr', 2],
+        '2-25-75':    ['25fr 75fr', 2],
+        '2-75-25':    ['75fr 25fr', 2],
+        '3':          ['1fr 1fr 1fr', 3],
+        '3-25-50-25': ['25fr 50fr 25fr', 3],
+        '3-50-25-25': ['50fr 25fr 25fr', 3],
+        '3-25-25-50': ['25fr 25fr 50fr', 3],
+        '4':          ['1fr 1fr 1fr 1fr', 4]
+    };
+
+    function pbColLayout(name) {
+        var k = str(name);
+        if (!k || !Object.prototype.hasOwnProperty.call(PB_COL_LAYOUTS, k)) return null;
+        return PB_COL_LAYOUTS[k];
+    }
 
     /* ---- V2 allow-lists ----
        An icon is chosen by NAME from this map, never by class string, so
@@ -1665,15 +1699,30 @@
          - above the page's own descendant rules such as .info-article h2 at
            (0,1,1), which is what used to win over a heading's colour. */
 
-    function pbDecls(style, tokens, allow) {
+    /* Column tracks are the one token written to a per-breakpoint property
+       rather than a single inherited one. css/sections.css chains the
+       fallbacks so that tablet falls back to desktop but mobile stacks, and
+       that chain can only exist if the three tiers are distinguishable. */
+    var PB_COL_PROP = { '': '--pbe-cols', tablet: '--pbe-cols-t', mobile: '--pbe-cols-m' };
+
+    function pbDecls(style, tokens, allow, tier) {
         var out = '', k;
         if (!style) return out;
         for (k in tokens) {
             if (!Object.prototype.hasOwnProperty.call(tokens, k)) continue;
             if (allow && allow.indexOf(k) === -1) continue;
             if (!Object.prototype.hasOwnProperty.call(style, k)) continue;
-            var v;
-            if (k === 'bgImage') {
+            var v, prop = tokens[k][0];
+            if (k === 'columns') {
+                /* Never the author's string: a preset name is looked up and
+                   the constant track list stored against it is what gets
+                   emitted. An unknown name emits nothing, which leaves the
+                   V1 auto-fit fallback in css/sections.css in charge. */
+                var lay = pbColLayout(style[k]);
+                if (!lay) continue;
+                v = lay[0];
+                prop = PB_COL_PROP[tier === 'tablet' || tier === 'mobile' ? tier : ''];
+            } else if (k === 'bgImage') {
                 var u = pbCssUrl(style[k]);
                 if (!u) continue;
                 v = 'url("' + u + '")';
@@ -1683,7 +1732,7 @@
                 var unit = tokens[k][1];
                 if (unit && /^-?[0-9.]+$/.test(v)) v += unit;
             }
-            out += tokens[k][0] + ':' + v + ';';
+            out += prop + ':' + v + ';';
         }
         /* Types laid out as a flex or grid item align themselves rather than
            their text, so alignment is emitted as box alignment as well. */
@@ -1697,8 +1746,8 @@
     function pbScopedCSS(sel, node, tokens, allow) {
         var base = pbDecls(node.style, tokens, allow);
         var r = node.responsive || {};
-        var tab = pbDecls(r.tablet, tokens, allow);
-        var mob = pbDecls(r.mobile, tokens, allow);
+        var tab = pbDecls(r.tablet, tokens, allow, 'tablet');
+        var mob = pbDecls(r.mobile, tokens, allow, 'mobile');
         var css = '';
         if (base) css += sel + '{' + base + '}';
         if (tab)  css += '@media (max-width:1024px){' + sel + '{' + tab + '}}';
@@ -2547,6 +2596,7 @@
             elementStyleKeys: PB_EL_STYLE_KEYS,
             icons: PB_ICONS,
             social: PB_SOCIAL,
+            colLayouts: PB_COL_LAYOUTS,
             sectionTokens: PB_SEC_TOKENS,
             elementTokens: PB_EL_TOKENS,
 

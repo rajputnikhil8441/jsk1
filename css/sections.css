@@ -47,6 +47,9 @@
     --pbe-line-width: initial;
     --pbe-line-style: initial;
     --pbe-line-color: initial;
+    --pbe-cols: initial;
+    --pbe-cols-t: initial;
+    --pbe-cols-m: initial;
 }
 
 
@@ -203,9 +206,12 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
 
 .pb-card .pb-img { width: 100%; }
 
+/* The track list is a variable with the V1 auto-fit value as its fallback,
+   so a columns element carrying no V2 layout data renders exactly as it did
+   in V1 -- by construction, not by a migration. */
 .pb-el.pb-columns {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    grid-template-columns: var(--pbe-cols, repeat(auto-fit, minmax(220px, 1fr)));
     gap: var(--pbe-gap, 16px);
     margin: var(--pbe-margin, 0);
     max-width: var(--pbe-max-width, none);
@@ -247,13 +253,23 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
 
 @media (max-width: 1024px) {
     .pb-image-text .pb-inner { grid-template-columns: 1fr; }
+
+    /* Tablet falls back to the desktop layout, and then to V1 auto-fit. */
+    .pb-el.pb-columns {
+        grid-template-columns:
+            var(--pbe-cols-t, var(--pbe-cols, repeat(auto-fit, minmax(220px, 1fr))));
+    }
 }
 
 @media (max-width: 768px) {
     .pb-section          { padding: var(--pbs-padding, 24px 16px); }
     .pb-cards .pb-inner,
-    .pb-cols  .pb-inner,
-    .pb-el.pb-columns    { grid-template-columns: 1fr; }
+    .pb-cols  .pb-inner  { grid-template-columns: 1fr; }
+
+    /* Mobile stacks unless a mobile layout was chosen explicitly. It does
+       NOT inherit desktop or tablet: three tracks on a phone is never what
+       an author meant by "3 columns", and stacking is what V1 did. */
+    .pb-el.pb-columns    { grid-template-columns: var(--pbe-cols-m, 1fr); }
 }
 
 
