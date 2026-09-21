@@ -2479,8 +2479,15 @@
     var pbView = {};
     var pbDevice = {};
 
+    /* Ids address the generated CSS, so two must never collide. The counter
+       covers the case that makes Date.now() alone unsafe: duplicating a
+       section, which mints several ids inside one millisecond. */
+    var pbSeq = 0;
+
     function pbUid(prefix) {
-        return prefix + '_' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
+        pbSeq += 1;
+        return prefix + '_' + Date.now().toString(36) + pbSeq.toString(36) +
+               Math.floor(Math.random() * 1e6).toString(36);
     }
 
     /* Local save only. commit(true) skips CMS.remote.publish(), which is
@@ -2846,9 +2853,14 @@
         ['shadow',     'Shadow',            'text']
     ];
 
-    /* Narrower set for a single element -- box sizing is the section's job. */
-    var PB_EL_STYLE_KEYS = { bg: 1, color: 1, fontSize: 1, fontWeight: 1, align: 1,
-                             padding: 1, margin: 1, maxWidth: 1, radius: 1, border: 1, shadow: 1 };
+    /* Which controls an element type actually reacts to. Owned by
+       js/cms.js so the admin cannot offer a control the renderer ignores. */
+    function pbStyleKeysFor(type) {
+        return (CMS.sections.elementStyleKeys || {})[type] || [];
+    }
+
+    /* "Min height" reads wrong on an image, which takes a fixed height. */
+    var PB_LABEL_OVERRIDE = { image: { height: 'Height (px)', maxWidth: 'Max width (px)' } };
 
     var PB_DEVICES = [['base', 'Desktop'], ['tablet', 'Tablet'], ['mobile', 'Mobile']];
 
@@ -2997,7 +3009,7 @@
 
     /* ---------- design + responsive ---------- */
 
-    function pbDesignEditor(host, node, keys) {
+    function pbDesignEditor(host, node, keys, labels) {
         var device = pbDevice[node.id] || 'base';
 
         var tabs = document.createElement('div');
@@ -3011,7 +3023,7 @@
             b.addEventListener('click', function () {
                 pbDevice[node.id] = d[0];
                 host.innerHTML = '';
-                pbDesignEditor(host, node, keys);
+                pbDesignEditor(host, node, keys, labels);
             });
             tabs.appendChild(b);
         });
@@ -3030,9 +3042,18 @@
         var grid = document.createElement('div');
         grid.className = 'pb-grid';
         PB_STYLE_FIELDS.forEach(function (spec) {
-            if (keys && !keys[spec[0]]) return;
+            if (keys && keys.indexOf(spec[0]) === -1) return;
+            if (labels && labels[spec[0]]) {
+                spec = [spec[0], labels[spec[0]], spec[2], spec[3]];
+            }
             grid.appendChild(pbFieldFor(spec, bag, spec[0]));
         });
+        if (!grid.children.length) {
+            var none = document.createElement('p');
+            none.className = 'hint';
+            none.textContent = 'This element type has no design controls at this breakpoint.';
+            grid.appendChild(none);
+        }
         host.appendChild(grid);
 
         if (device !== 'base') {
@@ -3045,7 +3066,7 @@
                 node.responsive[device] = {};
                 pbPersist();
                 host.innerHTML = '';
-                pbDesignEditor(host, node, keys);
+                pbDesignEditor(host, node, keys, labels);
                 pbPaintPreview();
             });
             host.appendChild(clr);
@@ -3139,11 +3160,11 @@
 
     function pbElementCard(el, i, list, depth, repaint) {
         var card = document.createElement('div');
-        card.className = 'pb-el';
+        card.className = 'pb-elcard';
         card.setAttribute('data-el-id', el.id);
 
         var head = document.createElement('div');
-        head.className = 'pb-el-head';
+        head.className = 'pb-elcard-head';
         var name = document.createElement('strong');
         name.textContent = PB_EL_LABEL[el.type] || el.type;
         head.appendChild(name);
@@ -3212,7 +3233,7 @@
         if (el.enabled === false) card.className += ' off';
 
         var body = document.createElement('div');
-        body.className = 'pb-el-body';
+        body.className = 'pb-elcard-body';
 
         if (el.type === 'columns') {
             var cols = (el.content && el.content.columns) || (el.content = { columns: [] }).columns;
@@ -3283,7 +3304,7 @@
         design.className = 'pb-details';
         design.innerHTML = '<summary>Design</summary>';
         var dhost = document.createElement('div');
-        pbDesignEditor(dhost, el, PB_EL_STYLE_KEYS);
+        pbDesignEditor(dhost, el, pbStyleKeysFor(el.type), PB_LABEL_OVERRIDE[el.type]);
         design.appendChild(dhost);
         body.appendChild(design);
 

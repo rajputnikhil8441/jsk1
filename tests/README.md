@@ -2,7 +2,7 @@
 
 Seven suites covering the SEO foundation, the admin SEO panel, link integrity,
 CMS images, the favicon chain, the sports table and the Page Builder.
-Baseline: **511 assertions, 0 failures**.
+Baseline: **719 assertions, 0 failures**.
 
 ## Run
 
@@ -29,6 +29,6 @@ needed and the suites always test the working tree.
 | `test_images.js` | CMS logo/favicon, data-URL rejection for og:image and schema | 40 |
 | `test_favicon.js` | committed favicon file, CMS override, JS-disabled fallback | 45 |
 | `test_sportstable.js` | sports-table CMS values, fallbacks, suspended markets | 59 |
-| `test_pagebuilder.js` | Page Builder: mounts, draft gate, renderer guards, draft/publish, admin panel, editors, preview | 121 |
+| `test_pagebuilder.js` | Page Builder: mounts, draft gate, style isolation against the site's own CSS, multiple-instance bleed, nesting, every section type, responsive overrides, CSS/URL injection, malformed data, draft/publish, remote-pull draft safety, admin panel, editors, preview, SEO and cross-page regression | 329 |
 
 Do not weaken these to make a change pass.

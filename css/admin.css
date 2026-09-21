@@ -2051,17 +2051,17 @@ input[type="password"]:focus {
     gap: 8px;
 }
 
-.pb-el {
+.pb-elcard {
     border: 1px solid var(--a-line);
     border-radius: 7px;
     background: rgba(0, 0, 0, 0.14);
 }
 
-.pb-el.off {
+.pb-elcard.off {
     opacity: 0.55;
 }
 
-.pb-el-head {
+.pb-elcard-head {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -2070,12 +2070,12 @@ input[type="password"]:focus {
     font-size: 13px;
 }
 
-.pb-el-head strong {
+.pb-elcard-head strong {
     flex: 1 1 auto;
     font-weight: 600;
 }
 
-.pb-el-body {
+.pb-elcard-body {
     padding: 10px 9px 12px;
 }
 

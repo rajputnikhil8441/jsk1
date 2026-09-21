@@ -91,41 +91,109 @@ do not nest inside columns.
 
 ## How styling reaches the page
 
-Style keys are not written as inline CSS. Each one becomes a custom property in
-a single generated `<style id="cmsBuilder">`, scoped by attribute selector, the
-same approach the sports table already uses:
+Style keys are not written as inline CSS. Each one becomes a custom property
+in a single generated `<style id="cmsBuilder">`, scoped by attribute selector,
+the same approach the sports table already uses.
+
+Two rules make this predictable, and both were learned the hard way.
+
+### 1. Two namespaces, and a reset
+
+Custom properties **inherit**. With one shared `--pb-*` namespace, a section's
+`--pb-padding` reached every heading, button and card inside it, and a card's
+`--pb-bg` became the background of the button in that card. Setting a section
+padding of 60 padded every element in it by 60.
+
+So sections write `--pbs-*`, elements write `--pbe-*`, and every element node
+carries the class `pb-el`, which resets the whole element namespace:
 
 ```css
-[data-sec="sec_abc123"]{--pb-bg:#102030;--pb-padding:60px;}
-@media (max-width:1024px){[data-sec="sec_abc123"]{--pb-padding:40px;}}
-@media (max-width:768px){[data-sec="sec_abc123"]{--pb-padding:20px;}}
+.pb-el { --pbe-bg: initial; --pbe-color: initial; /* ... */ }
 ```
 
-`css/sections.css` consumes those properties. Every selector in it starts with
-`.pb-`, so the builder cannot reach existing markup, and an empty value means
-"inherit" rather than "zero".
+`initial` on a custom property is the guaranteed-invalid value, so each
+`var(--pbe-x, default)` falls back to its own default rather than picking up
+an ancestor's. A value can only ever style the node it was set on.
 
-| Key | Custom property | Unit |
+### 2. Specificity that survives the host page
+
+A mount sits inside `<article class="info-article">`, and `css/content.css`
+styles that article with descendant selectors:
+
+```css
+.info-article h2 { color: var(--hdr-bg); font-size: 17px; }   /* (0,1,1) */
+.info-article a  { color: var(--link); }                       /* (0,1,1) */
+```
+
+A plain `.pb-heading` rule is `(0,1,0)` and loses to those. That is why the
+heading colour control appeared to do nothing, and the same applied to heading
+size and weight, text margin, button colour and the card title.
+
+Every rule that a page rule could compete with is therefore written at
+`(0,2,0)` or higher:
+
+| What | Selector | Specificity |
 | --- | --- | --- |
-| `bg` | `--pb-bg` | |
-| `bgImage` | `--pb-bg-image` | wrapped in `url()` |
-| `color` | `--pb-color` | |
-| `fontSize` | `--pb-font-size` | px |
-| `fontWeight` | `--pb-font-weight` | |
-| `align` | `--pb-align` | |
-| `padding` | `--pb-padding` | px |
-| `margin` | `--pb-margin` | px |
-| `maxWidth` | `--pb-max-width` | px |
-| `height` | `--pb-height` | px |
-| `border` | `--pb-border` | |
-| `radius` | `--pb-radius` | px |
-| `shadow` | `--pb-shadow` | |
-| `gap` | `--pb-gap` | px |
+| element base | `.pb-el.pb-heading` | (0,2,0) |
+| heading level default | `h2.pb-el.pb-heading` | (0,2,1) |
+| generated element values | `.pb-el[data-el="id"]` | (0,2,0) |
+| generated section values | `.pb-section[data-sec="id"]` | (0,2,0) |
+| the reset | `.pb-el` | (0,1,0) |
 
-Breakpoints: tablet `max-width: 1024px`, mobile `max-width: 768px`.
-Visibility adds `pb-hide-desktop`, `pb-hide-tablet` or `pb-hide-mobile`.
+The generated rules also sit above the reset whatever the source order, so
+nothing depends on which stylesheet loads first. **No `!important` is used
+anywhere**, and none is needed.
 
----
+```css
+.pb-section[data-sec="sec_abc"]{--pbs-bg:#102030;--pbs-padding:60px;}
+@media (max-width:1024px){.pb-section[data-sec="sec_abc"]{--pbs-padding:40px;}}
+@media (max-width:768px){.pb-section[data-sec="sec_abc"]{--pbs-padding:20px;}}
+.pb-el[data-el="el_xyz"]{--pbe-color:#ff0000;--pbe-font-size:40px;}
+```
+
+### The tokens
+
+| Key | Section property | Element property | Unit |
+| --- | --- | --- | --- |
+| `bg` | `--pbs-bg` | `--pbe-bg` | |
+| `bgImage` | `--pbs-bg-image` | — | wrapped in `url()` |
+| `color` | `--pbs-color` | `--pbe-color` | |
+| `fontSize` | `--pbs-font-size` | `--pbe-font-size` | px |
+| `fontWeight` | `--pbs-font-weight` | `--pbe-font-weight` | |
+| `align` | `--pbs-align` | `--pbe-align` (+ `--pbe-self`, `--pbe-justify`) | |
+| `padding` | `--pbs-padding` | `--pbe-padding` | px |
+| `margin` | `--pbs-margin` | `--pbe-margin` | px |
+| `maxWidth` | `--pbs-max-width` | `--pbe-max-width` | px |
+| `height` | `--pbs-height` (min-height) | `--pbe-height` | px |
+| `border` | `--pbs-border` | `--pbe-border` | |
+| `radius` | `--pbs-radius` | `--pbe-radius` | px |
+| `shadow` | `--pbs-shadow` | `--pbe-shadow` | |
+| `gap` | `--pbs-gap` | `--pbe-gap` | px |
+
+Breakpoints: tablet `max-width: 1024px`, mobile `max-width: 768px`. An empty
+value means "inherit the wider breakpoint", never zero. Visibility adds
+`pb-hide-desktop`, `pb-hide-tablet` or `pb-hide-mobile`.
+
+### Which control applies to which element
+
+`CMS.sections.elementStyleKeys` is the single source of truth, and the admin
+builds its Design tab from it, so a control is never offered for an element
+whose CSS would ignore it.
+
+| Element | Controls |
+| --- | --- |
+| heading, text | color, fontSize, fontWeight, align, bg, padding, margin, maxWidth, border, radius, shadow |
+| image | align, margin, maxWidth, height, border, radius, shadow |
+| button | bg, color, fontSize, fontWeight, align, padding, margin, border, radius, shadow |
+| card | bg, color, align, padding, margin, maxWidth, gap, border, radius, shadow |
+| columns | align, margin, maxWidth, gap |
+
+For image, button, card and columns, `align` is emitted as box alignment
+(`align-self`/`justify-self`) as well as `text-align`, because those are laid
+out as flex or grid items rather than as blocks of text.
+
+Headings get a default size per level (h1 34px … h6 15px). Any authored
+`fontSize` still wins.
 
 ## Safety
 
@@ -139,6 +207,21 @@ Visibility adds `pb-hide-desktop`, `pb-hide-tablet` or `pb-hide-mobile`.
 - **Depth guard.** Nested rendering stops after three levels.
 - **Unknown types are skipped**, never thrown on, so an older site can render a
   newer draft without breaking.
+- **Style values cannot inject CSS.** Border and Shadow are free text and end
+  up inside a generated `<style>` block, so a value such as
+  `1px solid red; } body { display:none } .x {` would otherwise close the rule
+  and inject CSS into every page the section is published on. Any value
+  carrying `; { } < > \\ " '`, a control character, `url(`, `expression(`,
+  `@import` or `javascript:` is dropped. A background image URL is checked
+  again for quotes, parentheses and whitespace before it is wrapped in
+  `url("...")`.
+- **Ids are checked before they reach a selector.** A section or element id is
+  interpolated into `[data-sec="..."]`, so only `[A-Za-z0-9_-]{1,64}` emits
+  CSS. Generated ids always pass; a hand-edited or imported config that does
+  not simply gets no CSS, and still renders.
+- **Drafts stay on the device.** `Remote.publish()` strips `builderDrafts`
+  from the payload, so unpublished copy is never uploaded to the public row
+  that every visitor downloads with the anon key.
 - **Anon key only.** Nothing here touches authentication, RLS or service-role
   credentials.
 
@@ -165,6 +248,18 @@ Visibility adds `pb-hide-desktop`, `pb-hide-tablet` or `pb-hide-mobile`.
 In the admin, every draft write goes through `commit(true)` — the existing
 silent save path, which writes locally and skips `CMS.remote.publish()`. Only
 **Publish** and **Unpublish** call `commit()` normally and reach the server.
+
+`builderDrafts` is this device's working copy and is deliberately kept out of
+the round trip in both directions:
+
+- `Remote.publish()` strips it from the payload.
+- `Remote.pull()` keeps the local copy rather than taking the row's.
+
+The second one matters more than it looks. Every page in the browser pulls the
+published row on load and writes the result back to `localStorage`. Without
+this, opening the site in a second tab — or the preview iframe navigating to
+another page — rewound the admin's unpublished work to the last published
+snapshot. `tests/test_pagebuilder.js` covers exactly that sequence.
 
 The save/publish behaviour of Colors, Branding, Sports Table, SEO and every
 other panel is unchanged.
@@ -224,9 +319,20 @@ that is not in `PB_MOUNTED` in `js/cms.js`, set `builderMount: true` on its
 
 ## Tests
 
-`tests/test_pagebuilder.js` — 121 assertions covering the mounts, the
-no-builder case, the draft gate, the rendered output and its guards, the
-draft/publish API, the admin panel, the editors and the preview.
+`tests/test_pagebuilder.js` — 329 assertions. Style questions are asserted on
+**computed style in a real browser**, not on the generated CSS text: the bug
+that prompted the hardening pass — a heading colour the page's own
+`.info-article h2` quietly won — is invisible to any test that only reads the
+CSS the builder emits.
+
+Covered: the mounts; the no-builder case; the draft gate; every element
+control beating the page's own CSS; section style not leaking into elements;
+card style not leaking into card internals; five instances of each type
+keeping their own values; nesting inside columns; all seven section types;
+base/tablet/mobile overrides and fallback; visibility per breakpoint; URL and
+markup safety; CSS injection through the free-text style fields; malformed and
+missing data; the draft/publish API; a remote pull not rolling back a draft;
+the admin panel, editors and preview; SEO; and the pages that never opted in.
 
 ```bash
 cd tests && npm test -- test_pagebuilder.js

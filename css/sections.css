@@ -1,144 +1,258 @@
 /* =========================================================
    sections.css — Page Builder v1 rendering
    ---------------------------------------------------------
-   Every selector here is scoped to .pb-* classes that only the
-   builder emits, so none of it can reach the existing site.
-   Values come from --pb-* custom properties written per section
-   and per element by js/cms.js; each has a shipped fallback so a
-   section with no styling set still renders sensibly.
+   Two things keep this predictable and contained.
+
+   1. NAMESPACES. Custom properties inherit, so one shared --pb-*
+      namespace meant a section's padding reached every heading and
+      button inside it, and a card's background reached the button in
+      that card. Sections now write --pbs-*, elements write --pbe-*,
+      and .pb-el resets the whole element namespace on every element
+      node. A value can only style the node it was set on.
+
+   2. SPECIFICITY. A mount sits inside .info-article, whose own rules
+      (.info-article h2, .info-article a, ...) are (0,1,1) and used to
+      beat a plain .pb-heading at (0,1,0) — which is why the colour
+      control appeared to do nothing. Every rule that a page rule could
+      compete with is written at (0,2,0) or higher. No !important is
+      needed anywhere.
+
+   Every selector is still scoped to .pb-* classes that only the builder
+   emits, so none of this can reach the existing site. Each property has
+   a shipped fallback, so an unstyled section still renders sensibly.
    ========================================================= */
 
-.pb-section {
-    background: var(--pb-bg, transparent);
-    background-image: var(--pb-bg-image, none);
-    background-size: cover;
-    background-position: center;
-    color: var(--pb-color, inherit);
-    padding: var(--pb-padding, 40px 16px);
-    margin: var(--pb-margin, 0);
-    border: var(--pb-border, 0);
-    border-radius: var(--pb-radius, 0);
-    box-shadow: var(--pb-shadow, none);
-    text-align: var(--pb-align, left);
+
+/* ---------- element namespace reset ----------
+   Guaranteed-invalid values, so each var() falls back to the default in
+   its own rule instead of picking up an ancestor's. Kept at (0,1,0) so
+   the generated .pb-el[data-el=".."] rules at (0,2,0) always win. */
+
+.pb-el {
+    --pbe-bg: initial;
+    --pbe-color: initial;
+    --pbe-font-size: initial;
+    --pbe-font-weight: initial;
+    --pbe-align: initial;
+    --pbe-self: initial;
+    --pbe-justify: initial;
+    --pbe-padding: initial;
+    --pbe-margin: initial;
+    --pbe-max-width: initial;
+    --pbe-height: initial;
+    --pbe-border: initial;
+    --pbe-radius: initial;
+    --pbe-shadow: initial;
+    --pbe-gap: initial;
 }
 
-.pb-inner {
-    max-width: var(--pb-max-width, 1100px);
+
+/* ---------- section ---------- */
+
+.pb-section {
+    background-color: var(--pbs-bg, transparent);
+    background-image: var(--pbs-bg-image, none);
+    background-size: cover;
+    background-position: center;
+    color: var(--pbs-color, inherit);
+    font-size: var(--pbs-font-size, inherit);
+    font-weight: var(--pbs-font-weight, inherit);
+    padding: var(--pbs-padding, 40px 16px);
+    margin: var(--pbs-margin, 0);
+    min-height: var(--pbs-height, auto);
+    border: var(--pbs-border, 0);
+    border-radius: var(--pbs-radius, 0);
+    box-shadow: var(--pbs-shadow, none);
+    text-align: var(--pbs-align, left);
+}
+
+.pb-section .pb-inner {
+    max-width: var(--pbs-max-width, 1100px);
     margin-inline: auto;
     display: flex;
     flex-direction: column;
-    gap: var(--pb-gap, 16px);
+    gap: var(--pbs-gap, 16px);
 }
 
-/* ---------- elements ---------- */
 
-.pb-heading {
-    margin: var(--pb-margin, 0);
-    padding: var(--pb-padding, 0);
-    font-size: var(--pb-font-size, 28px);
-    font-weight: var(--pb-font-weight, 700);
-    color: var(--pb-color, inherit);
-    text-align: var(--pb-align, inherit);
+/* ---------- elements ----------
+   (0,2,0) via .pb-el + the type class, so a page rule at (0,1,1) such as
+   .info-article h2 cannot take these over. */
+
+.pb-el.pb-heading {
+    color: var(--pbe-color, inherit);
+    font-size: var(--pbe-font-size, 28px);
+    font-weight: var(--pbe-font-weight, 700);
+    text-align: var(--pbe-align, inherit);
+    background: var(--pbe-bg, transparent);
+    padding: var(--pbe-padding, 0);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
     line-height: 1.25;
 }
 
-.pb-textblock {
-    margin: var(--pb-margin, 0);
-    padding: var(--pb-padding, 0);
-    font-size: var(--pb-font-size, 16px);
-    font-weight: var(--pb-font-weight, 400);
-    color: var(--pb-color, inherit);
-    text-align: var(--pb-align, inherit);
+/* Sensible defaults per level, so an h3 does not arrive the same size as an
+   h1. (0,2,1) beats the rule above at (0,2,0) and the page's own
+   .info-article h1 at (0,1,1); an authored --pbe-font-size still wins,
+   because every one of these reads it first. */
+h1.pb-el.pb-heading { font-size: var(--pbe-font-size, 34px); }
+h2.pb-el.pb-heading { font-size: var(--pbe-font-size, 28px); }
+h3.pb-el.pb-heading { font-size: var(--pbe-font-size, 22px); }
+h4.pb-el.pb-heading { font-size: var(--pbe-font-size, 19px); }
+h5.pb-el.pb-heading { font-size: var(--pbe-font-size, 17px); }
+h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
+
+.pb-el.pb-textblock {
+    color: var(--pbe-color, inherit);
+    font-size: var(--pbe-font-size, 16px);
+    font-weight: var(--pbe-font-weight, 400);
+    text-align: var(--pbe-align, inherit);
+    background: var(--pbe-bg, transparent);
+    padding: var(--pbe-padding, 0);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
     line-height: 1.6;
     white-space: pre-line;      /* authored line breaks survive without markup */
 }
 
-.pb-img {
+.pb-el.pb-img {
     display: block;
-    max-width: 100%;
-    height: var(--pb-height, auto);
-    object-fit: var(--pb-object-fit, cover);
-    border: var(--pb-border, 0);
-    border-radius: var(--pb-radius, 0);
-    box-shadow: var(--pb-shadow, none);
-    margin: var(--pb-margin, 0);
+    max-width: var(--pbe-max-width, 100%);
+    height: var(--pbe-height, auto);
+    object-fit: cover;
+    margin: var(--pbe-margin, 0);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+    /* auto, not stretch: an unaligned image must keep taking the container's
+       align-items, which is what it did before alignment was controllable —
+       otherwise images in an image+text row stretch instead of centring. */
+    align-self: var(--pbe-self, auto);
+    justify-self: var(--pbe-justify, auto);
 }
 
-.pb-img-link { display: inline-block; }
-
-.pb-btn {
+.pb-el.pb-img-link {
     display: inline-block;
-    align-self: flex-start;
-    background: var(--pb-bg, #1a73e8);
-    color: var(--pb-color, #ffffff);
-    padding: var(--pb-padding, 10px 20px);
-    margin: var(--pb-margin, 0);
-    border: var(--pb-border, 0);
-    border-radius: var(--pb-radius, 4px);
-    font-size: var(--pb-font-size, 15px);
-    font-weight: var(--pb-font-weight, 600);
+    align-self: var(--pbe-self, auto);
+    justify-self: var(--pbe-justify, auto);
+    max-width: 100%;
+}
+
+.pb-el.pb-btn {
+    display: inline-block;
+    width: fit-content;
+    align-self: var(--pbe-self, flex-start);
+    justify-self: var(--pbe-justify, start);
+    background: var(--pbe-bg, #1a73e8);
+    color: var(--pbe-color, #ffffff);
+    padding: var(--pbe-padding, 10px 20px);
+    margin: var(--pbe-margin, 0);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 4px);
+    box-shadow: var(--pbe-shadow, none);
+    font-size: var(--pbe-font-size, 15px);
+    font-weight: var(--pbe-font-weight, 600);
+    text-align: center;
     text-decoration: none;
     line-height: 1.2;
 }
 
-.pb-btn:hover { filter: brightness(1.08); }
+.pb-el.pb-btn:hover { filter: brightness(1.08); }
 
-.pb-card {
-    background: var(--pb-bg, #ffffff);
-    color: var(--pb-color, inherit);
-    padding: var(--pb-padding, 16px);
-    border: var(--pb-border, 1px solid rgba(0, 0, 0, .12));
-    border-radius: var(--pb-radius, 6px);
-    box-shadow: var(--pb-shadow, none);
+.pb-el.pb-card {
+    background: var(--pbe-bg, #ffffff);
+    color: var(--pbe-color, inherit);
+    text-align: var(--pbe-align, inherit);
+    padding: var(--pbe-padding, 16px);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    border: var(--pbe-border, 1px solid rgba(0, 0, 0, .12));
+    border-radius: var(--pbe-radius, 6px);
+    box-shadow: var(--pbe-shadow, none);
     display: flex;
     flex-direction: column;
-    gap: var(--pb-gap, 10px);
+    gap: var(--pbe-gap, 10px);
 }
 
-.pb-card-title  { margin: 0; font-size: 18px; font-weight: 700; line-height: 1.3; }
-.pb-card-text   { margin: 0; font-size: 15px; line-height: 1.55; white-space: pre-line; }
+/* Card internals carry .pb-el too, so the card's own background, padding
+   and radius stop at the card instead of reaching the title or button. */
+.pb-el.pb-card-title {
+    margin: 0;
+    color: inherit;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+.pb-el.pb-card-text {
+    margin: 0;
+    color: inherit;
+    font-size: 15px;
+    line-height: 1.55;
+    white-space: pre-line;
+}
+
 .pb-card .pb-img { width: 100%; }
 
-.pb-columns {
+.pb-el.pb-columns {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: var(--pb-gap, 16px);
+    gap: var(--pbe-gap, 16px);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    text-align: var(--pbe-align, inherit);
 }
 
-.pb-column { display: flex; flex-direction: column; gap: var(--pb-gap, 12px); }
+/* Inherits the columns element's gap on purpose: one control, one result. */
+.pb-columns .pb-column {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pbe-gap, 12px);
+}
+
 
 /* ---------- section layouts ---------- */
 
-.pb-hero .pb-inner      { align-items: var(--pb-align-items, flex-start); gap: var(--pb-gap, 20px); }
-.pb-banner              { text-align: var(--pb-align, center); }
+.pb-hero .pb-inner      { align-items: flex-start; }
+.pb-banner              { text-align: var(--pbs-align, center); }
 .pb-banner .pb-inner    { align-items: center; }
 
 .pb-cards .pb-inner,
 .pb-cols  .pb-inner {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: var(--pb-gap, 16px);
+    gap: var(--pbs-gap, 16px);
 }
 
 .pb-image-text .pb-inner {
     display: grid;
     grid-template-columns: 1fr 1fr;
     align-items: center;
-    gap: var(--pb-gap, 24px);
+    gap: var(--pbs-gap, 24px);
 }
 
-/* ---------- responsive ---------- */
+
+/* ---------- responsive ----------
+   Each rule keeps the specificity of the base rule it overrides, so a
+   page's own @media rule at (0,1,1) cannot take it back. */
 
 @media (max-width: 1024px) {
     .pb-image-text .pb-inner { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 768px) {
-    .pb-section          { padding: var(--pb-padding, 24px 16px); }
+    .pb-section          { padding: var(--pbs-padding, 24px 16px); }
     .pb-cards .pb-inner,
     .pb-cols  .pb-inner,
-    .pb-columns          { grid-template-columns: 1fr; }
+    .pb-el.pb-columns    { grid-template-columns: 1fr; }
 }
+
 
 /* ---------- per-breakpoint visibility ---------- */
 

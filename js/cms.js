@@ -1076,21 +1076,69 @@
     var PB_SCHEMA = 1;
 
     /* style key -> [custom property, unit appended to bare numbers] */
-    var PB_TOKENS = {
-        bg:        ['--pb-bg', ''],
-        bgImage:   ['--pb-bg-image', ''],
-        color:     ['--pb-color', ''],
-        fontSize:  ['--pb-font-size', 'px'],
-        fontWeight:['--pb-font-weight', ''],
-        align:     ['--pb-align', ''],
-        padding:   ['--pb-padding', 'px'],
-        margin:    ['--pb-margin', 'px'],
-        maxWidth:  ['--pb-max-width', 'px'],
-        height:    ['--pb-height', 'px'],
-        border:    ['--pb-border', ''],
-        radius:    ['--pb-radius', 'px'],
-        shadow:    ['--pb-shadow', ''],
-        gap:       ['--pb-gap', 'px']
+    /* Custom properties live in two separate namespaces on purpose.
+
+       Custom properties inherit. With one shared namespace a section's
+       --pb-padding reached every heading, button and card inside it, and a
+       card's --pb-bg reached the button in that card. Sections now write
+       --pbs-*, elements write --pbe-*, and each element node resets every
+       --pbe-* it might have inherited (see .pb-el in css/sections.css), so a
+       value can only ever style the node it was set on. */
+    var PB_SEC_TOKENS = {
+        bg:         ['--pbs-bg', ''],
+        bgImage:    ['--pbs-bg-image', ''],
+        color:      ['--pbs-color', ''],
+        fontSize:   ['--pbs-font-size', 'px'],
+        fontWeight: ['--pbs-font-weight', ''],
+        align:      ['--pbs-align', ''],
+        padding:    ['--pbs-padding', 'px'],
+        margin:     ['--pbs-margin', 'px'],
+        maxWidth:   ['--pbs-max-width', 'px'],
+        height:     ['--pbs-height', 'px'],
+        border:     ['--pbs-border', ''],
+        radius:     ['--pbs-radius', 'px'],
+        shadow:     ['--pbs-shadow', ''],
+        gap:        ['--pbs-gap', 'px']
+    };
+
+    var PB_EL_TOKENS = {
+        bg:         ['--pbe-bg', ''],
+        color:      ['--pbe-color', ''],
+        fontSize:   ['--pbe-font-size', 'px'],
+        fontWeight: ['--pbe-font-weight', ''],
+        align:      ['--pbe-align', ''],
+        padding:    ['--pbe-padding', 'px'],
+        margin:     ['--pbe-margin', 'px'],
+        maxWidth:   ['--pbe-max-width', 'px'],
+        height:     ['--pbe-height', 'px'],
+        border:     ['--pbe-border', ''],
+        radius:     ['--pbe-radius', 'px'],
+        shadow:     ['--pbe-shadow', ''],
+        gap:        ['--pbe-gap', 'px']
+    };
+
+    /* Which controls actually do something for each element type. The admin
+       builds its Design tab from this, so a control is never offered for an
+       element whose CSS would ignore it. */
+    var PB_EL_STYLE_KEYS = {
+        heading: ['color', 'fontSize', 'fontWeight', 'align', 'bg', 'padding',
+                  'margin', 'maxWidth', 'border', 'radius', 'shadow'],
+        text:    ['color', 'fontSize', 'fontWeight', 'align', 'bg', 'padding',
+                  'margin', 'maxWidth', 'border', 'radius', 'shadow'],
+        image:   ['align', 'margin', 'maxWidth', 'height', 'border', 'radius', 'shadow'],
+        button:  ['bg', 'color', 'fontSize', 'fontWeight', 'align', 'padding',
+                  'margin', 'border', 'radius', 'shadow'],
+        card:    ['bg', 'color', 'align', 'padding', 'margin', 'maxWidth', 'gap',
+                  'border', 'radius', 'shadow'],
+        columns: ['align', 'margin', 'maxWidth', 'gap']
+    };
+
+    /* An element's own box alignment, for the types that are laid out as a
+       flex or grid item rather than as a block of text. */
+    var PB_SELF = {
+        left:   ['flex-start', 'start'],
+        center: ['center', 'center'],
+        right:  ['flex-end', 'end']
     };
 
     var PB_SECTION_CLASS = {
@@ -1104,14 +1152,48 @@
     };
 
     /* Only these schemes may reach an href or src. Anything else —
-       javascript:, data:, vbscript: — is dropped. */
+       javascript:, data:, vbscript: — is dropped. A protocol-relative
+       "//host" is dropped too: it reads like a site-relative path but leaves
+       the site, and https:// is available for that. */
     function pbUrl(u) {
         u = str(u).trim();
         if (!u) return '';
+        if (/[\u0000-\u001f\u007f]/.test(u)) return '';
+        if (/^\/\//.test(u)) return '';
         if (/^(https?:\/\/|mailto:|tel:)/i.test(u)) return u;
         if (/^[#/]/.test(u)) return u;
         if (/^[\w][\w./?=&%+-]*$/.test(u)) return u;
         return '';
+    }
+
+    /* A URL that is about to be interpolated into a CSS url("...") rather
+       than handed to setAttribute. Quotes, parentheses and whitespace could
+       close the function and the rule, so they are refused outright. */
+    function pbCssUrl(u) {
+        u = pbUrl(u);
+        if (!u || /^(mailto:|tel:)/i.test(u)) return '';
+        return /["'()\\\s;{}]/.test(u) ? '' : u;
+    }
+
+    /* Style values are free text in the admin (Border, Shadow, ...) and end up
+       inside a generated <style> block. Without this a value such as
+       "1px solid red; } body { display:none } .x {" would close the rule and
+       inject CSS into every page the section is published on. */
+    function pbCssValue(v) {
+        v = str(v);
+        if (!v) return '';
+        if (/[;{}<>\\"']/.test(v)) return '';
+        if (/[\u0000-\u001f\u007f]/.test(v)) return '';
+        if (/url\s*\(|expression\s*\(|@import|javascript:/i.test(v)) return '';
+        return v;
+    }
+
+    /* Ids are interpolated into an attribute selector, so they are limited to
+       characters that cannot terminate it. Generated ids always pass; a
+       hand-edited or imported config that does not simply gets no CSS. */
+    function pbCssId(id) {
+        id = str(id);
+        return /^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : '';
     }
 
     function pbEl(tag, cls) {
@@ -1120,38 +1202,50 @@
         return e;
     }
 
-    /* ---- element renderers. Each returns a node or null. ---- */
+    /* ---- element renderers ----
+       Each returns a node or null. Every node that reads a --pbe-* property
+       carries the pb-el class, which resets that whole namespace, so nothing
+       inherits styling from the section or from an enclosing element.
+       pbId() marks the one node the element's generated CSS binds to, which
+       for a linked image is the <img> rather than the wrapping <a>. */
+
+    function pbId(node, el) {
+        if (node && el && el.id) node.setAttribute('data-el', String(el.id));
+        return node;
+    }
+
     var PB_ELEMENTS = {
 
         heading: function (el) {
             var c = el.content || {};
             var lvl = String(c.level || 'h2').toLowerCase();
             if (['h1','h2','h3','h4','h5','h6'].indexOf(lvl) === -1) lvl = 'h2';
-            var n = pbEl(lvl, 'pb-heading');
+            var n = pbEl(lvl, 'pb-el pb-heading');
             n.textContent = str(c.text);
-            return n;
+            return pbId(n, el);
         },
 
         text: function (el) {
-            var n = pbEl('p', 'pb-textblock');
+            var n = pbEl('p', 'pb-el pb-textblock');
             n.textContent = str((el.content || {}).text);
-            return n;
+            return pbId(n, el);
         },
 
         image: function (el) {
             var c = el.content || {};
             var src = pbUrl(c.src);
             if (!src) return null;
-            var img = pbEl('img', 'pb-img');
+            var img = pbEl('img', 'pb-el pb-img');
             img.setAttribute('src', src);
             img.setAttribute('alt', str(c.alt));
             img.setAttribute('loading', 'lazy');
             img.setAttribute('decoding', 'async');
             if (c.width)  img.setAttribute('width', String(parseInt(c.width, 10) || ''));
             if (c.height) img.setAttribute('height', String(parseInt(c.height, 10) || ''));
+            pbId(img, el);                    /* the image is what gets styled */
             var href = pbUrl(c.href);
             if (!href) return img;
-            var a = pbEl('a', 'pb-img-link');
+            var a = pbEl('a', 'pb-el pb-img-link');
             a.setAttribute('href', href);
             if (c.newTab) { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); }
             a.appendChild(img);
@@ -1160,28 +1254,28 @@
 
         button: function (el) {
             var c = el.content || {};
-            var a = pbEl('a', 'pb-btn');
+            var a = pbEl('a', 'pb-el pb-btn');
             a.textContent = str(c.text);
             var href = pbUrl(c.href);
             a.setAttribute('href', href || '#');
             if (c.newTab) { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); }
-            return a;
+            return pbId(a, el);
         },
 
-        card: function (el, depth) {
+        card: function (el) {
             var c = el.content || {};
-            var box = pbEl('div', 'pb-card');
+            var box = pbEl('div', 'pb-el pb-card');
             if (pbUrl(c.image)) {
                 box.appendChild(PB_ELEMENTS.image({ content: { src: c.image, alt: c.imageAlt,
                     width: c.imageWidth, height: c.imageHeight } }));
             }
             if (str(c.title)) {
-                var h = pbEl('h3', 'pb-card-title');
+                var h = pbEl('h3', 'pb-el pb-card-title');
                 h.textContent = str(c.title);
                 box.appendChild(h);
             }
             if (str(c.text)) {
-                var p = pbEl('p', 'pb-card-text');
+                var p = pbEl('p', 'pb-el pb-card-text');
                 p.textContent = str(c.text);
                 box.appendChild(p);
             }
@@ -1189,19 +1283,19 @@
                 box.appendChild(PB_ELEMENTS.button({ content: {
                     text: c.buttonText, href: c.buttonHref, newTab: c.buttonNewTab } }));
             }
-            return box;
+            return pbId(box, el);
         },
 
         columns: function (el, depth) {
             var cols = (el.content || {}).columns;
             if (!isArr(cols) || !cols.length) return null;
-            var wrap = pbEl('div', 'pb-columns');
+            var wrap = pbEl('div', 'pb-el pb-columns');
             for (var i = 0; i < cols.length; i++) {
                 var col = pbEl('div', 'pb-column');
                 pbRenderElements(col, (cols[i] || {}).elements, depth + 1);
                 wrap.appendChild(col);
             }
-            return wrap;
+            return pbId(wrap, el);
         }
     };
 
@@ -1216,32 +1310,53 @@
             if (!make) continue;                      /* unknown type: skip, never throw */
             var node = make(el, depth);
             if (!node) continue;
-            if (el.id) node.setAttribute('data-el', String(el.id));
             host.appendChild(node);
         }
     }
 
-    /* ---- CSS: one scoped block per section/element, three breakpoints ---- */
-    function pbDecls(style) {
+    /* ---- CSS: one scoped block per section/element, three breakpoints ----
+
+       Generated selectors are .pb-section[data-sec=".."] and
+       .pb-el[data-el=".."] rather than the bare attribute selector. That
+       gives them specificity (0,2,0):
+         - above the .pb-el reset at (0,1,0), whatever the source order, and
+         - above the page's own descendant rules such as .info-article h2 at
+           (0,1,1), which is what used to win over a heading's colour. */
+
+    function pbDecls(style, tokens, allow) {
         var out = '', k;
         if (!style) return out;
-        for (k in PB_TOKENS) {
-            if (!Object.prototype.hasOwnProperty.call(PB_TOKENS, k)) continue;
+        for (k in tokens) {
+            if (!Object.prototype.hasOwnProperty.call(tokens, k)) continue;
+            if (allow && allow.indexOf(k) === -1) continue;
             if (!Object.prototype.hasOwnProperty.call(style, k)) continue;
-            var v = str(style[k]).trim();
-            if (!v) continue;
-            var unit = PB_TOKENS[k][1];
-            if (unit && /^-?[0-9.]+$/.test(v)) v += unit;
-            if (k === 'bgImage') { var u = pbUrl(v); v = u ? 'url("' + u + '")' : ''; if (!v) continue; }
-            out += PB_TOKENS[k][0] + ':' + v + ';';
+            var v;
+            if (k === 'bgImage') {
+                var u = pbCssUrl(style[k]);
+                if (!u) continue;
+                v = 'url("' + u + '")';
+            } else {
+                v = pbCssValue(style[k]);
+                if (!v) continue;
+                var unit = tokens[k][1];
+                if (unit && /^-?[0-9.]+$/.test(v)) v += unit;
+            }
+            out += tokens[k][0] + ':' + v + ';';
+        }
+        /* Types laid out as a flex or grid item align themselves rather than
+           their text, so alignment is emitted as box alignment as well. */
+        if (out && tokens === PB_EL_TOKENS && (!allow || allow.indexOf('align') > -1)) {
+            var self = PB_SELF[str(style.align)];
+            if (self) out += '--pbe-self:' + self[0] + ';--pbe-justify:' + self[1] + ';';
         }
         return out;
     }
 
-    function pbScopedCSS(sel, node) {
-        var base = pbDecls(node.style);
+    function pbScopedCSS(sel, node, tokens, allow) {
+        var base = pbDecls(node.style, tokens, allow);
         var r = node.responsive || {};
-        var tab = pbDecls(r.tablet), mob = pbDecls(r.mobile);
+        var tab = pbDecls(r.tablet, tokens, allow);
+        var mob = pbDecls(r.mobile, tokens, allow);
         var css = '';
         if (base) css += sel + '{' + base + '}';
         if (tab)  css += '@media (max-width:1024px){' + sel + '{' + tab + '}}';
@@ -1249,20 +1364,40 @@
         return css;
     }
 
-    function builderCSS(sections) {
+    /* Elements nest (a columns element holds elements of its own), so this
+       walks the tree rather than only the top level. */
+    function pbElementCSS(list, depth) {
         var css = '', i, j;
+        if (!isArr(list) || depth > 3) return css;
+        for (i = 0; i < list.length; i++) {
+            var el = list[i];
+            if (!el) continue;
+            var id = pbCssId(el.id);
+            var allow = PB_EL_STYLE_KEYS[el.type];
+            if (id && allow) {
+                css += pbScopedCSS('.pb-el[data-el="' + id + '"]', el, PB_EL_TOKENS, allow);
+            }
+            var cols = (el.content || {}).columns;
+            if (isArr(cols)) {
+                for (j = 0; j < cols.length; j++) {
+                    css += pbElementCSS((cols[j] || {}).elements, depth + 1);
+                }
+            }
+        }
+        return css;
+    }
+
+    function builderCSS(sections) {
+        var css = '', i;
         if (!isArr(sections)) return css;
         for (i = 0; i < sections.length; i++) {
             var sec = sections[i];
-            if (!sec || !sec.id) continue;
-            css += pbScopedCSS('[data-sec="' + sec.id + '"]', sec);
-            var els = sec.elements;
-            if (!isArr(els)) continue;
-            for (j = 0; j < els.length; j++) {
-                if (els[j] && els[j].id) {
-                    css += pbScopedCSS('[data-el="' + els[j].id + '"]', els[j]);
-                }
+            if (!sec) continue;
+            var id = pbCssId(sec.id);
+            if (id) {
+                css += pbScopedCSS('.pb-section[data-sec="' + id + '"]', sec, PB_SEC_TOKENS, null);
             }
+            css += pbElementCSS(sec.elements, 0);
         }
         return css;
     }
@@ -1774,8 +1909,18 @@
                 .then(function (rows) {
                     if (!rows || !rows.length || !rows[0].data) return null;
                     var remoteData = rows[0].data;
+                    /* builderDrafts is this device's unpublished working copy.
+                       It must survive the pull: the row carries at best the
+                       drafts as they were when it was last written, and every
+                       page in this browser pulls — so without this, opening
+                       the site in another tab rolled the admin's unsaved
+                       Page Builder work back to the last published state. */
+                    var localDrafts = (load() || {}).builderDrafts;
                     /* server wins — localStorage is only a cache here */
                     state = merge(merge(DEFAULTS, window.CMS_BRAND || null), remoteData);
+                    if (localDrafts && Object.keys(localDrafts).length) {
+                        state.builderDrafts = localDrafts;
+                    }
                     try {
                         window.localStorage.setItem(KEY, JSON.stringify(state));
                     } catch (e) { /* cache is optional */ }
@@ -1822,9 +1967,15 @@
             var t = token();
             if (!t) return Promise.reject(new Error('Not signed in'));
 
+            /* Drafts are working state, not published content. Sending them
+               would put unpublished copy in the public row, which every
+               visitor downloads with the anon key. */
+            var payload = clone(load());
+            delete payload.builderDrafts;
+
             var body = JSON.stringify({
                 id: RC.siteId,
-                data: load(),
+                data: payload,
                 updated_at: new Date().toISOString()
             });
 
@@ -2039,6 +2190,10 @@
             css: builderCSS,
             published: publishedSections,
             safeUrl: pbUrl,
+            safeCssValue: pbCssValue,
+            elementStyleKeys: PB_EL_STYLE_KEYS,
+            sectionTokens: PB_SEC_TOKENS,
+            elementTokens: PB_EL_TOKENS,
 
             /* draft / publish */
             mounted: PB_MOUNTED,
