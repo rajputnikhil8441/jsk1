@@ -280,6 +280,16 @@
            status. Editing here cannot change what visitors see. */
         builderDrafts: {},
 
+        /* The reusable-section library. Device-local, exactly like
+           builderDrafts: stripped from the publish payload and preserved
+           across a pull. See docs/page-builder.md. */
+        builderLibrary: { version: 1, items: [] },
+
+        /* One recovery snapshot per page, taken immediately before the two
+           actions that would otherwise throw work away for good. Device-
+           local for the same reasons as the two above. */
+        builderRecovery: {},
+
         pages: {
 
             /* The homepage is part of the SEO system too — its title is
@@ -503,6 +513,18 @@
         /* Per-section typography. Empty string = inherit existing CSS. */
         typography: {},
 
+        /* ---- Page Builder global design (stage 6) ----
+           Deliberately empty. Six of the ten colour roles are aliases of
+           colours that already exist above, so storing anything here by
+           default would duplicate them; a role only appears once someone
+           overrides it FOR THE PAGE BUILDER, which is the only thing a
+           value here affects. The four roles the site has no equivalent
+           for, and every typography role, carry shipped constants in
+           PB_COLOR_ROLES / PB_TYPO_ROLES rather than in saved data, so an
+           older record that has no `design` key at all resolves exactly
+           the same way. See docs/page-builder.md. */
+        design: { colors: {}, typography: {} },
+
         /* Registration page — toggles + appearance (see /admin > Registration) */
         registerPage: {
             enabled: true,
@@ -525,11 +547,30 @@
     ======================================================== */
     function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
+    /* Keys that are not data, whatever a JSON payload calls them.
+
+       JSON.parse('{"__proto__":{...}}') makes __proto__ an ORDINARY OWN
+       property, so the hasOwnProperty guard below lets it through -- and
+       `out[k] = over[k]` for that key is not an assignment, it is a call
+       to the prototype setter. Everything this file reads afterwards,
+       get() included, then resolves names that were never in the object:
+       a stored page, a stored colour, a stored anything.
+
+       Object.prototype is never reached (the damage is confined to the
+       object being built), but "confined" is not "safe" when the object
+       being built is the whole CMS state. Both the Supabase row and
+       localStorage arrive through here, so this is the one place the
+       guard belongs. */
+    function unsafeKey(k) {
+        return k === '__proto__' || k === 'constructor' || k === 'prototype';
+    }
+
     function merge(base, over) {
         var out = clone(base), k;
         if (!over) return out;
         for (k in over) {
             if (!Object.prototype.hasOwnProperty.call(over, k)) continue;
+            if (unsafeKey(k)) continue;
             if (over[k] && typeof over[k] === 'object' && !Array.isArray(over[k]) &&
                 out[k] && typeof out[k] === 'object' && !Array.isArray(out[k])) {
                 out[k] = merge(out[k], over[k]);
@@ -768,6 +809,7 @@
         tag.textContent = css;
 
         paintTypography();
+        paintDesign();      /* roles that alias a site colour follow it live */
         paintRegister();
         paintSportsTable();
     }
@@ -1032,6 +1074,29 @@
         };
     }
 
+    /* WHY THIS RUNS TWICE.
+
+       Every page loads js/cms.js from its <head>, and the JSON-LD blocks
+       sit a few lines BELOW that script tag. applyHead() therefore runs
+       while those <script type="application/ld+json"> elements do not
+       exist yet, getElementById() returns null, and writeLd() is a no-op
+       -- so the schema toggles in /admin have never actually reached a
+       page. The static blocks in the files are correct on their own, which
+       is why nothing looked wrong, and they still are: this changes
+       nothing for a crawler that runs no JavaScript.
+
+       What it changes is that an admin who turns "BreadcrumbList schema"
+       off now gets it turned off, and a page whose title is edited in the
+       CMS gets that title in its WebPage block. One more pass, once the
+       document has parsed, writing exactly what paintSeo() would have
+       written. */
+    function paintSchemaLate() {
+        var key = pageKey();
+        if (!key) return;
+        var page = pageData(key);
+        if (page) paintSchema(page);
+    }
+
     function paintSchema(page) {
         writeLd('ldOrganization', buildOrganization());
         writeLd('ldWebSite', buildWebSite());
@@ -1073,7 +1138,62 @@
        No element type in v1 injects markup.
     ======================================================== */
 
-    var PB_SCHEMA = 1;
+    /* Page Builder schema version.
+
+       This is a MARKER, never a gate. The renderer must go on drawing
+       schemaVersion 1 blocks — and blocks with no version at all — for as
+       long as this code lives, because published pages out there carry them
+       and nothing rewrites those pages until someone edits them.
+
+       New writes stamp PB_SCHEMA. Old blocks keep whatever they were saved
+       with until the admin edits and saves that page, so an upgrade is never
+       forced on content nobody touched. Reading is tolerant in both
+       directions: an older block gets V2 defaults through pbUpgrade(), and a
+       NEWER block than this code understands still renders, because every
+       V2 field is optional and unknown element types are skipped rather than
+       thrown on. (A visitor on a cached V1 cms.js reading a V2 row therefore
+       loses the new elements but keeps the page.)
+
+       tests/test_pagebuilder_compat.js holds a frozen V1 payload and the
+       render it produced at 1ce70b5. If a change here alters that render,
+       that suite fails, and it is meant to. */
+    var PB_SCHEMA = 2;
+
+    /* Migration steps, oldest first. A step takes the sections array as the
+       previous version wrote it and returns the array this version wants.
+
+       A step that changes nothing returns the SAME array reference, so the
+       common path — already-current data on every repaint — costs nothing.
+       A step that does transform must not mutate its input; build a new
+       array instead, because the caller may be holding published state.
+
+       1 -> 2 is deliberately identity. Everything V2 adds is an optional
+       field with a safe default, so V1 data needs no rewriting to render
+       correctly under V2; the step exists so the chain is real and tested
+       from the start, and so later versions have one obvious place to go. */
+    var PB_MIGRATIONS = [
+        { to: 2, fn: function (sections) { return sections; } }
+    ];
+
+    /* The version a stored block claims. Absent means V1: the first release
+       stamped every block it wrote, so a block with no version predates
+       nothing and can only be V1-shaped. */
+    function pbSchemaOf(block) {
+        var v = block && block.schemaVersion;
+        return (typeof v === 'number' && v > 0) ? v : 1;
+    }
+
+    function pbUpgrade(sections, from) {
+        if (!isArr(sections)) return sections;
+        var v = (typeof from === 'number' && from > 0) ? from : 1;
+        for (var i = 0; i < PB_MIGRATIONS.length; i++) {
+            if (PB_MIGRATIONS[i].to > v) {
+                sections = PB_MIGRATIONS[i].fn(sections) || sections;
+                v = PB_MIGRATIONS[i].to;
+            }
+        }
+        return sections;
+    }
 
     /* style key -> [custom property, unit appended to bare numbers] */
     /* Custom properties live in two separate namespaces on purpose.
@@ -1085,6 +1205,10 @@
        --pbe-* it might have inherited (see .pb-el in css/sections.css), so a
        value can only ever style the node it was set on. */
     var PB_SEC_TOKENS = {
+        /* Stage 6. Expands into the font properties below, so it is listed
+           first: a rule emits declarations in this order, and an explicit
+           value written later wins over the role's. */
+        typography: ['', ''],
         bg:         ['--pbs-bg', ''],
         bgImage:    ['--pbs-bg-image', ''],
         color:      ['--pbs-color', ''],
@@ -1098,10 +1222,17 @@
         border:     ['--pbs-border', ''],
         radius:     ['--pbs-radius', 'px'],
         shadow:     ['--pbs-shadow', ''],
-        gap:        ['--pbs-gap', 'px']
+        gap:        ['--pbs-gap', 'px'],
+        /* Stage 5. Line height is deliberately NOT a section token: every
+           element sets its own, so a section-level value would never show.
+           Letter spacing does reach them, because each element's rule falls
+           back to `inherit`. */
+        letterSpacing: ['--pbs-letter-spacing', 'px']
     };
 
     var PB_EL_TOKENS = {
+        /* Stage 6 -- see the note on PB_SEC_TOKENS above. */
+        typography: ['', ''],
         bg:         ['--pbe-bg', ''],
         color:      ['--pbe-color', ''],
         fontSize:   ['--pbe-font-size', 'px'],
@@ -1114,24 +1245,629 @@
         border:     ['--pbe-border', ''],
         radius:     ['--pbe-radius', 'px'],
         shadow:     ['--pbe-shadow', ''],
-        gap:        ['--pbe-gap', 'px']
+        gap:        ['--pbe-gap', 'px'],
+        /* V2: a divider's rule is its own thing, not the element's border */
+        lineWidth:  ['--pbe-line-width', 'px'],
+        lineStyle:  ['--pbe-line-style', ''],
+        lineColor:  ['--pbe-line-color', ''],
+        /* V2: column tracks. The value written is never the author's text;
+           it is a constant looked up from PB_COL_LAYOUTS (see pbDecls). */
+        columns:    ['--pbe-cols', ''],
+        /* Stage 5 typography. Each element rule reads these with its own
+           existing value as the fallback, so an element that has never been
+           given one renders exactly as before. */
+        lineHeight:    ['--pbe-line-height', ''],
+        letterSpacing: ['--pbe-letter-spacing', 'px']
     };
 
     /* Which controls actually do something for each element type. The admin
        builds its Design tab from this, so a control is never offered for an
        element whose CSS would ignore it. */
     var PB_EL_STYLE_KEYS = {
-        heading: ['color', 'fontSize', 'fontWeight', 'align', 'bg', 'padding',
+        heading: ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+                  'align', 'bg', 'padding',
                   'margin', 'maxWidth', 'border', 'radius', 'shadow'],
-        text:    ['color', 'fontSize', 'fontWeight', 'align', 'bg', 'padding',
+        text:    ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+                  'align', 'bg', 'padding',
                   'margin', 'maxWidth', 'border', 'radius', 'shadow'],
         image:   ['align', 'margin', 'maxWidth', 'height', 'border', 'radius', 'shadow'],
-        button:  ['bg', 'color', 'fontSize', 'fontWeight', 'align', 'padding',
+        button:  ['typography', 'bg', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+                  'align', 'padding',
                   'margin', 'border', 'radius', 'shadow'],
-        card:    ['bg', 'color', 'align', 'padding', 'margin', 'maxWidth', 'gap',
-                  'border', 'radius', 'shadow'],
-        columns: ['align', 'margin', 'maxWidth', 'gap']
+        /* A card's title and text carry .pb-el of their own, which resets the
+           element namespace -- so the card's line height would stop at the
+           wrapper and never reach the words, and a typography role, which is
+           mostly size and weight, would have nothing left to set. Letter
+           spacing still reaches them, because that is an inherited CSS
+           property and the children do not declare it. */
+        card:    ['bg', 'color', 'letterSpacing', 'align', 'padding', 'margin',
+                  'maxWidth', 'gap', 'border', 'radius', 'shadow'],
+        columns: ['columns', 'align', 'margin', 'maxWidth', 'gap'],
+
+        /* V2 elements. Same rule as above: a key appears here only if the
+           CSS below actually reads it, so the admin can never offer a
+           control that does nothing. */
+        divider:     ['lineWidth', 'lineStyle', 'lineColor', 'maxWidth', 'align', 'margin'],
+        spacer:      ['height', 'maxWidth'],
+        icon:        ['color', 'fontSize', 'align', 'bg', 'padding', 'margin', 'radius'],
+        notice:      ['typography', 'bg', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+                      'align', 'padding', 'margin',
+                      'maxWidth', 'gap', 'border', 'radius', 'shadow'],
+        featureBox:  ['typography', 'bg', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+                      'align', 'padding', 'margin',
+                      'maxWidth', 'gap', 'border', 'radius', 'shadow'],
+        faq:         ['typography', 'bg', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+                      'align', 'padding', 'margin',
+                      'maxWidth', 'gap', 'border', 'radius', 'shadow'],
+        socialLinks: ['color', 'fontSize', 'align', 'bg', 'padding', 'margin', 'gap', 'radius']
     };
+
+    /* The keys a SECTION reacts to. Derived from the section token map, so
+       there is exactly one place that decides, and the admin cannot drift
+       from it -- the "offer everything" fallback it used to have was how the
+       divider and column controls ended up on sections. */
+    var PB_SEC_STYLE_KEYS = (function () {
+        var out = [], k;
+        for (k in PB_SEC_TOKENS) {
+            if (Object.prototype.hasOwnProperty.call(PB_SEC_TOKENS, k)) out.push(k);
+        }
+        return out;
+    }());
+
+    /* =====================================================
+       UNTRUSTED SECTION DATA (milestone A)
+       -----------------------------------------------------
+       Reusable sections come back from a JSON file a person chose, and
+       templates come from a code registry -- neither is as trustworthy as
+       something the admin's own controls produced. Both go through here.
+
+       The method is the same one the rest of this file uses: nothing is
+       copied unless its key is on a list. A fresh object is BUILT from the
+       input rather than the input being cleaned up in place, so a key that
+       is not named below simply never exists in the result. That is what
+       makes __proto__, constructor and prototype non-events: they are not
+       on any list, so they are not copied, and the object being written
+       into is a plain literal whose own keys are assigned directly.
+
+       Values go through the same checks the renderer already applies --
+       pbUrl for links, pbCssValue for style values, the icon, social,
+       variant and heading-level allow-lists -- rather than a second set. */
+
+    /* Ids address the generated CSS, so two must never collide. The counter
+       covers duplicating a section, which mints several ids inside one
+       millisecond -- the same reason the admin's own minter has one. */
+    var pbIdSeq = 0;
+    function pbNewId(prefix) {
+        pbIdSeq += 1;
+        return prefix + '_' + Date.now().toString(36) + pbIdSeq.toString(36) +
+               Math.floor(Math.random() * 1e6).toString(36);
+    }
+
+    var PB_CONTENT_KEYS = {
+        heading:     ['text', 'level'],
+        text:        ['text'],
+        image:       ['src', 'alt', 'width', 'height', 'href', 'newTab'],
+        button:      ['text', 'href', 'newTab'],
+        card:        ['title', 'text', 'image', 'imageAlt', 'imageWidth', 'imageHeight',
+                      'buttonText', 'buttonHref', 'buttonNewTab'],
+        columns:     [],                       /* its containers are handled below */
+        divider:     [],
+        spacer:      [],
+        icon:        ['icon', 'label', 'href', 'newTab'],
+        notice:      ['variant', 'icon', 'text', 'linkText', 'href', 'newTab'],
+        featureBox:  ['icon', 'image', 'imageAlt', 'title', 'titleLevel', 'text',
+                      'linkText', 'href', 'newTab'],
+        faq:         ['single'],
+        socialLinks: []
+    };
+
+    /* Which content keys hold a URL, and which hold a repeating list. */
+    var PB_URL_KEYS = { src: 1, href: 1, image: 1, buttonHref: 1, url: 1 };
+
+    /* Content keys whose value is a name from a list rather than free text.
+       The renderer already refuses an unrecognised one at render time, but
+       an import is the moment to drop it: storing "constructor" as an icon
+       name is inert and pointless, and validating here means the library
+       only ever holds values the builder's own controls could have set.
+       Each list is the renderer's own, never a second copy. */
+    var PB_ENUM_KEYS = {
+        icon:       function () { return PB_ICONS; },
+        variant:    function () { return PB_NOTICE_VARIANTS; },
+        titleLevel: function () { return PB_HEADING_LEVELS; },
+        platform:   function () { return PB_SOCIAL; },
+        level:      function () { return PB_ALL_LEVELS; }
+    };
+
+    var PB_ALL_LEVELS = { h1: 1, h2: 1, h3: 1, h4: 1, h5: 1, h6: 1 };
+
+    function pbEnumOk(key, value) {
+        var get = pbPick(PB_ENUM_KEYS, key);
+        if (!get) return true;
+        return !!pbPick(get(), String(value).toLowerCase());
+    }
+    var PB_ITEM_KEYS = {
+        faq:         ['question', 'answer', 'open'],
+        socialLinks: ['platform', 'url', 'label']
+    };
+
+    /* A row that lost one of these is not a row the renderer could draw, so
+       it is dropped rather than stored as something an author would have to
+       notice is broken. */
+    var PB_ITEM_REQUIRED = {
+        faq:         ['question'],
+        socialLinks: ['platform', 'url']
+    };
+
+    /* A single stored value: kept as a boolean, a finite number or a string
+       with anything that could terminate an attribute stripped out. Objects
+       and arrays are refused, which is what stops a nested payload riding in
+       on a content key. */
+    function pbScalar(v) {
+        if (typeof v === 'boolean') return v;
+        if (typeof v === 'number') return isFinite(v) ? v : null;
+        if (typeof v !== 'string') return null;
+        if (/[\u0000-\u001f\u007f]/.test(v)) return null;
+        return v.length > 4000 ? v.slice(0, 4000) : v;
+    }
+
+    function pbCleanContent(type, raw) {
+        var out = {}, keys = pbPick(PB_CONTENT_KEYS, type) || [], i, k, v;
+        if (!raw || typeof raw !== 'object') return out;
+        for (i = 0; i < keys.length; i++) {
+            k = keys[i];
+            if (!Object.prototype.hasOwnProperty.call(raw, k)) continue;
+            v = pbScalar(raw[k]);
+            if (v === null) continue;
+            /* A URL that the renderer would refuse is dropped here rather
+               than stored, so nothing downstream has to remember to check. */
+            if (Object.prototype.hasOwnProperty.call(PB_URL_KEYS, k)) {
+                v = pbUrl(v);
+                if (!v) continue;
+            }
+            if (!pbEnumOk(k, v)) continue;
+            out[k] = v;
+        }
+        var items = pbPick(PB_ITEM_KEYS, type);
+        if (items && isArr(raw.items)) {
+            var list = [];
+            for (i = 0; i < raw.items.length && i < 100; i++) {
+                var src = raw.items[i];
+                if (!src || typeof src !== 'object') continue;
+                var row = {}, kept = 0;
+                for (var j = 0; j < items.length; j++) {
+                    var ik = items[j];
+                    if (!Object.prototype.hasOwnProperty.call(src, ik)) continue;
+                    var iv = pbScalar(src[ik]);
+                    if (iv === null) continue;
+                    if (Object.prototype.hasOwnProperty.call(PB_URL_KEYS, ik)) {
+                        iv = pbUrl(iv);
+                        if (!iv) continue;
+                    }
+                    if (!pbEnumOk(ik, iv)) continue;
+                    row[ik] = iv;
+                    kept += 1;
+                }
+                var need = pbPick(PB_ITEM_REQUIRED, type) || [];
+                var whole = true;
+                for (var n = 0; n < need.length; n++) {
+                    if (!Object.prototype.hasOwnProperty.call(row, need[n])) whole = false;
+                }
+                if (kept && whole) list.push(row);
+            }
+            out.items = list;
+        }
+        return out;
+    }
+
+    /* Style and responsive maps, filtered to the keys this node's renderer
+       reads and to values that survive the checks it would apply anyway. */
+    function pbCleanStyle(raw, allow) {
+        var out = {}, i, k, v;
+        if (!raw || typeof raw !== 'object') return out;
+        for (i = 0; i < allow.length; i++) {
+            k = allow[i];
+            if (!Object.prototype.hasOwnProperty.call(raw, k)) continue;
+            v = pbScalar(raw[k]);
+            if (v === null) continue;
+            v = str(v);
+            if (!v) continue;
+            /* A global design reference is legal here; anything else has to
+               pass the ordinary value check. */
+            if (v.charAt(0) === '@') {
+                if (k === 'typography') { if (!pbPick(PB_TYPO_ROLES, v.slice(1))) continue; }
+                else if (!pbColorRef(v)) continue;
+            } else if (!pbCssValue(v)) {
+                continue;
+            }
+            out[k] = typeof raw[k] === 'number' ? raw[k] : v;
+        }
+        return out;
+    }
+
+    function pbCleanResponsive(raw, allow) {
+        var out = {};
+        if (!raw || typeof raw !== 'object') return out;
+        if (raw.tablet) out.tablet = pbCleanStyle(raw.tablet, allow);
+        if (raw.mobile) out.mobile = pbCleanStyle(raw.mobile, allow);
+        return out;
+    }
+
+    function pbCleanElement(raw, depth) {
+        if (!raw || typeof raw !== 'object' || depth > 3) return null;
+        var type = str(raw.type);
+        /* Unknown types are refused outright rather than carried along: an
+           import is the one place where dropping the unrecognised is safer
+           than keeping it for a future version to understand. */
+        if (!pbPick(PB_ELEMENTS, type)) return null;
+        var allow = pbPick(PB_EL_STYLE_KEYS, type) || [];
+        var out = {
+            id: pbCssId(raw.id) || pbNewId('el'),
+            type: type,
+            content: pbCleanContent(type, raw.content),
+            style: pbCleanStyle(raw.style, allow),
+            responsive: pbCleanResponsive(raw.responsive, allow)
+        };
+        if (raw.enabled === false) out.enabled = false;
+        if (type === 'columns') {
+            var cols = ((raw.content || {}).columns);
+            var kept = [];
+            if (isArr(cols)) {
+                for (var i = 0; i < cols.length && i < 12; i++) {
+                    kept.push({ elements: pbCleanElements((cols[i] || {}).elements, depth + 1) });
+                }
+            }
+            out.content.columns = kept;
+        }
+        return out;
+    }
+
+    function pbCleanElements(raw, depth) {
+        var out = [];
+        if (!isArr(raw)) return out;
+        for (var i = 0; i < raw.length && i < 200; i++) {
+            var el = pbCleanElement(raw[i], depth);
+            if (el) out.push(el);
+        }
+        return out;
+    }
+
+    function pbCleanSection(raw) {
+        if (!raw || typeof raw !== 'object') return null;
+        var type = str(raw.type);
+        if (!pbPick(PB_SECTION_CLASS, type)) return null;
+        var allow = PB_SEC_STYLE_KEYS;
+        var vis = raw.visibility && typeof raw.visibility === 'object' ? raw.visibility : {};
+        return {
+            id: pbCssId(raw.id) || pbNewId('sec'),
+            type: type,
+            enabled: raw.enabled !== false,
+            visibility: {
+                desktop: vis.desktop !== false,
+                tablet: vis.tablet !== false,
+                mobile: vis.mobile !== false
+            },
+            style: pbCleanStyle(raw.style, allow),
+            responsive: pbCleanResponsive(raw.responsive, allow),
+            elements: pbCleanElements(raw.elements, 0)
+        };
+    }
+
+    /* The public entry point: any array of section-shaped data in, a clean
+       array out. Never throws, never returns the input. */
+    function pbCleanSections(raw) {
+        var out = [];
+        if (!isArr(raw)) return out;
+        for (var i = 0; i < raw.length && i < 200; i++) {
+            var sec = pbCleanSection(raw[i]);
+            if (sec) out.push(sec);
+        }
+        return out;
+    }
+
+    /* Fresh ids throughout, so an inserted copy can never address the same
+       generated CSS rule as the thing it was copied from. */
+    function pbReidSections(sections) {
+        function walk(list, depth) {
+            if (!isArr(list) || depth > 4) return;
+            for (var i = 0; i < list.length; i++) {
+                var el = list[i];
+                if (!el) continue;
+                el.id = pbNewId('el');
+                var cols = (el.content || {}).columns;
+                if (isArr(cols)) {
+                    for (var j = 0; j < cols.length; j++) walk((cols[j] || {}).elements, depth + 1);
+                }
+            }
+        }
+        for (var i = 0; i < (sections || []).length; i++) {
+            sections[i].id = pbNewId('sec');
+            walk(sections[i].elements, 0);
+        }
+        return sections;
+    }
+
+    /* ---- V2: column layout presets ----    /* ---- V2: column layout presets ----
+       A layout is chosen by NAME from this map. The value emitted into
+       grid-template-columns is always the constant string stored here, so
+       no author-entered text can ever reach that property. The second
+       entry is how many column containers the preset expects, which the
+       admin uses to keep the containers and the tracks in step.
+
+       The key is also the wire format stored in style.columns, so these
+       names are part of the saved data: do not rename an existing one. */
+    var PB_COL_LAYOUTS = {
+        '1':          ['1fr', 1],
+        '2':          ['1fr 1fr', 2],
+        '2-30-70':    ['30fr 70fr', 2],
+        '2-70-30':    ['70fr 30fr', 2],
+        '2-40-60':    ['40fr 60fr', 2],
+        '2-60-40':    ['60fr 40fr', 2],
+        '2-25-75':    ['25fr 75fr', 2],
+        '2-75-25':    ['75fr 25fr', 2],
+        '3':          ['1fr 1fr 1fr', 3],
+        '3-25-50-25': ['25fr 50fr 25fr', 3],
+        '3-50-25-25': ['50fr 25fr 25fr', 3],
+        '3-25-25-50': ['25fr 25fr 50fr', 3],
+        '4':          ['1fr 1fr 1fr 1fr', 4]
+    };
+
+    /* =====================================================
+       PAGE BUILDER GLOBAL DESIGN (stage 6)
+       -----------------------------------------------------
+       Ten semantic colour roles and eight typography roles that a
+       section or element can reference by name -- "@primary" rather than
+       "#0088cc" -- so changing the global value moves everything that
+       points at it.
+
+       WHERE THE VALUES COME FROM. Six of the colour roles are aliases of
+       colours the site already has; the Colors panel stays their single
+       source of truth and this layer never copies them. The other four
+       name concepts the site has no colour for, so they carry a shipped
+       constant here. Either way a role can be overridden in
+       design.colors, and that override reaches the Page Builder ONLY:
+       it is written to a --pbg-* property that nothing outside the
+       builder reads, so setting the builder's Primary cannot repaint the
+       navigation, the odds table or the footer.
+
+       HOW A REFERENCE REACHES THE PAGE. A stored "@primary" is emitted
+       as var(--pbg-primary, <shipped constant>), never as the resolved
+       colour, so every element that references a role is updated by one
+       :root block rather than by regenerating its rule. The fallback in
+       that var() is the constant from this map, so a page whose design
+       block never loaded still renders a sensible colour instead of
+       nothing.
+
+       SECURITY. A name is only ever a key into these maps, read with
+       hasOwnProperty, and what gets emitted is built from the map -- the
+       stored text itself never reaches the stylesheet. An unrecognised
+       name emits no declaration at all, which leaves the element's
+       shipped default in charge. */
+
+    /* role -> [existing colors key it aliases (null if none), shipped value] */
+    var PB_COLOR_ROLES = {
+        primary:    ['hdr-bg',     '#0088cc'],
+        secondary:  [null,         '#5a6b7c'],
+        text:       ['text',       '#222222'],
+        muted:      ['text-dim',   '#777777'],
+        border:     ['border',     '#d4d4d4'],
+        background: ['page-bg',    '#eef0f3'],
+        surface:    ['content-bg', '#ffffff'],
+        success:    [null,         '#1e7e34'],
+        warning:    [null,         '#b8860b'],
+        danger:     [null,         '#c62828']
+    };
+
+    /* role -> the shipped typography it stands for. The heading numbers are
+       the same ones css/sections.css already falls back to, so pointing a
+       heading at its matching role changes nothing until the role is
+       edited. */
+    var PB_TYPO_ROLES = {
+        body:   { fontSize: '16px', fontWeight: '400', lineHeight: '1.6',  letterSpacing: 'inherit' },
+        h1:     { fontSize: '34px', fontWeight: '700', lineHeight: '1.25', letterSpacing: 'inherit' },
+        h2:     { fontSize: '28px', fontWeight: '700', lineHeight: '1.25', letterSpacing: 'inherit' },
+        h3:     { fontSize: '22px', fontWeight: '700', lineHeight: '1.25', letterSpacing: 'inherit' },
+        h4:     { fontSize: '19px', fontWeight: '700', lineHeight: '1.25', letterSpacing: 'inherit' },
+        h5:     { fontSize: '17px', fontWeight: '700', lineHeight: '1.25', letterSpacing: 'inherit' },
+        h6:     { fontSize: '15px', fontWeight: '700', lineHeight: '1.25', letterSpacing: 'inherit' },
+        button: { fontSize: '15px', fontWeight: '600', lineHeight: '1.2',  letterSpacing: 'inherit' }
+    };
+
+    /* Where a role has an equivalent in the site's own typography system,
+       that system stays its source, exactly as the Colors panel does for
+       the six mapped colours. Only Body has one: TYPO_TARGETS has no h1-h6,
+       and its headerBtns targets the site's own header buttons rather than
+       anything the Page Builder draws, so mapping the Button role onto it
+       would tie together two things an author thinks of separately. */
+    var PB_TYPO_SITE = { body: 'base' };
+
+    /* The four typography properties a role carries, and the --pbg-* suffix
+       each one is published under. */
+    var PB_TYPO_PROPS = {
+        fontSize:      'size',
+        fontWeight:    'weight',
+        lineHeight:    'line',
+        letterSpacing: 'letter'
+    };
+
+    function pbDesignBlock() {
+        var d = load().design;
+        return (d && typeof d === 'object') ? d : {};
+    }
+
+    /* What a colour role currently resolves to. Order: an override stored
+       for the Page Builder, then the site colour it aliases, then the
+       shipped constant. Anything that fails the value check is ignored
+       rather than emitted, so a broken saved value cannot break the page. */
+    function pbRoleColor(role) {
+        var spec = pbPick(PB_COLOR_ROLES, role);
+        if (!spec) return '';
+        var own = (pbDesignBlock().colors || {})[role];
+        var v = pbCssValue(own);
+        if (v) return v;
+        if (spec[0]) {
+            v = pbCssValue((load().colors || {})[spec[0]]);
+            if (v) return v;
+        }
+        return spec[1];
+    }
+
+    function pbRoleTypo(role, prop) {
+        var spec = pbPick(PB_TYPO_ROLES, role);
+        if (!spec) return '';
+        function use(raw) {
+            var v = pbCssValue(raw);
+            if (!v) return '';
+            if ((prop === 'fontSize' || prop === 'letterSpacing') && /^-?[0-9.]+$/.test(v)) v += 'px';
+            return v;
+        }
+        var v = use(((pbDesignBlock().typography || {})[role] || {})[prop]);
+        if (v) return v;
+        var site = pbPick(PB_TYPO_SITE, role);
+        if (site) {
+            v = use(((load().typography || {})[site] || {})[prop]);
+            if (v) return v;
+        }
+        return spec[prop];
+    }
+
+    /* The one :root block every reference points at. Repainted by
+       paintVars(), so editing a site colour moves the roles that alias it
+       without anything else having to know. */
+    function designCSS() {
+        var css = ':root{', role, prop;
+        for (role in PB_COLOR_ROLES) {
+            if (!Object.prototype.hasOwnProperty.call(PB_COLOR_ROLES, role)) continue;
+            css += '--pbg-' + role + ':' + pbRoleColor(role) + ';';
+        }
+        for (role in PB_TYPO_ROLES) {
+            if (!Object.prototype.hasOwnProperty.call(PB_TYPO_ROLES, role)) continue;
+            for (prop in PB_TYPO_PROPS) {
+                if (!Object.prototype.hasOwnProperty.call(PB_TYPO_PROPS, prop)) continue;
+                css += '--pbg-' + role + '-' + PB_TYPO_PROPS[prop] + ':' +
+                       pbRoleTypo(role, prop) + ';';
+            }
+        }
+        return css + '}';
+    }
+
+    function paintDesign() {
+        var tag = document.getElementById('cmsDesign');
+        if (!tag) {
+            tag = document.createElement('style');
+            tag.id = 'cmsDesign';
+            (document.head || document.documentElement).appendChild(tag);
+        }
+        tag.textContent = designCSS();
+    }
+
+    /* "@primary" -> var(--pbg-primary, #0088cc). Returns '' for anything
+       that is not a role on the list, including every name inherited from
+       Object.prototype. */
+    function pbColorRef(raw) {
+        var v = str(raw);
+        if (v.charAt(0) !== '@') return '';
+        var spec = pbPick(PB_COLOR_ROLES, v.slice(1));
+        if (!spec) return '';
+        return 'var(--pbg-' + v.slice(1) + ',' + spec[1] + ')';
+    }
+
+    /* A colour-valued style value: a role reference, or a literal that has
+       to pass the ordinary value check. A reference that names nothing
+       yields '' and the caller drops the declaration. */
+    function pbColorValue(raw) {
+        var v = str(raw);
+        if (v.charAt(0) === '@') return pbColorRef(v);
+        return pbCssValue(v);
+    }
+
+    /* The border shorthand keeps its own wire format, so a role reference
+       arrives as the last word of "2px solid @primary". */
+    function pbBorderValue(raw) {
+        var v = pbCssValue(raw);
+        if (!v || v.indexOf('@') === -1) return v;
+        var parts = v.split(/\s+/);
+        var last = parts[parts.length - 1];
+        if (last.charAt(0) !== '@') return '';    /* @ anywhere else: refuse */
+        var ref = pbColorRef(last);
+        if (!ref) return '';
+        parts[parts.length - 1] = ref;
+        return parts.join(' ');
+    }
+
+    /* Reading an allow-list by a name that came from stored content.
+
+       A bare map[name] is not a membership test: every object inherits
+       "constructor", "toString" and the rest from Object.prototype, so
+       PB_ICONS['constructor'] hands back a function, which then gets
+       stringified into a class attribute. Every lookup keyed by author
+       data goes through here. */
+    function pbPick(map, name) {
+        var k = str(name);
+        if (!k || !Object.prototype.hasOwnProperty.call(map, k)) return null;
+        return map[k] || null;
+    }
+
+    function pbColLayout(name) {
+        var k = str(name);
+        if (!k || !Object.prototype.hasOwnProperty.call(PB_COL_LAYOUTS, k)) return null;
+        return PB_COL_LAYOUTS[k];
+    }
+
+    /* ---- V2 allow-lists ----
+       An icon is chosen by NAME from this map, never by class string, so
+       nothing a page author types can become a class on the page. The
+       values are Font Awesome 6 classes, which the site already loads. */
+    var PB_ICONS = {
+        star:      'fa-solid fa-star',
+        check:     'fa-solid fa-circle-check',
+        info:      'fa-solid fa-circle-info',
+        warning:   'fa-solid fa-triangle-exclamation',
+        danger:    'fa-solid fa-circle-exclamation',
+        question:  'fa-solid fa-circle-question',
+        shield:    'fa-solid fa-shield-halved',
+        lock:      'fa-solid fa-lock',
+        bolt:      'fa-solid fa-bolt',
+        clock:     'fa-solid fa-clock',
+        gift:      'fa-solid fa-gift',
+        trophy:    'fa-solid fa-trophy',
+        wallet:    'fa-solid fa-wallet',
+        phone:     'fa-solid fa-phone',
+        envelope:  'fa-solid fa-envelope',
+        headset:   'fa-solid fa-headset',
+        user:      'fa-solid fa-user',
+        users:     'fa-solid fa-users',
+        heart:     'fa-solid fa-heart',
+        thumbsUp:  'fa-solid fa-thumbs-up',
+        rocket:    'fa-solid fa-rocket',
+        chart:     'fa-solid fa-chart-line',
+        mobile:    'fa-solid fa-mobile-screen',
+        creditCard:'fa-solid fa-credit-card'
+    };
+
+    /* Platform -> [icon class, accessible name]. A link whose platform is
+       not in here is dropped, so no arbitrary icon markup is reachable. */
+    var PB_SOCIAL = {
+        whatsapp:  ['fa-brands fa-whatsapp',  'WhatsApp'],
+        telegram:  ['fa-brands fa-telegram',  'Telegram'],
+        facebook:  ['fa-brands fa-facebook',  'Facebook'],
+        instagram: ['fa-brands fa-instagram', 'Instagram'],
+        x:         ['fa-brands fa-x-twitter', 'X'],
+        youtube:   ['fa-brands fa-youtube',   'YouTube'],
+        linkedin:  ['fa-brands fa-linkedin',  'LinkedIn'],
+        email:     ['fa-solid fa-envelope',   'Email']
+    };
+
+    var PB_NOTICE_VARIANTS = { info: 1, success: 1, warning: 1, danger: 1 };
+    var PB_HEADING_LEVELS = { h2: 1, h3: 1, h4: 1, h5: 1, h6: 1 };
+
+    /* Unique, valid HTML ids for the FAQ's aria wiring, even when an
+       element's own id is missing or not selector-safe. */
+    var pbAutoId = 0;
+    function pbDomId(el, suffix) {
+        var base = pbCssId(el && el.id);
+        if (!base) { pbAutoId += 1; base = 'a' + pbAutoId; }
+        return 'pb-' + base + '-' + suffix;
+    }
 
     /* An element's own box alignment, for the types that are laid out as a
        flex or grid item rather than as a block of text. */
@@ -1166,6 +1902,80 @@
         return '';
     }
 
+    /* =====================================================
+       ASSET PATHS (milestone B)
+       -----------------------------------------------------
+       pbUrl() above answers "is this safe to put in an href or a src". It
+       says yes to https://anywhere, which is right for a link an author
+       typed and wrong for the asset picker, whose whole point is that it
+       can only ever produce a file that is already in this repository.
+
+       So this is a second, STRICTER question asked only of asset paths:
+       is this one of ours? It is built on pbUrl rather than beside it --
+       a path has to pass that first -- and then has to be a plain relative
+       path, under a root that is already public, ending in a real image
+       extension.
+
+       The Image element itself keeps pbUrl, so a page that already names
+       an image some other way goes on rendering. This is what the picker
+       and the manifest are held to, not a new rule for old data. */
+
+    var PB_ASSET_ROOTS = ['assets/images/', 'assets/icons/'];
+    var PB_ASSET_EXT = /\.(png|jpe?g|gif|svg|webp)$/i;
+
+    function pbAsset(raw) {
+        var v = str(raw);
+        if (!v) return '';
+        /* Defence in depth, and honestly redundant today: the character
+           class below already refuses everything pbUrl would (a scheme
+           needs a colon, and a colon is not in it). It stays because pbUrl
+           is the one place this project decides what a scheme may be, and
+           relaxing the class later should not quietly reopen that. No test
+           can tell it apart from its absence -- removing it alone breaks
+           nothing, which is the point of saying so here. */
+        if (pbUrl(v) !== v) return '';
+        /* A traversal segment anywhere, however it is spelled. */
+        if (v.indexOf('..') > -1) return '';
+        /* No query, fragment, backslash or anything else exotic: an asset
+           path is a plain file path and nothing else. */
+        if (!/^[A-Za-z0-9][A-Za-z0-9._\/-]*$/.test(v)) return '';
+        if (v.indexOf('//') > -1) return '';
+        if (!PB_ASSET_EXT.test(v)) return '';
+        for (var i = 0; i < PB_ASSET_ROOTS.length; i++) {
+            if (v.lastIndexOf(PB_ASSET_ROOTS[i], 0) === 0 &&
+                v.length > PB_ASSET_ROOTS[i].length) return v;
+        }
+        return '';
+    }
+
+    /* The manifest is a generated file (tools/build-asset-manifest.js), but
+       it arrives over the network like anything else, so it is rebuilt here
+       rather than trusted: an entry whose path is not one of ours is
+       dropped, and every other field is re-derived or bounded. */
+    function pbAssetList(raw) {
+        var out = [], seen = {}, i;
+        var items = (raw && isArr(raw.assets)) ? raw.assets : (isArr(raw) ? raw : []);
+        for (i = 0; i < items.length && i < 2000; i++) {
+            var it = items[i];
+            if (!it || typeof it !== 'object') continue;
+            var path = pbAsset(it.path);
+            if (!path) continue;
+            if (Object.prototype.hasOwnProperty.call(seen, path)) continue;
+            seen[path] = 1;
+            var entry = { path: path, name: str(it.name).slice(0, 120) || path,
+                          group: str(it.group).slice(0, 60) || 'Images' };
+            /* Dimensions are optional on purpose: the generator leaves them
+               out rather than guessing, and so does this. */
+            var w = parseInt(it.w, 10), h = parseInt(it.h, 10);
+            if (w > 0 && h > 0 && w < 100000 && h < 100000) { entry.w = w; entry.h = h; }
+            var bytes = parseInt(it.bytes, 10);
+            if (bytes > 0) entry.bytes = bytes;
+            out.push(entry);
+        }
+        out.sort(function (a, b) { return a.path < b.path ? -1 : a.path > b.path ? 1 : 0; });
+        return out;
+    }
+
     /* A URL that is about to be interpolated into a CSS url("...") rather
        than handed to setAttribute. Quotes, parentheses and whitespace could
        close the function and the rule, so they are refused outright. */
@@ -1185,6 +1995,11 @@
         if (/[;{}<>\\"']/.test(v)) return '';
         if (/[\u0000-\u001f\u007f]/.test(v)) return '';
         if (/url\s*\(|expression\s*\(|@import|javascript:/i.test(v)) return '';
+        /* var() is how the global design tokens reach the page, and those
+           are built here from a trusted map -- never from typed text. A
+           value that arrives already containing var() would be able to read
+           any custom property on the page, so it is refused outright. */
+        if (/var\s*\(/i.test(v)) return '';
         return v;
     }
 
@@ -1296,8 +2111,221 @@
                 wrap.appendChild(col);
             }
             return pbId(wrap, el);
+        },
+
+        /* ---------------- V2 elements ---------------- */
+
+        divider: function (el) {
+            return pbId(pbEl('hr', 'pb-el pb-divider'), el);
+        },
+
+        spacer: function (el) {
+            var n = pbEl('div', 'pb-el pb-spacer');
+            n.setAttribute('aria-hidden', 'true');
+            return pbId(n, el);
+        },
+
+        icon: function (el) {
+            var c = el.content || {};
+            var cls = pbPick(PB_ICONS, c.icon);
+            if (!cls) return null;            /* unknown name renders nothing */
+            var glyph = pbEl('i', 'pb-icon-glyph ' + cls);
+            glyph.setAttribute('aria-hidden', 'true');
+            var label = str(c.label);
+            var href = pbUrl(c.href);
+            /* One outer node either way, so size, colour and alignment land
+               in the same place whether or not the icon links somewhere.
+
+               A refused URL yields the plain span, NOT an anchor with
+               href="#". That differs from the button element on purpose: a
+               button with nowhere to go still has to look like a button,
+               whereas an icon simply becomes decoration, which is better
+               than a clickable link that goes nowhere. */
+            if (href) {
+                var a = pbEl('a', 'pb-el pb-icon');
+                a.setAttribute('href', href);
+                if (c.newTab) { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); }
+                /* An icon-only link has no text, so it needs a name. */
+                a.setAttribute('aria-label', label || 'Link');
+                a.appendChild(glyph);
+                return pbId(a, el);
+            }
+            var span = pbEl('span', 'pb-el pb-icon');
+            if (label) { span.setAttribute('role', 'img'); span.setAttribute('aria-label', label); }
+            span.appendChild(glyph);
+            return pbId(span, el);
+        },
+
+        notice: function (el) {
+            var c = el.content || {};
+            var variant = pbPick(PB_NOTICE_VARIANTS, c.variant) ? str(c.variant) : 'info';
+            var box = pbEl('div', 'pb-el pb-notice pb-notice-' + variant);
+            /* "note" is the advisory role. Deliberately not "alert": that is
+               assertive and interrupts a screen reader, which is wrong for
+               text that was on the page before the reader arrived. */
+            box.setAttribute('role', 'note');
+            var cls = pbPick(PB_ICONS, c.icon);
+            if (cls) {
+                var i = pbEl('i', 'pb-notice-icon ' + cls);
+                i.setAttribute('aria-hidden', 'true');
+                box.appendChild(i);
+            }
+            var body = pbEl('div', 'pb-notice-body');
+            if (str(c.text)) {
+                var t = pbEl('p', 'pb-notice-text');
+                t.textContent = str(c.text);
+                body.appendChild(t);
+            }
+            var href = pbUrl(c.href);
+            if (href && str(c.linkText)) {
+                var a = pbEl('a', 'pb-notice-link');
+                a.setAttribute('href', href);
+                if (c.newTab) { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); }
+                a.textContent = str(c.linkText);
+                body.appendChild(a);
+            }
+            box.appendChild(body);
+            return pbId(box, el);
+        },
+
+        featureBox: function (el) {
+            var c = el.content || {};
+            var box = pbEl('div', 'pb-el pb-feature');
+            var cls = pbPick(PB_ICONS, c.icon);
+            if (cls) {
+                var i = pbEl('i', 'pb-feature-icon ' + cls);
+                i.setAttribute('aria-hidden', 'true');
+                box.appendChild(i);
+            } else if (pbUrl(c.image)) {
+                /* Reused so one image implementation covers every element:
+                   no id, so it resets and takes the shipped defaults. */
+                var img = PB_ELEMENTS.image({ content: { src: c.image, alt: c.imageAlt } });
+                if (img) { img.className += ' pb-feature-img'; box.appendChild(img); }
+            }
+            if (str(c.title)) {
+                var lvl = pbPick(PB_HEADING_LEVELS, String(c.titleLevel || 'h3').toLowerCase())
+                    ? String(c.titleLevel).toLowerCase() : 'h3';
+                var h = pbEl(lvl, 'pb-feature-title');
+                h.textContent = str(c.title);
+                box.appendChild(h);
+            }
+            if (str(c.text)) {
+                var t = pbEl('p', 'pb-feature-text');
+                t.textContent = str(c.text);
+                box.appendChild(t);
+            }
+            var href = pbUrl(c.href);
+            if (href && str(c.linkText)) {
+                var a = pbEl('a', 'pb-feature-link');
+                a.setAttribute('href', href);
+                if (c.newTab) { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); }
+                a.textContent = str(c.linkText);
+                box.appendChild(a);
+            }
+            return pbId(box, el);
+        },
+
+        faq: function (el) {
+            var c = el.content || {};
+            var items = isArr(c.items) ? c.items : [];
+            var wrap = pbEl('div', 'pb-el pb-faq');
+            var single = c.single === true;    /* accordion: one open at a time */
+            var made = 0;
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i] || {};
+                var q = str(it.question);
+                if (!q) continue;              /* a question is the minimum */
+                var panelId = pbDomId(el, 'p' + i);
+                var btnId = pbDomId(el, 'b' + i);
+                var open = it.open === true;
+
+                var item = pbEl('div', 'pb-faq-item');
+                /* A heading wrapping the button keeps the page outline
+                   navigable; the button is what carries the state. */
+                var h = pbEl('h3', 'pb-faq-q');
+                var btn = pbEl('button', 'pb-faq-btn');
+                btn.setAttribute('type', 'button');
+                btn.setAttribute('id', btnId);
+                btn.setAttribute('aria-controls', panelId);
+                btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+                var qt = pbEl('span', 'pb-faq-qt');
+                qt.textContent = q;
+                btn.appendChild(qt);
+                var mark = pbEl('span', 'pb-faq-mark');
+                mark.setAttribute('aria-hidden', 'true');
+                btn.appendChild(mark);
+                h.appendChild(btn);
+                item.appendChild(h);
+
+                var panel = pbEl('div', 'pb-faq-a');
+                panel.setAttribute('id', panelId);
+                panel.setAttribute('role', 'region');
+                panel.setAttribute('aria-labelledby', btnId);
+                if (!open) panel.hidden = true;
+                var at = pbEl('p', 'pb-faq-text');
+                at.textContent = str(it.answer);
+                panel.appendChild(at);
+                item.appendChild(panel);
+
+                /* Listener on the button itself. A <button> already handles
+                   Enter and Space and is in the tab order, so there is no
+                   key handling to write and none to get wrong. Nodes are
+                   rebuilt on every repaint, so these cannot accumulate. */
+                btn.addEventListener('click', pbFaqToggle(wrap, btn, panel, single));
+                wrap.appendChild(item);
+                made += 1;
+            }
+            if (!made) return null;
+            return pbId(wrap, el);
+        },
+
+        socialLinks: function (el) {
+            var c = el.content || {};
+            var items = isArr(c.items) ? c.items : [];
+            var wrap = pbEl('div', 'pb-el pb-social');
+            var made = 0;
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i] || {};
+                var plat = pbPick(PB_SOCIAL, it.platform);
+                if (!plat) continue;           /* platform not on the list */
+                var href = pbUrl(it.url);
+                if (!href) continue;           /* and the URL must pass too */
+                var a = pbEl('a', 'pb-social-link');
+                a.setAttribute('href', href);
+                /* Social profiles live elsewhere, so always a new tab, and
+                   never without both noopener and noreferrer. */
+                a.setAttribute('target', '_blank');
+                a.setAttribute('rel', 'noopener noreferrer');
+                a.setAttribute('aria-label', str(it.label) || plat[1]);
+                var g = pbEl('i', 'pb-social-icon ' + plat[0]);
+                g.setAttribute('aria-hidden', 'true');
+                a.appendChild(g);
+                wrap.appendChild(a);
+                made += 1;
+            }
+            if (!made) return null;
+            return pbId(wrap, el);
         }
+
     };
+
+    /* The FAQ's one piece of interaction. Kept out of the factory so the
+       closure captures exactly what it needs and nothing else. */
+    function pbFaqToggle(wrap, btn, panel, single) {
+        return function () {
+            var open = btn.getAttribute('aria-expanded') === 'true';
+            if (!open && single) {
+                var others = wrap.querySelectorAll('.pb-faq-btn[aria-expanded="true"]');
+                for (var i = 0; i < others.length; i++) {
+                    others[i].setAttribute('aria-expanded', 'false');
+                    var p = document.getElementById(others[i].getAttribute('aria-controls'));
+                    if (p) p.hidden = true;
+                }
+            }
+            btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+            panel.hidden = open;
+        };
+    }
 
     function isArr(v) { return Object.prototype.toString.call(v) === '[object Array]'; }
 
@@ -1306,8 +2334,18 @@
         for (var i = 0; i < list.length; i++) {
             var el = list[i];
             if (!el || el.enabled === false) continue;
-            var make = PB_ELEMENTS[el.type];
-            if (!make) continue;                      /* unknown type: skip, never throw */
+            /* pbPick, not a bare index: PB_ELEMENTS['constructor'] hands
+               back Object, PB_ELEMENTS['toString'] a function that returns a
+               string, and appendChild() then throws on what comes out --
+               taking EVERY section on the page down with it, not just this
+               element. "Skip, never throw" only holds if the lookup is a
+               membership test. */
+            var make = pbPick(PB_ELEMENTS, el.type);
+            /* The typeof is belt and braces: every own value in the map is
+               a function, so with pbPick in front of it no mutation can
+               tell it apart from `!make`. It stays because it states what
+               a renderer entry has to be. */
+            if (typeof make !== 'function') continue;  /* unknown type: skip, never throw */
             var node = make(el, depth);
             if (!node) continue;
             host.appendChild(node);
@@ -1323,15 +2361,65 @@
          - above the page's own descendant rules such as .info-article h2 at
            (0,1,1), which is what used to win over a heading's colour. */
 
-    function pbDecls(style, tokens, allow) {
+    /* Column tracks are the one token written to a per-breakpoint property
+       rather than a single inherited one. css/sections.css chains the
+       fallbacks so that tablet falls back to desktop but mobile stacks, and
+       that chain can only exist if the three tiers are distinguishable. */
+    var PB_COL_PROP = { '': '--pbe-cols', tablet: '--pbe-cols-t', mobile: '--pbe-cols-m' };
+
+    /* One typography role, written out as the properties it stands for.
+       Nothing here comes from the stored value except the role name, which
+       is only ever a key into PB_TYPO_ROLES. */
+    function pbTypoDecls(raw, tokens, allow) {
+        var v = str(raw);
+        if (v.charAt(0) !== '@') return '';
+        var role = v.slice(1);
+        if (!pbPick(PB_TYPO_ROLES, role)) return '';
+        var out = '', k;
+        for (k in PB_TYPO_PROPS) {
+            if (!Object.prototype.hasOwnProperty.call(PB_TYPO_PROPS, k)) continue;
+            /* Only properties this element type reads, so a role never
+               leaves a declaration on a type whose CSS would ignore it. */
+            if (!Object.prototype.hasOwnProperty.call(tokens, k)) continue;
+            if (allow && allow.indexOf(k) === -1) continue;
+            out += tokens[k][0] + ':var(--pbg-' + role + '-' + PB_TYPO_PROPS[k] + ',' +
+                   PB_TYPO_ROLES[role][k] + ');';
+        }
+        return out;
+    }
+
+    function pbDecls(style, tokens, allow, tier) {
         var out = '', k;
         if (!style) return out;
         for (k in tokens) {
             if (!Object.prototype.hasOwnProperty.call(tokens, k)) continue;
             if (allow && allow.indexOf(k) === -1) continue;
             if (!Object.prototype.hasOwnProperty.call(style, k)) continue;
-            var v;
-            if (k === 'bgImage') {
+            var v, prop = tokens[k][0];
+            if (k === 'typography') {
+                /* A role is not one declaration but four, written through
+                   this same token map so a section gets --pbs-* and an
+                   element --pbe-*, and only for the properties this type
+                   actually reads. */
+                out += pbTypoDecls(style[k], tokens, allow);
+                continue;
+            }
+            if (k === 'color' || k === 'bg' || k === 'lineColor') {
+                v = pbColorValue(style[k]);
+                if (!v) continue;
+            } else if (k === 'border') {
+                v = pbBorderValue(style[k]);
+                if (!v) continue;
+            } else if (k === 'columns') {
+                /* Never the author's string: a preset name is looked up and
+                   the constant track list stored against it is what gets
+                   emitted. An unknown name emits nothing, which leaves the
+                   V1 auto-fit fallback in css/sections.css in charge. */
+                var lay = pbColLayout(style[k]);
+                if (!lay) continue;
+                v = lay[0];
+                prop = PB_COL_PROP[tier === 'tablet' || tier === 'mobile' ? tier : ''];
+            } else if (k === 'bgImage') {
                 var u = pbCssUrl(style[k]);
                 if (!u) continue;
                 v = 'url("' + u + '")';
@@ -1341,12 +2429,12 @@
                 var unit = tokens[k][1];
                 if (unit && /^-?[0-9.]+$/.test(v)) v += unit;
             }
-            out += tokens[k][0] + ':' + v + ';';
+            out += prop + ':' + v + ';';
         }
         /* Types laid out as a flex or grid item align themselves rather than
            their text, so alignment is emitted as box alignment as well. */
         if (out && tokens === PB_EL_TOKENS && (!allow || allow.indexOf('align') > -1)) {
-            var self = PB_SELF[str(style.align)];
+            var self = pbPick(PB_SELF, style.align);
             if (self) out += '--pbe-self:' + self[0] + ';--pbe-justify:' + self[1] + ';';
         }
         return out;
@@ -1355,8 +2443,8 @@
     function pbScopedCSS(sel, node, tokens, allow) {
         var base = pbDecls(node.style, tokens, allow);
         var r = node.responsive || {};
-        var tab = pbDecls(r.tablet, tokens, allow);
-        var mob = pbDecls(r.mobile, tokens, allow);
+        var tab = pbDecls(r.tablet, tokens, allow, 'tablet');
+        var mob = pbDecls(r.mobile, tokens, allow, 'mobile');
         var css = '';
         if (base) css += sel + '{' + base + '}';
         if (tab)  css += '@media (max-width:1024px){' + sel + '{' + tab + '}}';
@@ -1373,8 +2461,13 @@
             var el = list[i];
             if (!el) continue;
             var id = pbCssId(el.id);
-            var allow = PB_EL_STYLE_KEYS[el.type];
-            if (id && allow) {
+            /* Same reason: PB_EL_STYLE_KEYS['valueOf'] is a function, and
+               allow.indexOf() inside pbDecls() then throws before a single
+               section has been drawn. */
+            var allow = pbPick(PB_EL_STYLE_KEYS, el.type);
+            /* isArr is redundant in the same way and kept for the same
+               reason: the value has to be a list for allow.indexOf(). */
+            if (id && isArr(allow)) {
                 css += pbScopedCSS('.pb-el[data-el="' + id + '"]', el, PB_EL_TOKENS, allow);
             }
             var cols = (el.content || {}).columns;
@@ -1408,7 +2501,10 @@
         var b = page && page.builder;
         if (!b || b.status !== 'published') return null;
         if (!isArr(b.sections) || !b.sections.length) return null;
-        return b.sections;
+        /* Deliberately NOT gated on schemaVersion: whatever a published page
+           was saved with, it still renders. The upgrade only fills in
+           defaults, and returns the same array when there is nothing to do. */
+        return pbUpgrade(b.sections, pbSchemaOf(b));
     }
 
     function renderSectionsInto(host, sections) {
@@ -1416,7 +2512,7 @@
         for (var i = 0; i < sections.length; i++) {
             var sec = sections[i];
             if (!sec || sec.enabled === false) continue;
-            var cls = PB_SECTION_CLASS[sec.type] || 'pb-generic';
+            var cls = pbPick(PB_SECTION_CLASS, sec.type) || 'pb-generic';
             var node = pbEl('section', 'pb-section ' + cls);
             if (sec.id) node.setAttribute('data-sec', String(sec.id));
             var vis = sec.visibility || {};
@@ -1503,16 +2599,22 @@
 
     /* The admin's working copy. Falls back to a copy of what is live, so
        opening a published page in the builder starts from what visitors see. */
+    /* The admin's working copy is always upgraded to the current schema: the
+       moment someone edits a page they are authoring V2, and saving stamps
+       PB_SCHEMA. Published content is left at the version it was saved with
+       until that save happens. */
     function draftBlock(slug) {
         var d = (load().builderDrafts || {})[slug];
         if (d && isArr(d.sections)) {
             return { schemaVersion: PB_SCHEMA, status: 'draft',
-                     sections: clone(d.sections), updatedAt: str(d.updatedAt) };
+                     sections: pbUpgrade(clone(d.sections), pbSchemaOf(d)),
+                     updatedAt: str(d.updatedAt) };
         }
         var pub = builderBlock(slug);
         if (pub && isArr(pub.sections) && pub.sections.length) {
             return { schemaVersion: PB_SCHEMA, status: 'draft',
-                     sections: clone(pub.sections), updatedAt: str(pub.updatedAt) };
+                     sections: pbUpgrade(clone(pub.sections), pbSchemaOf(pub)),
+                     updatedAt: str(pub.updatedAt) };
         }
         return pbBlank();
     }
@@ -1539,6 +2641,11 @@
         if (!st.builderDrafts) st.builderDrafts = {};
         st.builderDrafts[slug] = { schemaVersion: PB_SCHEMA, status: 'draft',
                                    sections: clone(sections), updatedAt: pbToday() };
+        /* What a visitor sees on this page has just changed, so the page's
+           own edit date is stale. The sitemap reads it for <lastmod>, and a
+           lastmod that predates the content it describes is worse than none.
+           This changes no page's sitemap MEMBERSHIP -- only its date. */
+        st.pages[slug].updatedAt = pbToday();
         return save();
     }
 
@@ -1549,6 +2656,7 @@
         if (!page || !page.builder) return true;
         page.builder.status = 'draft';
         page.builder.updatedAt = pbToday();
+        page.updatedAt = pbToday();       /* same reason as publishDraft() */
         return save();
     }
 
@@ -1578,12 +2686,506 @@
                  updatedAt: (pub && str(pub.updatedAt)) || '' };
     }
 
+    /* =====================================================
+       RECOVERY SNAPSHOTS (milestone C)
+       -----------------------------------------------------
+       The builder already writes the draft to localStorage on a short
+       debounce, so a reload or a crash loses at most the keystroke in
+       flight. What it could not survive was the deliberate replacement of
+       a draft -- applying a template over it, or discarding it -- because
+       both are one click and neither had a way back.
+
+       So this is not a history: it is ONE snapshot per page, taken
+       immediately before those two actions, holding nothing but the
+       sections array. Bounded by construction -- a new snapshot replaces
+       the old one, and restoring or discarding removes it. Device-local
+       like builderDrafts and builderLibrary: stripped from the publish
+       payload, preserved across a pull.
+
+       Sections go through pbCleanSections() on the way back out, so a
+       snapshot that was tampered with in storage cannot put anything into
+       a page that the builder's own controls could not have produced. */
+
+    var PB_RECOVERY_REASONS = { template: 1, discard: 1, replace: 1 };
+
+    function recoveryStore() {
+        var st = load();
+        if (!st.builderRecovery || typeof st.builderRecovery !== 'object' ||
+            isArr(st.builderRecovery)) {
+            st.builderRecovery = {};
+        }
+        return st.builderRecovery;
+    }
+
+    function recoverySnapshot(slug, sections, reason) {
+        var key = str(slug);
+        if (!key || !isArr(sections) || !sections.length) return false;
+        var store = recoveryStore();
+        store[key] = {
+            at: pbToday(),
+            reason: pbPick(PB_RECOVERY_REASONS, reason) ? str(reason) : 'replace',
+            sections: clone(sections)
+        };
+        return save();
+    }
+
+    /* What is in the snapshot, cleaned. Returns null when there is none or
+       when what is stored cannot be read as sections. */
+    function recoveryGet(slug) {
+        var snap = recoveryStore()[str(slug)];
+        if (!snap || typeof snap !== 'object') return null;
+        var sections = pbCleanSections(snap.sections);
+        if (!sections.length) return null;
+        return { at: str(snap.at), reason: str(snap.reason), sections: sections };
+    }
+
+    function recoveryClear(slug) {
+        var store = recoveryStore();
+        var key = str(slug);
+        if (!Object.prototype.hasOwnProperty.call(store, key)) return false;
+        delete store[key];
+        return save();
+    }
+
+    /* =====================================================
+       REUSABLE SECTION LIBRARY (milestone A, stage 7)
+       -----------------------------------------------------
+       Local to this browser, like builderDrafts: stripped from the publish
+       payload and preserved across a pull, so a saved section is never part
+       of what a visitor downloads and never travels between devices except
+       through the export file a person chooses to move.
+
+       An item holds a COPY of the section. Inserting one copies it again
+       and re-ids it, so the page and the library entry have no link at all:
+       editing either leaves the other alone. There are deliberately no
+       live-linked instances -- nothing in the current architecture could
+       keep them consistent across a publish.
+
+       LIBRARY_VERSION marks the stored shape and the export file. It is a
+       marker, not a gate: a file from a future version still imports,
+       because every section in it goes through pbCleanSections() anyway. */
+
+    var LIBRARY_VERSION = 1;
+
+    function libraryStore() {
+        var st = load();
+        var lib = st.builderLibrary;
+        if (!lib || typeof lib !== 'object' || !isArr(lib.items)) {
+            lib = { version: LIBRARY_VERSION, items: [] };
+            st.builderLibrary = lib;
+        }
+        if (typeof lib.version !== 'number') lib.version = LIBRARY_VERSION;
+        return lib;
+    }
+
+    function libraryName(raw, fallback) {
+        var n = str(raw).replace(/[\u0000-\u001f\u007f<>]/g, '').trim();
+        if (n.length > 80) n = n.slice(0, 80);
+        return n || fallback || 'Saved section';
+    }
+
+    function libraryList() {
+        var items = libraryStore().items, out = [], i;
+        for (i = 0; i < items.length; i++) {
+            var it = items[i];
+            if (!it || !it.section) continue;
+            out.push({ id: it.id, name: it.name, createdAt: it.createdAt,
+                       updatedAt: it.updatedAt, type: it.section.type,
+                       elements: pbCountElements(it.section.elements, 0) });
+        }
+        return out;
+    }
+
+    /* A copy of the stored section, cleaned and re-ided: what the caller
+       gets can be dropped straight into a page. */
+    function libraryInstance(id) {
+        var items = libraryStore().items, i;
+        for (i = 0; i < items.length; i++) {
+            if (items[i] && items[i].id === id) {
+                var out = pbCleanSections([clone(items[i].section)]);
+                return out.length ? pbReidSections(out)[0] : null;
+            }
+        }
+        return null;
+    }
+
+    function librarySave(name, section) {
+        var clean = pbCleanSections([section]);
+        if (!clean.length) return null;
+        var lib = libraryStore();
+        var item = { id: pbNewId('lib'), name: libraryName(name, 'Saved section'),
+                     createdAt: pbToday(), updatedAt: pbToday(), section: clean[0] };
+        lib.items.push(item);
+        save();
+        return item.id;
+    }
+
+    function libraryFind(id) {
+        var items = libraryStore().items;
+        for (var i = 0; i < items.length; i++) {
+            if (items[i] && items[i].id === id) return items[i];
+        }
+        return null;
+    }
+
+    function libraryRename(id, name) {
+        var it = libraryFind(id);
+        if (!it) return false;
+        it.name = libraryName(name, it.name);
+        it.updatedAt = pbToday();
+        return save();
+    }
+
+    function libraryDuplicate(id) {
+        var it = libraryFind(id);
+        if (!it) return null;
+        var lib = libraryStore();
+        var copy = { id: pbNewId('lib'), name: libraryName(it.name + ' copy'),
+                     createdAt: pbToday(), updatedAt: pbToday(),
+                     section: clone(it.section) };
+        lib.items.splice(lib.items.indexOf(it) + 1, 0, copy);
+        save();
+        return copy.id;
+    }
+
+    function libraryRemove(id) {
+        var lib = libraryStore();
+        for (var i = 0; i < lib.items.length; i++) {
+            if (lib.items[i] && lib.items[i].id === id) {
+                lib.items.splice(i, 1);
+                return save();
+            }
+        }
+        return false;
+    }
+
+    function libraryExport() {
+        var lib = libraryStore();
+        var out = { kind: 'jsk1-page-builder-library', version: LIBRARY_VERSION,
+                    schemaVersion: PB_SCHEMA, exportedAt: pbToday(), items: [] };
+        for (var i = 0; i < lib.items.length; i++) {
+            var it = lib.items[i];
+            if (!it || !it.section) continue;
+            out.items.push({ name: it.name, createdAt: it.createdAt, section: clone(it.section) });
+        }
+        return JSON.stringify(out, null, 2);
+    }
+
+    /* Import never trusts the file. Every section is rebuilt by
+       pbCleanSections(), so an entry carrying an unknown element type, a
+       javascript: link, a style value that would close a CSS rule or a
+       __proto__ key arrives as the clean part of itself or not at all. */
+    function libraryImport(text) {
+        var res = { added: 0, skipped: 0, error: '' };
+        var data;
+        try { data = JSON.parse(String(text == null ? '' : text)); }
+        catch (e) { res.error = 'That file is not valid JSON.'; return res; }
+        if (!data || typeof data !== 'object') { res.error = 'That file does not hold a library.'; return res; }
+        var items = isArr(data.items) ? data.items : (isArr(data) ? data : null);
+        if (!items) { res.error = 'That file does not hold a library.'; return res; }
+        var lib = libraryStore();
+        for (var i = 0; i < items.length && i < 500; i++) {
+            var raw = items[i];
+            if (!raw || typeof raw !== 'object') { res.skipped += 1; continue; }
+            var section = raw.section || raw;
+            var clean = pbCleanSections([section]);
+            if (!clean.length) { res.skipped += 1; continue; }
+            lib.items.push({ id: pbNewId('lib'),
+                             name: libraryName(raw.name, 'Imported section'),
+                             createdAt: pbToday(), updatedAt: pbToday(),
+                             section: clean[0] });
+            res.added += 1;
+        }
+        if (res.added) save();
+        return res;
+    }
+
+    /* =====================================================
+       PAGE TEMPLATES (milestone A, stage 8)
+       -----------------------------------------------------
+       A code registry, not a table: deterministic, diffable and testable.
+       Every template is plain data in the existing section schema and goes
+       through pbCleanSections() like anything else, so a template can never
+       reach the page with something the builder's own controls could not
+       have produced.
+
+       Instantiating copies and re-ids, so editing a page never touches the
+       registry and changing the registry never touches a page that was
+       already created. `version` records which revision a page started
+       from; it is provenance, not a link.
+
+       The copy is what actually holds pages still. The version exists so a
+       later change to a template is visibly a different revision rather
+       than something that might have altered an existing page. */
+
+    var PB_TEMPLATE_VERSION = 1;
+
+    function tSec(type, elements, style) {
+        return { type: type, enabled: true,
+                 visibility: { desktop: true, tablet: true, mobile: true },
+                 style: style || {}, responsive: {}, elements: elements || [] };
+    }
+    function tEl(type, content, style) {
+        return { type: type, content: content || {}, style: style || {}, responsive: {} };
+    }
+    /* A columns element with its containers filled in. A layout preset alone
+       is not enough: the containers are content, and an element with none
+       renders nothing at all. */
+    function tCols(preset, groups) {
+        return tEl('columns', { columns: groups.map(function (g) { return { elements: g }; }) },
+                   { columns: preset });
+    }
+
+    /* Placeholder copy only. Nothing here states a fact about the site --
+       it is all visibly text waiting to be replaced.
+
+       NO TEMPLATE OPENS WITH AN H1, and that is deliberate. Every page the
+       builder can mount ships its own <h1 data-cms-text="pages.<slug>.heading">
+       ABOVE the mount, so a template heading at h1 would guarantee a second
+       one on a live page. The opening headings carry the @h1 TYPOGRAPHY role
+       instead: they look like a page title and read as an h2 in the outline,
+       which is what the document actually needs. An author who wants an h1
+       in a section can still choose one -- the control offers it and the
+       renderer honours it -- and the builder says plainly what that costs.
+       See docs/page-builder.md, "Headings and the page H1". */
+    var PB_TEMPLATES = [
+        { id: 'blank', name: 'Blank page', version: PB_TEMPLATE_VERSION,
+          description: 'One empty text section. Start from nothing.',
+          sections: function () { return [tSec('text', [
+              tEl('heading', { text: 'Page heading', level: 'h2' }, { typography: '@h1' }),
+              tEl('text', { text: 'Write the first paragraph here.' })
+          ])]; } },
+
+        { id: 'landing', name: 'Landing page', version: PB_TEMPLATE_VERSION,
+          description: 'A hero, three feature boxes, a short block of copy and a closing banner.',
+          sections: function () { return [
+              tSec('hero', [
+                  tEl('heading', { text: 'Headline goes here', level: 'h2' }, { typography: '@h1' }),
+                  tEl('text', { text: 'One or two sentences saying what this page is for.' }),
+                  tEl('button', { text: 'Primary action', href: '#' }, { bg: '@primary' })
+              ]),
+              tSec('columns', [
+                  tCols('3', [
+                      [tEl('featureBox', { icon: 'star', title: 'First point',
+                                           text: 'A sentence describing it.' })],
+                      [tEl('featureBox', { icon: 'shield', title: 'Second point',
+                                           text: 'A sentence describing it.' })],
+                      [tEl('featureBox', { icon: 'bolt', title: 'Third point',
+                                           text: 'A sentence describing it.' })]
+                  ])
+              ]),
+              tSec('text', [
+                  tEl('heading', { text: 'Section heading', level: 'h2' }),
+                  tEl('text', { text: 'Replace this paragraph with your own copy.' })
+              ]),
+              tSec('banner', [
+                  tEl('heading', { text: 'Closing heading', level: 'h2' }),
+                  tEl('button', { text: 'Secondary action', href: '#' }, { bg: '@primary' })
+              ])
+          ]; } },
+
+        { id: 'information', name: 'Information page', version: PB_TEMPLATE_VERSION,
+          description: 'A title, an introduction, three headed sections and a note.',
+          sections: function () { return [
+              tSec('text', [
+                  tEl('heading', { text: 'Page title', level: 'h2' }, { typography: '@h1' }),
+                  tEl('text', { text: 'A short introduction to what this page covers.' })
+              ]),
+              tSec('text', [
+                  tEl('heading', { text: 'First topic', level: 'h2' }),
+                  tEl('text', { text: 'Replace with your own copy.' }),
+                  tEl('divider', {}, { lineColor: '@border' }),
+                  tEl('heading', { text: 'Second topic', level: 'h2' }),
+                  tEl('text', { text: 'Replace with your own copy.' }),
+                  tEl('divider', {}, { lineColor: '@border' }),
+                  tEl('heading', { text: 'Third topic', level: 'h2' }),
+                  tEl('text', { text: 'Replace with your own copy.' })
+              ]),
+              tSec('text', [
+                  tEl('notice', { text: 'Use this box for anything a reader should not miss.',
+                                  variant: 'info', icon: 'info' })
+              ])
+          ]; } },
+
+        { id: 'contact', name: 'Contact page', version: PB_TEMPLATE_VERSION,
+          description: 'A title, two columns for the ways to reach you, and social links.',
+          sections: function () { return [
+              tSec('text', [
+                  tEl('heading', { text: 'Contact', level: 'h2' }, { typography: '@h1' }),
+                  tEl('text', { text: 'Say when you reply and how long it usually takes.' })
+              ]),
+              tSec('columns', [
+                  tCols('2', [
+                      [tEl('heading', { text: 'Message us', level: 'h3' }),
+                       tEl('text', { text: 'Put the best way to reach you here.' })],
+                      [tEl('heading', { text: 'Support hours', level: 'h3' }),
+                       tEl('text', { text: 'Put your hours here.' })]
+                  ])
+              ]),
+              tSec('text', [
+                  tEl('heading', { text: 'Find us elsewhere', level: 'h2' }),
+                  tEl('socialLinks', { items: [{ platform: 'whatsapp', url: '#' },
+                                               { platform: 'telegram', url: '#' }] })
+              ])
+          ]; } },
+
+        { id: 'feature', name: 'Feature page', version: PB_TEMPLATE_VERSION,
+          description: 'A hero, three feature boxes, a card row and a closing action.',
+          sections: function () { return [
+              tSec('hero', [
+                  tEl('heading', { text: 'What this offers', level: 'h2' }, { typography: '@h1' }),
+                  tEl('text', { text: 'One sentence on who it is for.' })
+              ]),
+              tSec('columns', [
+                  tCols('3', [
+                      [tEl('featureBox', { icon: 'star', title: 'First feature',
+                                           text: 'A sentence describing it.' })],
+                      [tEl('featureBox', { icon: 'shield', title: 'Second feature',
+                                           text: 'A sentence describing it.' })],
+                      [tEl('featureBox', { icon: 'bolt', title: 'Third feature',
+                                           text: 'A sentence describing it.' })]
+                  ])
+              ]),
+              tSec('cards', [
+                  tEl('card', { title: 'Card one', text: 'Replace this text.' }),
+                  tEl('card', { title: 'Card two', text: 'Replace this text.' })
+              ]),
+              tSec('banner', [
+                  tEl('heading', { text: 'Ready when you are', level: 'h2' }),
+                  tEl('button', { text: 'Get started', href: '#' }, { bg: '@primary' })
+              ])
+          ]; } },
+
+        { id: 'faq', name: 'FAQ page', version: PB_TEMPLATE_VERSION,
+          description: 'A title, an accordion of three questions and a closing note.',
+          sections: function () { return [
+              tSec('text', [
+                  tEl('heading', { text: 'Frequently asked questions', level: 'h2' },
+                      { typography: '@h1' }),
+                  tEl('text', { text: 'A line saying what these questions cover.' })
+              ]),
+              tSec('text', [
+                  tEl('faq', { single: false, items: [
+                      { question: 'First question?', answer: 'Answer.' },
+                      { question: 'Second question?', answer: 'Answer.' },
+                      { question: 'Third question?', answer: 'Answer.' }
+                  ] })
+              ]),
+              tSec('text', [
+                  tEl('notice', { text: 'Tell readers where to go if their question is not here.',
+                                  variant: 'info', icon: 'question' })
+              ])
+          ]; } }
+    ];
+
+    /* ----------------------------------------------------------
+       THE HEADINGS A SECTION TREE WOULD RENDER  (milestone E)
+
+       Read-only, and the only thing in this file that knows why the
+       admin cares: a builder-mounted page already has an h1 of its own,
+       written into its HTML from pages.<slug>.heading, so the admin has
+       to be able to say how many MORE the sections would add and which
+       ones they are. Nothing here changes any content -- it answers a
+       question, in the renderer's own terms, so the admin never has to
+       keep a second idea of what a heading is.
+
+       Returns { counts: { h1: n, ... }, items: [{ id, level, text }] }
+       in document order. The level is resolved exactly as PB_ELEMENTS
+       .heading resolves it, including its fallback to h2, so the answer
+       is what the page would really show.
+    ---------------------------------------------------------- */
+    function pbHeadingLevel(el) {
+        var lvl = String(((el || {}).content || {}).level || 'h2').toLowerCase();
+        return pbPick(PB_ALL_LEVELS, lvl) ? lvl : 'h2';
+    }
+
+    function pbOutline(sections) {
+        var out = { counts: { h1: 0, h2: 0, h3: 0, h4: 0, h5: 0, h6: 0 }, items: [] };
+        (function walkSecs(list) {
+            if (!isArr(list)) return;
+            for (var i = 0; i < list.length; i++) {
+                var sec = list[i];
+                if (!sec || sec.enabled === false) continue;   /* a hidden section renders nothing */
+                walkEls(sec.elements, 0);
+            }
+        })(sections);
+        function walkEls(list, depth) {
+            if (!isArr(list) || depth > 4) return;
+            for (var i = 0; i < list.length; i++) {
+                var el = list[i];
+                if (!el || el.enabled === false) continue;
+                if (el.type === 'heading') {
+                    var lvl = pbHeadingLevel(el);
+                    out.counts[lvl] += 1;
+                    out.items.push({ id: str(el.id), level: lvl,
+                                     text: str((el.content || {}).text) });
+                }
+                var cols = (el.content || {}).columns;
+                if (isArr(cols)) {
+                    for (var c = 0; c < cols.length; c++) {
+                        walkEls((cols[c] || {}).elements, depth + 1);
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    function pbCountElements(list, depth) {
+        var n = 0;
+        if (!isArr(list) || depth > 4) return n;
+        for (var i = 0; i < list.length; i++) {
+            if (!list[i]) continue;
+            n += 1;
+            var cols = (list[i].content || {}).columns;
+            if (isArr(cols)) {
+                for (var c = 0; c < cols.length; c++) {
+                    n += pbCountElements((cols[c] || {}).elements, depth + 1);
+                }
+            }
+        }
+        return n;
+    }
+
+    function templateList() {
+        var out = [];
+        for (var i = 0; i < PB_TEMPLATES.length; i++) {
+            var t = PB_TEMPLATES[i];
+            var secs = pbCleanSections(t.sections());
+            /* Counted through the nesting: an author sees the feature boxes
+               inside a columns element, not the columns element. */
+            var els = 0;
+            for (var j = 0; j < secs.length; j++) els += pbCountElements(secs[j].elements, 0);
+            out.push({ id: t.id, name: t.name, version: t.version,
+                       description: t.description, sections: secs.length, elements: els });
+        }
+        return out;
+    }
+
+    function templateFind(id) {
+        var k = str(id);
+        for (var i = 0; i < PB_TEMPLATES.length; i++) {
+            if (PB_TEMPLATES[i].id === k) return PB_TEMPLATES[i];
+        }
+        return null;
+    }
+
+    /* A clean, freshly-ided copy. The registry entry is never handed out. */
+    function templateSections(id) {
+        var t = templateFind(id);
+        if (!t) return null;
+        return pbReidSections(pbCleanSections(t.sections()));
+    }
+
     /* Slugs the builder can edit: the shipped mounts plus admin-created pages. */
     function builderPages() {
         var pages = load().pages || {}, out = [], k;
         for (k in pages) {
             if (!Object.prototype.hasOwnProperty.call(pages, k)) continue;
-            if (PB_MOUNTED[k] || (pages[k] && pages[k].builderMount)) out.push(k);
+            /* pbPick for consistency with every other allow-list read by a
+               stored name. Unreachable today -- these keys come from the
+               admin's own pages object -- and said so rather than counted. */
+            if (pbPick(PB_MOUNTED, k) || (pages[k] && pages[k].builderMount)) out.push(k);
         }
         out.sort();
         return out;
@@ -1600,7 +3202,11 @@
     ======================================================== */
     function paintPageMeta() {
         each(document.querySelectorAll('meta[data-cms-meta]'), function (el) {
-            var v = get(el.getAttribute('data-cms-meta'), '');
+            /* str() trims. Without it a description of three spaces is
+               "truthy" and replaces a perfectly good static one with
+               nothing -- the exact case the static-first rule exists to
+               prevent. paintSeo() has always trimmed; this did not. */
+            var v = str(get(el.getAttribute('data-cms-meta'), ''));
             if (v) el.setAttribute('content', v);
         });
     }
@@ -1841,6 +3447,7 @@
     }
 
     function applyBody() {
+        paintSchemaLate();
         harvest();
         renderFeatured();
         renderCategories();
@@ -1915,11 +3522,22 @@
                        page in this browser pulls — so without this, opening
                        the site in another tab rolled the admin's unsaved
                        Page Builder work back to the last published state. */
-                    var localDrafts = (load() || {}).builderDrafts;
+                    var local = load() || {};
+                    var localDrafts = local.builderDrafts;
+                    var localLibrary = local.builderLibrary;
+                    var localRecovery = local.builderRecovery;
                     /* server wins — localStorage is only a cache here */
                     state = merge(merge(DEFAULTS, window.CMS_BRAND || null), remoteData);
                     if (localDrafts && Object.keys(localDrafts).length) {
                         state.builderDrafts = localDrafts;
+                    }
+                    /* Same reasoning: the library lives on this device, so a
+                       row that does not carry it must not wipe it. */
+                    if (localLibrary && isArr(localLibrary.items) && localLibrary.items.length) {
+                        state.builderLibrary = localLibrary;
+                    }
+                    if (localRecovery && Object.keys(localRecovery).length) {
+                        state.builderRecovery = localRecovery;
                     }
                     try {
                         window.localStorage.setItem(KEY, JSON.stringify(state));
@@ -1972,6 +3590,10 @@
                visitor downloads with the anon key. */
             var payload = clone(load());
             delete payload.builderDrafts;
+            /* Local-only by decision: the library is a workbench, not
+               content, and every visitor downloads this row. */
+            delete payload.builderLibrary;
+            delete payload.builderRecovery;
 
             var body = JSON.stringify({
                 id: RC.siteId,
@@ -2189,11 +3811,76 @@
             paint: paintSections,
             css: builderCSS,
             published: publishedSections,
+            upgrade: pbUpgrade,
+            schemaOf: pbSchemaOf,
             safeUrl: pbUrl,
             safeCssValue: pbCssValue,
+            /* A URL that is safe INSIDE url(...): pbUrl's scheme rules plus a
+               refusal of every character that could close the function or the
+               declaration around it. Exported so the admin's share-card
+               preview uses this rather than a second copy of the rules. */
+            safeCssUrl: pbCssUrl,
             elementStyleKeys: PB_EL_STYLE_KEYS,
+            sectionStyleKeys: PB_SEC_STYLE_KEYS,
+            icons: PB_ICONS,
+            social: PB_SOCIAL,
+            colLayouts: PB_COL_LAYOUTS,
+            /* Global design (stage 6). `roleColor`/`roleTypo` resolve a role
+               the way the stylesheet does, which is what lets the admin show
+               an author the colour a role is currently worth. */
+            colorRoles: PB_COLOR_ROLES,
+            typoRoles: PB_TYPO_ROLES,
+            typoProps: PB_TYPO_PROPS,
+            typoSite: PB_TYPO_SITE,
+            roleColor: pbRoleColor,
+            roleTypo: pbRoleTypo,
+            designCSS: designCSS,
+            paintDesign: paintDesign,
             sectionTokens: PB_SEC_TOKENS,
             elementTokens: PB_EL_TOKENS,
+
+            /* Renders sections into any host node, for the admin's library
+               preview. Same factories as the public page, so what is shown
+               is what would be published. */
+            renderInto: renderSectionsInto,
+
+            /* untrusted data in, clean sections out */
+            /* asset paths (milestone B) */
+            assetPath: pbAsset,
+            assetList: pbAssetList,
+            assetRoots: PB_ASSET_ROOTS,
+
+            sanitize: pbCleanSections,
+            reid: pbReidSections,
+            contentKeys: PB_CONTENT_KEYS,
+
+            /* reusable section library (device-local) */
+            library: {
+                version: LIBRARY_VERSION,
+                list: libraryList,
+                save: librarySave,
+                rename: libraryRename,
+                duplicate: libraryDuplicate,
+                remove: libraryRemove,
+                instance: libraryInstance,
+                exportJSON: libraryExport,
+                importJSON: libraryImport
+            },
+
+            /* recovery snapshots (milestone C, device-local) */
+            recovery: {
+                snapshot: recoverySnapshot,
+                get: recoveryGet,
+                clear: recoveryClear
+            },
+
+            /* what a tree would render, read-only (milestone E) */
+            outline: pbOutline,
+
+            /* page templates (code registry) */
+            templates: templateList,
+            templateVersion: PB_TEMPLATE_VERSION,
+            fromTemplate: templateSections,
 
             /* draft / publish */
             mounted: PB_MOUNTED,

@@ -9,6 +9,11 @@
          alone cannot guarantee that, so the directive lives here too. -->
     <meta name="robots" content="noindex,nofollow" />
     <link rel="stylesheet" href="../css/admin.css" />
+    <!-- The Page Builder's own stylesheet, so a reusable section can be
+         previewed here exactly as it renders on the page. Every selector in
+         it is scoped to a .pb-* class the builder emits; none collide with
+         the admin's own. -->
+    <link rel="stylesheet" href="../css/sections.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" />
 </head>
 
@@ -36,6 +41,9 @@
           </button>
                 <button class="adm-nav-item" data-panel="typography">
             <i class="fas fa-text-height"></i> Typography
+          </button>
+                <button class="adm-nav-item" data-panel="design">
+            <i class="fas fa-swatchbook"></i> Global Design
           </button>
                 <button class="adm-nav-item" data-panel="text">
             <i class="fas fa-font"></i> Text
@@ -273,6 +281,26 @@
             </p>
         </div>
         <div id="typoGroups"></div>
+    </section>
+
+    <!-- ---------- GLOBAL DESIGN (Page Builder) ---------- -->
+    <section class="adm-panel" id="panel-design">
+        <div class="card">
+            <h2>Global Design</h2>
+            <p class="hint">
+                Named colours and text styles that Page Builder sections and elements can
+                point at, so one change here moves every element that uses them. These
+                affect the <strong>Page Builder only</strong> &mdash; nothing here repaints
+                the navigation, the odds table or the footer.
+            </p>
+            <p class="hint">
+                Several roles already exist on this site and are taken straight from
+                <strong>Colors</strong>, which stays their home. Change one there and it
+                changes here too. Override a role below only when you want the Page Builder
+                to differ from the rest of the site.
+            </p>
+        </div>
+        <div id="designRoles"></div>
     </section>
 
     <!-- ---------- TEXT ---------- -->
@@ -582,8 +610,11 @@
                 <em>Unpublish</em>.
             </p>
             <div class="pagetabs" id="pbTabs"></div>
+            <p class="pb-where" id="pbWhere"></p>
+            <div class="pb-recovery" id="pbRecovery" hidden></div>
             <div class="pb-bar">
                 <span class="pb-state" id="pbState"></span>
+                <span class="pb-savestate" id="pbSaveState" hidden></span>
                 <span class="pb-bar-sp"></span>
                 <button type="button" class="adm-btn ghost" id="pbSaveDraft">
                     <i class="fas fa-floppy-disk"></i> Save draft
@@ -606,15 +637,62 @@
         <div class="pb-split">
             <div class="pb-col-edit">
                 <div class="card">
+                    <h2>Start from a template</h2>
+                    <p class="hint">
+                        Replaces the sections in this draft with a ready-made layout you can edit.
+                        Placeholder wording only &mdash; nothing is published until you press
+                        <strong>Publish</strong>.
+                    </p>
+                    <div class="pb-templates" id="pbTemplates"></div>
+                </div>
+
+                <div class="card">
                     <h2>Sections</h2>
+                    <p class="hint">
+                        Drag the <i class="fas fa-grip-vertical" aria-hidden="true"></i> handle to
+                        reorder sections, columns and elements &mdash; or use the arrow buttons,
+                        which do the same thing from the keyboard and on a touchscreen.
+                    </p>
                     <div class="pb-add" id="pbAdd"></div>
                     <div class="pb-list" id="pbList"></div>
+                    <p class="pb-dragstatus" id="pbDragStatus" role="status" aria-live="polite"></p>
+                </div>
+
+                <div class="card">
+                    <h2>Headings and the page H1</h2>
+                    <div id="pbHeadings"></div>
+                </div>
+
+                <div class="card">
+                    <h2>Reusable sections</h2>
+                    <p class="hint">
+                        Save a section here and drop it into any page. Each one is saved
+                        <strong>in this browser only</strong> &mdash; it is never published and
+                        never leaves this device unless you export it. Inserting one makes an
+                        independent copy, so editing the page does not change what is saved here.
+                    </p>
+                    <div class="pb-bar">
+                        <button type="button" class="adm-btn ghost" id="pbLibExport">
+                            <i class="fas fa-file-export"></i> Export
+                        </button>
+                        <button type="button" class="adm-btn ghost" id="pbLibImport">
+                            <i class="fas fa-file-import"></i> Import
+                        </button>
+                        <input type="file" id="pbLibFile" accept="application/json,.json" hidden />
+                    </div>
+                    <div class="pb-lib" id="pbLibrary"></div>
                 </div>
             </div>
             <div class="pb-col-prev">
                 <div class="card">
                     <h2>Preview <span class="pill" id="pbPrevTag">Draft</span></h2>
+                    <p class="hint">
+                        The real page at a real viewport width, showing this draft. Switching
+                        device only changes what you are looking at &mdash; it never changes
+                        the page or its responsive settings, and never publishes.
+                    </p>
                     <div class="pb-devices" id="pbDevices"></div>
+                    <p class="hint pb-viewport-tag" id="pbViewportTag"></p>
                     <div class="pb-stage" id="pbStage">
                         <iframe id="pbFrame" title="Page Builder preview"></iframe>
                     </div>
@@ -758,6 +836,32 @@
     </div>
 
     <!-- CREATE / EDIT THEME MODAL -->
+    <!-- ---------- PAGE BUILDER ASSET PICKER ---------- -->
+    <div class="modal" id="pbAssetModal" hidden>
+        <div class="modal-card pb-asset-card">
+            <header>
+                <h3 id="pbAssetTitle">Choose an image</h3>
+                <button class="icon-btn" id="pbAssetClose" aria-label="Close">
+                    <i class="fas fa-xmark"></i>
+                </button>
+            </header>
+            <div class="modal-body">
+                <p class="hint" id="pbAssetHint">
+                    Images already published with this site. Nothing is uploaded &mdash; choosing
+                    one stores its path, not the picture.
+                </p>
+                <input type="search" class="filter" id="pbAssetSearch"
+                       placeholder="Search by name or folder&hellip;" autocomplete="off" />
+                <div class="pb-asset-grid" id="pbAssetGrid"></div>
+            </div>
+            <footer>
+                <span class="pb-asset-chosen" id="pbAssetChosen"></span>
+                <button type="button" class="adm-btn ghost" id="pbAssetCancel">Cancel</button>
+                <button type="button" class="adm-btn" id="pbAssetUse" disabled>Use this image</button>
+            </footer>
+        </div>
+    </div>
+
     <div class="modal" id="themeModal" hidden>
         <div class="modal-card">
             <header>
@@ -835,6 +939,9 @@
     <script src="../js/cms-config.js"></script>
     <script src="../js/brand.js"></script>
     <script src="../js/cms.js"></script>
+    <!-- Defines window.PBAdmin and runs nothing at load time; admin.js
+         instantiates it, so this must come first. -->
+    <script src="../js/admin-builder.js"></script>
     <script src="../js/admin.js"></script>
 </body>
 

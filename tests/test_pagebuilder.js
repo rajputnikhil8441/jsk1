@@ -673,7 +673,10 @@ const el  = (id, type, content, style, responsive) =>
                live: CMS.sections.live('about').length, dirty: CMS.sections.dirty('about') };
     });
     check('publish writes status published', r.status === 'published', r.status);
-    check('publish stamps the schema version', r.schema === 1, r.schema);
+    /* V2 bumped PB_SCHEMA to 2; new writes stamp it. Blocks already published
+       under V1 keep their 1 until someone edits that page — covered by
+       test_pagebuilder_v2.js and test_pagebuilder_compat.js. */
+    check('publish stamps the current schema version', r.schema === 2, r.schema);
     check('publish stamps a date', /^\d{4}-\d{2}-\d{2}$/.test(r.stamped || ''), r.stamped);
     check('the sections are now live', r.live === 2, r.live);
     check('the draft no longer differs from live', r.dirty === false);
@@ -737,9 +740,16 @@ const el  = (id, type, content, style, responsive) =>
     check('and the shipped content comes back',
       (await p.evaluate(() => document.querySelectorAll('.info-body h2').length)) >= 3);
 
-    check('only builderDrafts was added at the top level',
+    /* Still an exact list, not a loosened one: the builder is allowed three
+       top-level keys and no more. builderDrafts is this device's working
+       copy, builderLibrary its reusable-section library, builderRecovery
+       the one snapshot per page taken before a draft is replaced. All three
+       are device-local and all three are stripped from the publish
+       payload, which is asserted separately in each milestone's suite. */
+    check('the builder owns exactly three top-level keys, all device-local',
       JSON.stringify(await p.evaluate(() =>
-        Object.keys(CMS.data()).filter(k => /^builder/.test(k)).sort())) === JSON.stringify(['builderDrafts']));
+        Object.keys(CMS.data()).filter(k => /^builder/.test(k)).sort())) ===
+      JSON.stringify(['builderDrafts', 'builderLibrary', 'builderRecovery']));
     check('the other panels’ config is untouched',
       await p.evaluate(() => typeof CMS.data().colors === 'object' && typeof CMS.data().sportsTable === 'object'));
     check('each page keeps its own builder data',
@@ -855,9 +865,14 @@ const el  = (id, type, content, style, responsive) =>
     check('a section opens on Content / Design / Visibility',
       JSON.stringify(await p.$$eval(`${SEC} .pb-subtab`, e => e.map(x => x.getAttribute('data-view')))) ===
       JSON.stringify(['content', 'design', 'visibility']));
-    check('all six element types can be added',
-      JSON.stringify(await p.$$eval(`${SEC} > .pb-sec-body > .pb-subbody > .pb-add-el > .pb-addbtn`, e => e.map(x => x.getAttribute('data-el-type')))) ===
-      JSON.stringify(['heading', 'text', 'image', 'button', 'card', 'columns']));
+    /* V2 added seven more element types. The V1 six must still be offered,
+       still under the same names, and still first, so a page author's muscle
+       memory and every test above keep working. */
+    const offered = await p.$$eval(`${SEC} > .pb-sec-body > .pb-subbody > .pb-add-el > .pb-addbtn`,
+      e => e.map(x => x.getAttribute('data-el-type')));
+    check('the six V1 element types are still offered, unchanged and first',
+      JSON.stringify(offered.slice(0, 6)) ===
+      JSON.stringify(['heading', 'text', 'image', 'button', 'card', 'columns']), offered);
 
     const TOP = `${SEC} > .pb-sec-body > .pb-subbody`;
     const ADD = `${TOP} > .pb-add-el > .pb-addbtn`;
@@ -910,7 +925,10 @@ const el  = (id, type, content, style, responsive) =>
     await p.click(`${ADD}[data-el-type="image"]`); await p.waitForTimeout(400);
     const img = await lastTop();
     const IMG = `${TOP} > .pb-els > .pb-elcard[data-el-id="${img}"]`;
-    await p.fill(`${IMG} .pb-field:has(> span:text-is("Image URL")) .pb-in`, 'images/logo.png');
+    /* Milestone B put a picker beside this field, and the label lost the
+       "URL" with it: it is now "Image". The field itself is unchanged and
+       so is the assertion below. */
+    await p.fill(`${IMG} .pb-field:has(> span:text-is("Image")) .pb-in`, 'images/logo.png');
     await p.waitForTimeout(400);
     check('an image without alt text is flagged',
       await p.$eval(IMG, e => { const w = e.querySelector('[data-warn="alt"]'); return !!w && !w.hidden; }));
@@ -923,17 +941,28 @@ const el  = (id, type, content, style, responsive) =>
     check('three breakpoints are offered',
       JSON.stringify(await p.$$eval(`${SEC} .pb-devtab`, e => e.map(x => x.getAttribute('data-device')))) ===
       JSON.stringify(['base', 'tablet', 'mobile']));
-    const PAD = `${SEC} .pb-subbody .pb-field:has(> span:text-is("Padding (px)")) .pb-in`;
+    /* Stage 5 puts the controls into collapsible groups, so a test that
+       types into one has to open the group first, exactly as a person
+       would. The label moved with it: "Padding (px)" is now worded
+       "Space inside (px)". */
+    const openGroups = async () => {
+      await p.$$eval(`${SEC} .pb-group`, gs => gs.forEach(g => { g.open = true; }));
+      await p.waitForTimeout(120);
+    };
+    await openGroups();
+    const PAD = `${SEC} .pb-subbody .pb-field:has(> span:text-is("Space inside (px)")) .pb-in`;
     await p.fill(PAD, '64'); await p.waitForTimeout(500);
     check('a desktop value is stored on style',
       await p.evaluate(id => CMS.sections.draft('about').sections.find(s => s.id === id).style.padding === '64', secId));
     await p.click(`${SEC} .pb-devtab[data-device="mobile"]`); await p.waitForTimeout(350);
+    await openGroups();
     check('the mobile box starts empty rather than inheriting', (await p.inputValue(PAD)) === '');
     await p.fill(PAD, '18'); await p.waitForTimeout(500);
     check('a mobile value is stored as an override, leaving desktop alone',
       await p.evaluate(id => { const s = CMS.sections.draft('about').sections.find(x => x.id === id);
         return s.responsive.mobile.padding === '18' && s.style.padding === '64'; }, secId));
     await p.click(`${SEC} [data-act="clear-device"]`); await p.waitForTimeout(500);
+    await openGroups();
     check('clearing a breakpoint touches only that breakpoint',
       await p.evaluate(id => { const s = CMS.sections.draft('about').sections.find(x => x.id === id);
         return JSON.stringify(s.responsive.mobile) === '{}' && s.style.padding === '64'; }, secId));
@@ -1008,8 +1037,17 @@ const el  = (id, type, content, style, responsive) =>
     /* a design change must be visible in the preview, as computed style */
     await p.click(`${TOP2} > .pb-els > .pb-elcard > .pb-elcard-body > .pb-details > summary`).catch(() => {});
     await p.waitForTimeout(250);
-    const colorIn = `${TOP2} > .pb-els > .pb-elcard > .pb-elcard-body > .pb-details .pb-field:has(> span:text-is("Text colour")) .pb-in`;
-    if (await p.$(colorIn)) {
+    await p.$$eval(`${TOP2} > .pb-els > .pb-elcard > .pb-elcard-body > .pb-details .pb-group`,
+      gs => gs.forEach(g => { g.open = true; }));
+    await p.waitForTimeout(120);
+    /* Stage 6 made every colour control "a global role or a custom value",
+       so reaching the colour box means choosing Custom first, as a person
+       would. The assertion below is unchanged. */
+    const colorField = `${TOP2} > .pb-els > .pb-elcard > .pb-elcard-body > .pb-details .pb-field:has(> span:text-is("Text colour"))`;
+    const colorIn = `${colorField} [data-part="value"] input[type="text"]`;
+    if (await p.$(colorField)) {
+      await p.selectOption(`${colorField} [data-part="role"]`, 'custom');
+      await p.waitForTimeout(250);
       await p.fill(colorIn, '#ff0055'); await p.waitForTimeout(700);
       fr = p.frame({ url: u => /about\.html/.test(u) });
       check('a colour set in the admin is the computed colour in the preview',
