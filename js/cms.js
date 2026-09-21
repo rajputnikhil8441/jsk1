@@ -1169,7 +1169,11 @@
         border:     ['--pbe-border', ''],
         radius:     ['--pbe-radius', 'px'],
         shadow:     ['--pbe-shadow', ''],
-        gap:        ['--pbe-gap', 'px']
+        gap:        ['--pbe-gap', 'px'],
+        /* V2: a divider's rule is its own thing, not the element's border */
+        lineWidth:  ['--pbe-line-width', 'px'],
+        lineStyle:  ['--pbe-line-style', ''],
+        lineColor:  ['--pbe-line-color', '']
     };
 
     /* Which controls actually do something for each element type. The admin
@@ -1185,8 +1189,78 @@
                   'margin', 'border', 'radius', 'shadow'],
         card:    ['bg', 'color', 'align', 'padding', 'margin', 'maxWidth', 'gap',
                   'border', 'radius', 'shadow'],
-        columns: ['align', 'margin', 'maxWidth', 'gap']
+        columns: ['align', 'margin', 'maxWidth', 'gap'],
+
+        /* V2 elements. Same rule as above: a key appears here only if the
+           CSS below actually reads it, so the admin can never offer a
+           control that does nothing. */
+        divider:     ['lineWidth', 'lineStyle', 'lineColor', 'maxWidth', 'align', 'margin'],
+        spacer:      ['height', 'maxWidth'],
+        icon:        ['color', 'fontSize', 'align', 'bg', 'padding', 'margin', 'radius'],
+        notice:      ['bg', 'color', 'fontSize', 'fontWeight', 'align', 'padding', 'margin',
+                      'maxWidth', 'gap', 'border', 'radius', 'shadow'],
+        featureBox:  ['bg', 'color', 'fontSize', 'fontWeight', 'align', 'padding', 'margin',
+                      'maxWidth', 'gap', 'border', 'radius', 'shadow'],
+        faq:         ['bg', 'color', 'fontSize', 'fontWeight', 'align', 'padding', 'margin',
+                      'maxWidth', 'gap', 'border', 'radius', 'shadow'],
+        socialLinks: ['color', 'fontSize', 'align', 'bg', 'padding', 'margin', 'gap', 'radius']
     };
+
+    /* ---- V2 allow-lists ----
+       An icon is chosen by NAME from this map, never by class string, so
+       nothing a page author types can become a class on the page. The
+       values are Font Awesome 6 classes, which the site already loads. */
+    var PB_ICONS = {
+        star:      'fa-solid fa-star',
+        check:     'fa-solid fa-circle-check',
+        info:      'fa-solid fa-circle-info',
+        warning:   'fa-solid fa-triangle-exclamation',
+        danger:    'fa-solid fa-circle-exclamation',
+        question:  'fa-solid fa-circle-question',
+        shield:    'fa-solid fa-shield-halved',
+        lock:      'fa-solid fa-lock',
+        bolt:      'fa-solid fa-bolt',
+        clock:     'fa-solid fa-clock',
+        gift:      'fa-solid fa-gift',
+        trophy:    'fa-solid fa-trophy',
+        wallet:    'fa-solid fa-wallet',
+        phone:     'fa-solid fa-phone',
+        envelope:  'fa-solid fa-envelope',
+        headset:   'fa-solid fa-headset',
+        user:      'fa-solid fa-user',
+        users:     'fa-solid fa-users',
+        heart:     'fa-solid fa-heart',
+        thumbsUp:  'fa-solid fa-thumbs-up',
+        rocket:    'fa-solid fa-rocket',
+        chart:     'fa-solid fa-chart-line',
+        mobile:    'fa-solid fa-mobile-screen',
+        creditCard:'fa-solid fa-credit-card'
+    };
+
+    /* Platform -> [icon class, accessible name]. A link whose platform is
+       not in here is dropped, so no arbitrary icon markup is reachable. */
+    var PB_SOCIAL = {
+        whatsapp:  ['fa-brands fa-whatsapp',  'WhatsApp'],
+        telegram:  ['fa-brands fa-telegram',  'Telegram'],
+        facebook:  ['fa-brands fa-facebook',  'Facebook'],
+        instagram: ['fa-brands fa-instagram', 'Instagram'],
+        x:         ['fa-brands fa-x-twitter', 'X'],
+        youtube:   ['fa-brands fa-youtube',   'YouTube'],
+        linkedin:  ['fa-brands fa-linkedin',  'LinkedIn'],
+        email:     ['fa-solid fa-envelope',   'Email']
+    };
+
+    var PB_NOTICE_VARIANTS = { info: 1, success: 1, warning: 1, danger: 1 };
+    var PB_HEADING_LEVELS = { h2: 1, h3: 1, h4: 1, h5: 1, h6: 1 };
+
+    /* Unique, valid HTML ids for the FAQ's aria wiring, even when an
+       element's own id is missing or not selector-safe. */
+    var pbAutoId = 0;
+    function pbDomId(el, suffix) {
+        var base = pbCssId(el && el.id);
+        if (!base) { pbAutoId += 1; base = 'a' + pbAutoId; }
+        return 'pb-' + base + '-' + suffix;
+    }
 
     /* An element's own box alignment, for the types that are laid out as a
        flex or grid item rather than as a block of text. */
@@ -1351,8 +1425,221 @@
                 wrap.appendChild(col);
             }
             return pbId(wrap, el);
+        },
+
+        /* ---------------- V2 elements ---------------- */
+
+        divider: function (el) {
+            return pbId(pbEl('hr', 'pb-el pb-divider'), el);
+        },
+
+        spacer: function (el) {
+            var n = pbEl('div', 'pb-el pb-spacer');
+            n.setAttribute('aria-hidden', 'true');
+            return pbId(n, el);
+        },
+
+        icon: function (el) {
+            var c = el.content || {};
+            var cls = PB_ICONS[str(c.icon)];
+            if (!cls) return null;            /* unknown name renders nothing */
+            var glyph = pbEl('i', 'pb-icon-glyph ' + cls);
+            glyph.setAttribute('aria-hidden', 'true');
+            var label = str(c.label);
+            var href = pbUrl(c.href);
+            /* One outer node either way, so size, colour and alignment land
+               in the same place whether or not the icon links somewhere.
+
+               A refused URL yields the plain span, NOT an anchor with
+               href="#". That differs from the button element on purpose: a
+               button with nowhere to go still has to look like a button,
+               whereas an icon simply becomes decoration, which is better
+               than a clickable link that goes nowhere. */
+            if (href) {
+                var a = pbEl('a', 'pb-el pb-icon');
+                a.setAttribute('href', href);
+                if (c.newTab) { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); }
+                /* An icon-only link has no text, so it needs a name. */
+                a.setAttribute('aria-label', label || 'Link');
+                a.appendChild(glyph);
+                return pbId(a, el);
+            }
+            var span = pbEl('span', 'pb-el pb-icon');
+            if (label) { span.setAttribute('role', 'img'); span.setAttribute('aria-label', label); }
+            span.appendChild(glyph);
+            return pbId(span, el);
+        },
+
+        notice: function (el) {
+            var c = el.content || {};
+            var variant = PB_NOTICE_VARIANTS[str(c.variant)] ? str(c.variant) : 'info';
+            var box = pbEl('div', 'pb-el pb-notice pb-notice-' + variant);
+            /* "note" is the advisory role. Deliberately not "alert": that is
+               assertive and interrupts a screen reader, which is wrong for
+               text that was on the page before the reader arrived. */
+            box.setAttribute('role', 'note');
+            var cls = PB_ICONS[str(c.icon)];
+            if (cls) {
+                var i = pbEl('i', 'pb-notice-icon ' + cls);
+                i.setAttribute('aria-hidden', 'true');
+                box.appendChild(i);
+            }
+            var body = pbEl('div', 'pb-notice-body');
+            if (str(c.text)) {
+                var t = pbEl('p', 'pb-notice-text');
+                t.textContent = str(c.text);
+                body.appendChild(t);
+            }
+            var href = pbUrl(c.href);
+            if (href && str(c.linkText)) {
+                var a = pbEl('a', 'pb-notice-link');
+                a.setAttribute('href', href);
+                if (c.newTab) { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); }
+                a.textContent = str(c.linkText);
+                body.appendChild(a);
+            }
+            box.appendChild(body);
+            return pbId(box, el);
+        },
+
+        featureBox: function (el) {
+            var c = el.content || {};
+            var box = pbEl('div', 'pb-el pb-feature');
+            var cls = PB_ICONS[str(c.icon)];
+            if (cls) {
+                var i = pbEl('i', 'pb-feature-icon ' + cls);
+                i.setAttribute('aria-hidden', 'true');
+                box.appendChild(i);
+            } else if (pbUrl(c.image)) {
+                /* Reused so one image implementation covers every element:
+                   no id, so it resets and takes the shipped defaults. */
+                var img = PB_ELEMENTS.image({ content: { src: c.image, alt: c.imageAlt } });
+                if (img) { img.className += ' pb-feature-img'; box.appendChild(img); }
+            }
+            if (str(c.title)) {
+                var lvl = PB_HEADING_LEVELS[String(c.titleLevel || 'h3').toLowerCase()]
+                    ? String(c.titleLevel).toLowerCase() : 'h3';
+                var h = pbEl(lvl, 'pb-feature-title');
+                h.textContent = str(c.title);
+                box.appendChild(h);
+            }
+            if (str(c.text)) {
+                var t = pbEl('p', 'pb-feature-text');
+                t.textContent = str(c.text);
+                box.appendChild(t);
+            }
+            var href = pbUrl(c.href);
+            if (href && str(c.linkText)) {
+                var a = pbEl('a', 'pb-feature-link');
+                a.setAttribute('href', href);
+                if (c.newTab) { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); }
+                a.textContent = str(c.linkText);
+                box.appendChild(a);
+            }
+            return pbId(box, el);
+        },
+
+        faq: function (el) {
+            var c = el.content || {};
+            var items = isArr(c.items) ? c.items : [];
+            var wrap = pbEl('div', 'pb-el pb-faq');
+            var single = c.single === true;    /* accordion: one open at a time */
+            var made = 0;
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i] || {};
+                var q = str(it.question);
+                if (!q) continue;              /* a question is the minimum */
+                var panelId = pbDomId(el, 'p' + i);
+                var btnId = pbDomId(el, 'b' + i);
+                var open = it.open === true;
+
+                var item = pbEl('div', 'pb-faq-item');
+                /* A heading wrapping the button keeps the page outline
+                   navigable; the button is what carries the state. */
+                var h = pbEl('h3', 'pb-faq-q');
+                var btn = pbEl('button', 'pb-faq-btn');
+                btn.setAttribute('type', 'button');
+                btn.setAttribute('id', btnId);
+                btn.setAttribute('aria-controls', panelId);
+                btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+                var qt = pbEl('span', 'pb-faq-qt');
+                qt.textContent = q;
+                btn.appendChild(qt);
+                var mark = pbEl('span', 'pb-faq-mark');
+                mark.setAttribute('aria-hidden', 'true');
+                btn.appendChild(mark);
+                h.appendChild(btn);
+                item.appendChild(h);
+
+                var panel = pbEl('div', 'pb-faq-a');
+                panel.setAttribute('id', panelId);
+                panel.setAttribute('role', 'region');
+                panel.setAttribute('aria-labelledby', btnId);
+                if (!open) panel.hidden = true;
+                var at = pbEl('p', 'pb-faq-text');
+                at.textContent = str(it.answer);
+                panel.appendChild(at);
+                item.appendChild(panel);
+
+                /* Listener on the button itself. A <button> already handles
+                   Enter and Space and is in the tab order, so there is no
+                   key handling to write and none to get wrong. Nodes are
+                   rebuilt on every repaint, so these cannot accumulate. */
+                btn.addEventListener('click', pbFaqToggle(wrap, btn, panel, single));
+                wrap.appendChild(item);
+                made += 1;
+            }
+            if (!made) return null;
+            return pbId(wrap, el);
+        },
+
+        socialLinks: function (el) {
+            var c = el.content || {};
+            var items = isArr(c.items) ? c.items : [];
+            var wrap = pbEl('div', 'pb-el pb-social');
+            var made = 0;
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i] || {};
+                var plat = PB_SOCIAL[str(it.platform)];
+                if (!plat) continue;           /* platform not on the list */
+                var href = pbUrl(it.url);
+                if (!href) continue;           /* and the URL must pass too */
+                var a = pbEl('a', 'pb-social-link');
+                a.setAttribute('href', href);
+                /* Social profiles live elsewhere, so always a new tab, and
+                   never without both noopener and noreferrer. */
+                a.setAttribute('target', '_blank');
+                a.setAttribute('rel', 'noopener noreferrer');
+                a.setAttribute('aria-label', str(it.label) || plat[1]);
+                var g = pbEl('i', 'pb-social-icon ' + plat[0]);
+                g.setAttribute('aria-hidden', 'true');
+                a.appendChild(g);
+                wrap.appendChild(a);
+                made += 1;
+            }
+            if (!made) return null;
+            return pbId(wrap, el);
         }
+
     };
+
+    /* The FAQ's one piece of interaction. Kept out of the factory so the
+       closure captures exactly what it needs and nothing else. */
+    function pbFaqToggle(wrap, btn, panel, single) {
+        return function () {
+            var open = btn.getAttribute('aria-expanded') === 'true';
+            if (!open && single) {
+                var others = wrap.querySelectorAll('.pb-faq-btn[aria-expanded="true"]');
+                for (var i = 0; i < others.length; i++) {
+                    others[i].setAttribute('aria-expanded', 'false');
+                    var p = document.getElementById(others[i].getAttribute('aria-controls'));
+                    if (p) p.hidden = true;
+                }
+            }
+            btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+            panel.hidden = open;
+        };
+    }
 
     function isArr(v) { return Object.prototype.toString.call(v) === '[object Array]'; }
 
@@ -2258,6 +2545,8 @@
             safeUrl: pbUrl,
             safeCssValue: pbCssValue,
             elementStyleKeys: PB_EL_STYLE_KEYS,
+            icons: PB_ICONS,
+            social: PB_SOCIAL,
             sectionTokens: PB_SEC_TOKENS,
             elementTokens: PB_EL_TOKENS,
 

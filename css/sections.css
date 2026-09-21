@@ -44,6 +44,9 @@
     --pbe-radius: initial;
     --pbe-shadow: initial;
     --pbe-gap: initial;
+    --pbe-line-width: initial;
+    --pbe-line-style: initial;
+    --pbe-line-color: initial;
 }
 
 
@@ -259,3 +262,234 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
 @media (min-width: 1025px) { .pb-section.pb-hide-desktop { display: none; } }
 @media (max-width: 1024px) and (min-width: 769px) { .pb-section.pb-hide-tablet { display: none; } }
 @media (max-width: 768px)  { .pb-section.pb-hide-mobile  { display: none; } }
+
+
+/* =========================================================
+   V2 ELEMENTS
+   ---------------------------------------------------------
+   Same two rules as everything above. Each element's own base
+   rule is (0,2,0) via .pb-el + its type class, so a page rule
+   such as .info-article hr or .info-article a at (0,1,1)
+   cannot take it over, and each reads only --pbe-* values,
+   which .pb-el has already reset.
+   ========================================================= */
+
+/* ---------- divider ---------- */
+
+.pb-el.pb-divider {
+    /* the rule is drawn with border-top, so thickness, style and colour
+       are three controls rather than one free-text border string */
+    border: 0;
+    border-top: var(--pbe-line-width, 1px) var(--pbe-line-style, solid)
+                var(--pbe-line-color, rgba(0, 0, 0, .15));
+    width: var(--pbe-max-width, 100%);
+    margin: var(--pbe-margin, 16px 0);
+    align-self: var(--pbe-self, auto);
+    justify-self: var(--pbe-justify, auto);
+}
+
+/* ---------- spacer ---------- */
+
+.pb-el.pb-spacer {
+    height: var(--pbe-height, 24px);
+    max-width: var(--pbe-max-width, none);
+    flex: none;            /* a flex column would otherwise collapse it */
+    width: 100%;
+}
+
+/* ---------- icon ---------- */
+
+.pb-el.pb-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: fit-content;
+    color: var(--pbe-color, inherit);
+    font-size: var(--pbe-font-size, 32px);
+    background: var(--pbe-bg, transparent);
+    padding: var(--pbe-padding, 0);
+    margin: var(--pbe-margin, 0);
+    border-radius: var(--pbe-radius, 0);
+    line-height: 1;
+    text-decoration: none;
+    align-self: var(--pbe-self, flex-start);
+    justify-self: var(--pbe-justify, start);
+}
+
+/* the glyph inherits size and colour from the box above it */
+.pb-icon-glyph { font-size: inherit; color: inherit; line-height: 1; }
+
+/* ---------- notice ---------- */
+
+.pb-el.pb-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--pbe-gap, 12px);
+    background: var(--pbe-bg, var(--pb-notice-bg));
+    color: var(--pbe-color, var(--pb-notice-text));
+    font-size: var(--pbe-font-size, 15px);
+    font-weight: var(--pbe-font-weight, 400);
+    text-align: var(--pbe-align, inherit);
+    padding: var(--pbe-padding, 14px 16px);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    border: var(--pbe-border, 1px solid var(--pb-notice-line));
+    border-radius: var(--pbe-radius, 6px);
+    box-shadow: var(--pbe-shadow, none);
+    line-height: 1.55;
+}
+
+/* Variant defaults are plain custom properties, so an author who sets a
+   background or colour simply wins over them without any !important. */
+.pb-notice-info    { --pb-notice-bg: #e8f4fb; --pb-notice-text: #0b3d5c; --pb-notice-line: #b6ddf2; }
+.pb-notice-success { --pb-notice-bg: #e9f7ef; --pb-notice-text: #14532d; --pb-notice-line: #b7e4c7; }
+.pb-notice-warning { --pb-notice-bg: #fdf6e3; --pb-notice-text: #6b4a05; --pb-notice-line: #f3e0a8; }
+.pb-notice-danger  { --pb-notice-bg: #fdecea; --pb-notice-text: #7f1d1d; --pb-notice-line: #f5c2c0; }
+
+.pb-notice-icon { flex: none; font-size: 1.15em; line-height: 1.35; color: inherit; }
+.pb-notice-body { min-width: 0; }
+.pb-notice .pb-notice-text { margin: 0; color: inherit; white-space: pre-line; }
+.pb-notice .pb-notice-link {
+    display: inline-block;
+    margin-top: 8px;
+    color: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+}
+
+/* ---------- feature box ---------- */
+
+.pb-el.pb-feature {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pbe-gap, 10px);
+    background: var(--pbe-bg, transparent);
+    color: var(--pbe-color, inherit);
+    font-size: var(--pbe-font-size, 15px);
+    font-weight: var(--pbe-font-weight, 400);
+    text-align: var(--pbe-align, inherit);
+    padding: var(--pbe-padding, 0);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+}
+
+.pb-feature-icon { font-size: 2em; line-height: 1; color: inherit; }
+.pb-feature .pb-feature-img { width: auto; max-width: 100%; }
+.pb-feature .pb-feature-title {
+    margin: 0;
+    color: inherit;
+    font-size: 1.25em;
+    font-weight: 700;
+    line-height: 1.3;
+}
+.pb-feature .pb-feature-text { margin: 0; color: inherit; line-height: 1.55; white-space: pre-line; }
+.pb-feature .pb-feature-link {
+    color: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    width: fit-content;
+}
+
+/* ---------- FAQ / accordion ---------- */
+
+.pb-el.pb-faq {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pbe-gap, 8px);
+    background: var(--pbe-bg, transparent);
+    color: var(--pbe-color, inherit);
+    font-size: var(--pbe-font-size, 15px);
+    font-weight: var(--pbe-font-weight, 400);
+    text-align: var(--pbe-align, inherit);
+    padding: var(--pbe-padding, 0);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+}
+
+.pb-faq .pb-faq-item {
+    border: 1px solid rgba(0, 0, 0, .12);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.pb-faq .pb-faq-q { margin: 0; font-size: inherit; font-weight: inherit; color: inherit; }
+
+.pb-faq .pb-faq-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    padding: 12px 14px;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    text-align: left;
+    line-height: 1.4;
+    cursor: pointer;
+}
+
+.pb-faq .pb-faq-btn:hover { background: rgba(0, 0, 0, .03); }
+.pb-faq .pb-faq-btn:focus-visible { outline: 2px solid currentColor; outline-offset: -2px; }
+
+/* CSS-drawn chevron, so the control does not depend on an icon font
+   loading before a visitor can tell open from closed. */
+.pb-faq .pb-faq-mark {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(45deg) translate(-2px, -2px);
+    transition: transform .15s ease;
+}
+
+.pb-faq .pb-faq-btn[aria-expanded="true"] .pb-faq-mark {
+    transform: rotate(-135deg) translate(-2px, -2px);
+}
+
+.pb-faq .pb-faq-a { padding: 0 14px 12px; }
+.pb-faq .pb-faq-a[hidden] { display: none; }
+.pb-faq .pb-faq-text { margin: 0; color: inherit; line-height: 1.55; white-space: pre-line; }
+
+/* ---------- social links ---------- */
+
+.pb-el.pb-social {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--pbe-gap, 12px);
+    color: var(--pbe-color, inherit);
+    font-size: var(--pbe-font-size, 22px);
+    margin: var(--pbe-margin, 0);
+    /* The wrapper stretches and the row positions itself inside it, so
+       "align" moves the icons rather than shrinking the box. Background,
+       padding and radius are deliberately NOT read here: they fall through
+       to each link below, so one setting styles every chip. */
+    align-self: var(--pbe-self, stretch);
+    justify-content: var(--pbe-justify, flex-start);
+}
+
+.pb-social .pb-social-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: inherit;
+    background: var(--pbe-bg, transparent);
+    padding: var(--pbe-padding, 0);
+    border-radius: var(--pbe-radius, 0);
+    line-height: 1;
+    text-decoration: none;
+}
+
+.pb-social .pb-social-link:hover { filter: brightness(1.15); }
+.pb-social .pb-social-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.pb-social-icon { font-size: inherit; color: inherit; line-height: 1; }

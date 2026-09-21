@@ -2,7 +2,7 @@
 
 Nine suites covering the SEO foundation, the admin SEO panel, link integrity,
 CMS images, the favicon chain, the sports table and the Page Builder (V1, V2
-and V1-compatibility). Baseline: **875 assertions, 0 failures**.
+and V1-compatibility). Baseline: **991 assertions, 0 failures**.
 
 ## Run
 
@@ -31,7 +31,7 @@ needed and the suites always test the working tree.
 | `test_sportstable.js` | sports-table CMS values, fallbacks, suspended markets | 59 |
 | `test_pagebuilder.js` | Page Builder V1: mounts, draft gate, style isolation against the site's own CSS, multiple-instance bleed, nesting, every section type, responsive overrides, CSS/URL injection, malformed data, draft/publish, remote-pull draft safety, admin panel, editors, preview, SEO and cross-page regression | 329 |
 | `test_pagebuilder_compat.js` | A frozen V1 payload and the render it produced at 1ce70b5, compared as computed style across three viewports. A failure means V2 changed how existing published pages look | 131 |
-| `test_pagebuilder_v2.js` | Page Builder V2 features | 25 |
+| `test_pagebuilder_v2.js` | Page Builder V2: schema tolerance and the upgrade chain; the seven V2 elements' rendering, controls, responsive behaviour, safety, malformed data and isolation; FAQ accessibility wiring and keyboard interaction; and a cross-check that every allow-listed control is actually offered in the admin | 141 |
 
 Do not weaken these to make a change pass.
 

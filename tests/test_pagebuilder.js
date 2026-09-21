@@ -858,9 +858,14 @@ const el  = (id, type, content, style, responsive) =>
     check('a section opens on Content / Design / Visibility',
       JSON.stringify(await p.$$eval(`${SEC} .pb-subtab`, e => e.map(x => x.getAttribute('data-view')))) ===
       JSON.stringify(['content', 'design', 'visibility']));
-    check('all six element types can be added',
-      JSON.stringify(await p.$$eval(`${SEC} > .pb-sec-body > .pb-subbody > .pb-add-el > .pb-addbtn`, e => e.map(x => x.getAttribute('data-el-type')))) ===
-      JSON.stringify(['heading', 'text', 'image', 'button', 'card', 'columns']));
+    /* V2 added seven more element types. The V1 six must still be offered,
+       still under the same names, and still first, so a page author's muscle
+       memory and every test above keep working. */
+    const offered = await p.$$eval(`${SEC} > .pb-sec-body > .pb-subbody > .pb-add-el > .pb-addbtn`,
+      e => e.map(x => x.getAttribute('data-el-type')));
+    check('the six V1 element types are still offered, unchanged and first',
+      JSON.stringify(offered.slice(0, 6)) ===
+      JSON.stringify(['heading', 'text', 'image', 'button', 'card', 'columns']), offered);
 
     const TOP = `${SEC} > .pb-sec-body > .pb-subbody`;
     const ADD = `${TOP} > .pb-add-el > .pb-addbtn`;

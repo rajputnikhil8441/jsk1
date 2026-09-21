@@ -2136,3 +2136,40 @@ input[type="password"]:focus {
 .pb-clear {
     margin-top: 12px;
 }
+
+
+/* ---------------- PAGE BUILDER: REPEATING SUB-ITEMS ---------------- */
+
+.pb-items {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.pb-item {
+    border: 1px dashed var(--a-line);
+    border-radius: 7px;
+    padding: 9px;
+}
+
+.pb-item-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 12px;
+}
+
+.pb-item-head strong {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+.pb-item-add {
+    margin-top: 10px;
+}

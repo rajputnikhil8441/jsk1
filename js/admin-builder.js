@@ -427,8 +427,21 @@ window.PBAdmin = function (host) {
         ['image',   'Image'],
         ['button',  'Button'],
         ['card',    'Card'],
-        ['columns', 'Columns']
+        ['columns', 'Columns'],
+        /* V2 */
+        ['divider',     'Divider'],
+        ['spacer',      'Spacer'],
+        ['icon',        'Icon'],
+        ['notice',      'Notice'],
+        ['featureBox',  'Feature box'],
+        ['faq',         'FAQ'],
+        ['socialLinks', 'Social links']
     ];
+
+    /* Choice lists come from the renderer's own allow-lists, so the admin
+       can never offer an icon or platform the renderer would drop. */
+    function pbIconNames() { return Object.keys(CMS.sections.icons || {}).sort(); }
+    function pbSocialNames() { return Object.keys(CMS.sections.social || {}).sort(); }
     var PB_EL_LABEL = {};
     PB_EL_TYPES.forEach(function (t) { PB_EL_LABEL[t[0]] = t[1]; });
 
@@ -446,7 +459,48 @@ window.PBAdmin = function (host) {
         card:    [['title', 'Title', 'text'], ['text', 'Text', 'area'],
                   ['image', 'Image URL', 'url'], ['imageAlt', 'Image alt', 'text'],
                   ['buttonText', 'Button label', 'text'], ['buttonHref', 'Button links to', 'url'],
-                  ['buttonNewTab', 'Open in a new tab', 'bool']]
+                  ['buttonNewTab', 'Open in a new tab', 'bool']],
+
+        /* V2. Divider and Spacer are pure styling and carry no content, so
+           they are absent here on purpose; the editor says so rather than
+           showing an empty panel. */
+        icon:    [['icon', 'Icon', 'iconSelect'],
+                  ['label', 'Accessible label', 'text'],
+                  ['href', 'Links to', 'url'], ['newTab', 'Open in a new tab', 'bool']],
+        notice:  [['text', 'Text', 'area'],
+                  ['variant', 'Type', 'select', ['info', 'success', 'warning', 'danger']],
+                  ['icon', 'Icon', 'iconSelect'],
+                  ['linkText', 'Link text', 'text'], ['href', 'Links to', 'url'],
+                  ['newTab', 'Open in a new tab', 'bool']],
+        featureBox: [['icon', 'Icon', 'iconSelect'],
+                  ['image', 'Image URL (used when no icon)', 'url'],
+                  ['imageAlt', 'Image alt', 'text'],
+                  ['title', 'Heading', 'text'],
+                  ['titleLevel', 'Heading level', 'select', ['h2', 'h3', 'h4', 'h5', 'h6']],
+                  ['text', 'Description', 'area'],
+                  ['linkText', 'Link text', 'text'], ['href', 'Links to', 'url'],
+                  ['newTab', 'Open in a new tab', 'bool']],
+        faq:     [['single', 'Only one answer open at a time', 'bool']],
+        socialLinks: []
+    };
+
+    /* Repeating sub-items: which element types have them, what one blank
+       row looks like, and the fields shown per row. */
+    var PB_ITEM_FIELDS = {
+        faq: {
+            key: 'items', label: 'Questions', addLabel: 'Add question',
+            blank: function () { return { question: 'New question', answer: '', open: false }; },
+            title: function (it) { return String((it && it.question) || 'Question'); },
+            fields: [['question', 'Question', 'text'], ['answer', 'Answer', 'area'],
+                     ['open', 'Open by default', 'bool']]
+        },
+        socialLinks: {
+            key: 'items', label: 'Links', addLabel: 'Add link',
+            blank: function () { return { platform: 'whatsapp', url: '' }; },
+            title: function (it) { return String((it && it.platform) || 'Link'); },
+            fields: [['platform', 'Platform', 'socialSelect'], ['url', 'URL', 'url'],
+                     ['label', 'Accessible label (optional)', 'text']]
+        }
     };
 
     var PB_STYLE_FIELDS = [
@@ -463,7 +517,12 @@ window.PBAdmin = function (host) {
         ['height',     'Min height (px)',   'num'],
         ['radius',     'Corner radius (px)', 'num'],
         ['border',     'Border',            'text'],
-        ['shadow',     'Shadow',            'text']
+        ['shadow',     'Shadow',            'text'],
+        /* V2: a divider draws a rule, which is three controls rather than
+           one free-text border string. */
+        ['lineWidth',  'Line thickness (px)', 'num'],
+        ['lineStyle',  'Line style',        'select', ['', 'solid', 'dashed', 'dotted', 'double']],
+        ['lineColor',  'Line colour',       'color']
     ];
 
     /* Which controls an element type actually reacts to. Owned by
@@ -472,8 +531,18 @@ window.PBAdmin = function (host) {
         return (CMS.sections.elementStyleKeys || {})[type] || [];
     }
 
-    /* "Min height" reads wrong on an image, which takes a fixed height. */
-    var PB_LABEL_OVERRIDE = { image: { height: 'Height (px)', maxWidth: 'Max width (px)' } };
+    /* The shared field list carries one label per key, but the same key can
+       mean something different on a different element -- "Min height" is
+       wrong on an image and on a spacer, both of which take an exact
+       height, and "Font size" is an odd way to ask for the size of an icon.
+       These overrides are per element type and affect V2 elements only. */
+    var PB_LABEL_OVERRIDE = {
+        image:       { height: 'Height (px)', maxWidth: 'Max width (px)' },
+        spacer:      { height: 'Height (px)', maxWidth: 'Max width (px)' },
+        divider:     { maxWidth: 'Width (px)' },
+        icon:        { fontSize: 'Icon size (px)' },
+        socialLinks: { fontSize: 'Icon size (px)', gap: 'Space between icons (px)' }
+    };
 
     var PB_DEVICES = [['base', 'Desktop'], ['tablet', 'Tablet'], ['mobile', 'Mobile']];
 
@@ -606,6 +675,13 @@ window.PBAdmin = function (host) {
     }
 
     function pbFieldFor(spec, bag, key) {
+        /* iconSelect and socialSelect are ordinary selects whose options
+           come from the renderer, resolved here so the two lists can never
+           drift apart. A blank option is offered for icons because an icon
+           is optional on a notice and a feature box. */
+        if (spec[2] === 'iconSelect')   spec = [spec[0], spec[1], 'select', [''].concat(pbIconNames())];
+        if (spec[2] === 'socialSelect') spec = [spec[0], spec[1], 'select', pbSocialNames()];
+
         var hint = document.createElement('em');
         hint.className = 'pb-warn';
         hint.hidden = true;
@@ -892,6 +968,16 @@ window.PBAdmin = function (host) {
             });
             body.appendChild(grid);
 
+            var itemCfg = PB_ITEM_FIELDS[el.type];
+            if (itemCfg) pbItemsEditor(body, el, itemCfg);
+
+            if (!grid.children.length && !itemCfg) {
+                var nc = document.createElement('p');
+                nc.className = 'hint';
+                nc.textContent = 'This element has no content to set \u2014 use Design to style it.';
+                body.appendChild(nc);
+            }
+
             /* Images without alt text cost the page in search and in
                screen readers, so the admin is told while editing. */
             if (el.type === 'image' || el.type === 'card') {
@@ -923,6 +1009,91 @@ window.PBAdmin = function (host) {
 
         card.appendChild(body);
         return card;
+    }
+
+    /* ---------- repeating sub-items (FAQ questions, social links) ----------
+       Deliberately the same shape as the section and element lists above:
+       add, move, delete, and a per-row field grid. Rows are rebuilt on every
+       structural change, so listeners cannot accumulate, and field edits go
+       through pbEdited() like every other control. */
+    function pbItemsEditor(host, el, cfg) {
+        if (!el.content) el.content = {};
+        if (!Array.isArray(el.content[cfg.key])) el.content[cfg.key] = [];
+        var list = el.content[cfg.key];
+
+        var wrap = document.createElement('div');
+        wrap.className = 'pb-items';
+        wrap.setAttribute('data-items', cfg.key);
+        host.appendChild(wrap);
+
+        function repaint() {
+            wrap.innerHTML = '';
+            if (!list.length) {
+                var e = document.createElement('p');
+                e.className = 'hint';
+                e.textContent = 'No ' + cfg.label.toLowerCase() + ' yet.';
+                wrap.appendChild(e);
+            }
+            list.forEach(function (it, i) {
+                var row = document.createElement('div');
+                row.className = 'pb-item';
+                row.setAttribute('data-item', String(i));
+
+                var head = document.createElement('div');
+                head.className = 'pb-item-head';
+                var name = document.createElement('strong');
+                name.textContent = cfg.title(it);
+                head.appendChild(name);
+
+                var tools = document.createElement('div');
+                tools.className = 'pb-sec-tools';
+                var up = pbBtn('fa-arrow-up', 'Move up');
+                up.disabled = i === 0;
+                up.setAttribute('data-act', 'item-up');
+                up.addEventListener('click', function () {
+                    var t = list[i - 1]; list[i - 1] = list[i]; list[i] = t;
+                    pbPersist(); repaint(); pbPaintPreview();
+                });
+                tools.appendChild(up);
+                var down = pbBtn('fa-arrow-down', 'Move down');
+                down.disabled = i === list.length - 1;
+                down.setAttribute('data-act', 'item-down');
+                down.addEventListener('click', function () {
+                    var t = list[i + 1]; list[i + 1] = list[i]; list[i] = t;
+                    pbPersist(); repaint(); pbPaintPreview();
+                });
+                tools.appendChild(down);
+                var del = pbBtn('fa-trash', 'Delete', 'danger');
+                del.setAttribute('data-act', 'item-del');
+                del.addEventListener('click', function () {
+                    list.splice(i, 1);
+                    pbPersist(); repaint(); pbPaintPreview();
+                });
+                tools.appendChild(del);
+                head.appendChild(tools);
+                row.appendChild(head);
+
+                var g = document.createElement('div');
+                g.className = 'pb-grid';
+                cfg.fields.forEach(function (spec) {
+                    g.appendChild(pbFieldFor(spec, it, spec[0]));
+                });
+                row.appendChild(g);
+                wrap.appendChild(row);
+            });
+        }
+        repaint();
+
+        var add = document.createElement('button');
+        add.type = 'button';
+        add.className = 'adm-btn ghost pb-item-add';
+        add.setAttribute('data-act', 'item-add');
+        add.innerHTML = '<i class="fas fa-plus"></i> ' + esc(cfg.addLabel);
+        add.addEventListener('click', function () {
+            list.push(cfg.blank());
+            pbPersist(); repaint(); pbPaintPreview();
+        });
+        host.appendChild(add);
     }
 
     /* Keeps the "n elements" line in the collapsed header honest without
