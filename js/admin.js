@@ -300,13 +300,19 @@
         }
         markSaved();
 
-        /* With remote storage on, saving means publishing to every device. */
+        /* With remote storage on, saving means publishing to every device.
+           The promise is handed back (milestone C) so a caller can hold its
+           own button until the round trip finishes -- without it, a second
+           click lands while the first is still in flight and publishes
+           twice. Callers that only test truthiness are unaffected: a
+           promise is truthy, exactly as `true` was. */
+        var pending = null;
         if (CMS.remote.enabled && !silent) {
             var btn = $('#btnSave');
             btn.disabled = true;
             var label = btn.innerHTML;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Publishing…';
-            CMS.remote.publish().then(function () {
+            pending = CMS.remote.publish().then(function () {
                 btn.disabled = false;
                 btn.innerHTML = label;
                 toast('Published. Every device sees this now.');
@@ -320,7 +326,7 @@
         renderPreview();
         $('#brandLabel').textContent = CMS.get('branding.siteName', 'BRAND');
         updateStorageMeter();
-        return true;
+        return pending || true;
     }
 
     function switchPanel(name) {

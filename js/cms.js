@@ -285,6 +285,11 @@
            across a pull. See docs/page-builder.md. */
         builderLibrary: { version: 1, items: [] },
 
+        /* One recovery snapshot per page, taken immediately before the two
+           actions that would otherwise throw work away for good. Device-
+           local for the same reasons as the two above. */
+        builderRecovery: {},
+
         pages: {
 
             /* The homepage is part of the SEO system too — its title is
@@ -2619,6 +2624,67 @@
     }
 
     /* =====================================================
+       RECOVERY SNAPSHOTS (milestone C)
+       -----------------------------------------------------
+       The builder already writes the draft to localStorage on a short
+       debounce, so a reload or a crash loses at most the keystroke in
+       flight. What it could not survive was the deliberate replacement of
+       a draft -- applying a template over it, or discarding it -- because
+       both are one click and neither had a way back.
+
+       So this is not a history: it is ONE snapshot per page, taken
+       immediately before those two actions, holding nothing but the
+       sections array. Bounded by construction -- a new snapshot replaces
+       the old one, and restoring or discarding removes it. Device-local
+       like builderDrafts and builderLibrary: stripped from the publish
+       payload, preserved across a pull.
+
+       Sections go through pbCleanSections() on the way back out, so a
+       snapshot that was tampered with in storage cannot put anything into
+       a page that the builder's own controls could not have produced. */
+
+    var PB_RECOVERY_REASONS = { template: 1, discard: 1, replace: 1 };
+
+    function recoveryStore() {
+        var st = load();
+        if (!st.builderRecovery || typeof st.builderRecovery !== 'object' ||
+            isArr(st.builderRecovery)) {
+            st.builderRecovery = {};
+        }
+        return st.builderRecovery;
+    }
+
+    function recoverySnapshot(slug, sections, reason) {
+        var key = str(slug);
+        if (!key || !isArr(sections) || !sections.length) return false;
+        var store = recoveryStore();
+        store[key] = {
+            at: pbToday(),
+            reason: pbPick(PB_RECOVERY_REASONS, reason) ? str(reason) : 'replace',
+            sections: clone(sections)
+        };
+        return save();
+    }
+
+    /* What is in the snapshot, cleaned. Returns null when there is none or
+       when what is stored cannot be read as sections. */
+    function recoveryGet(slug) {
+        var snap = recoveryStore()[str(slug)];
+        if (!snap || typeof snap !== 'object') return null;
+        var sections = pbCleanSections(snap.sections);
+        if (!sections.length) return null;
+        return { at: str(snap.at), reason: str(snap.reason), sections: sections };
+    }
+
+    function recoveryClear(slug) {
+        var store = recoveryStore();
+        var key = str(slug);
+        if (!Object.prototype.hasOwnProperty.call(store, key)) return false;
+        delete store[key];
+        return save();
+    }
+
+    /* =====================================================
        REUSABLE SECTION LIBRARY (milestone A, stage 7)
        -----------------------------------------------------
        Local to this browser, like builderDrafts: stripped from the publish
@@ -3325,6 +3391,7 @@
                     var local = load() || {};
                     var localDrafts = local.builderDrafts;
                     var localLibrary = local.builderLibrary;
+                    var localRecovery = local.builderRecovery;
                     /* server wins — localStorage is only a cache here */
                     state = merge(merge(DEFAULTS, window.CMS_BRAND || null), remoteData);
                     if (localDrafts && Object.keys(localDrafts).length) {
@@ -3334,6 +3401,9 @@
                        row that does not carry it must not wipe it. */
                     if (localLibrary && isArr(localLibrary.items) && localLibrary.items.length) {
                         state.builderLibrary = localLibrary;
+                    }
+                    if (localRecovery && Object.keys(localRecovery).length) {
+                        state.builderRecovery = localRecovery;
                     }
                     try {
                         window.localStorage.setItem(KEY, JSON.stringify(state));
@@ -3389,6 +3459,7 @@
             /* Local-only by decision: the library is a workbench, not
                content, and every visitor downloads this row. */
             delete payload.builderLibrary;
+            delete payload.builderRecovery;
 
             var body = JSON.stringify({
                 id: RC.siteId,
@@ -3655,6 +3726,13 @@
                 instance: libraryInstance,
                 exportJSON: libraryExport,
                 importJSON: libraryImport
+            },
+
+            /* recovery snapshots (milestone C, device-local) */
+            recovery: {
+                snapshot: recoverySnapshot,
+                get: recoveryGet,
+                clear: recoveryClear
             },
 
             /* page templates (code registry) */

@@ -109,11 +109,60 @@ window.PBAdmin = function (host) {
                Math.floor(Math.random() * 1e6).toString(36);
     }
 
+    /* ---------- save state (milestone C) ----------
+
+       The builder writes the draft on a short debounce, so "unsaved" is
+       normally a window of a quarter of a second. What matters is telling
+       the truth about it:
+
+         idle    nothing waiting, nothing to report
+         pending an edit is typed and the debounce has not fired yet
+         saved   the draft is on disk
+         failed  the write was REFUSED and the edit is only in memory
+
+       The last one is the reason this exists. CMS.save() returns false
+       when localStorage refuses -- a full quota is the usual cause -- and
+       until now pbPersist() threw that answer away and the admin said
+       "Saved". The draft was still in memory and still correct, but a
+       reload would have lost it and nothing said so. */
+
+    var pbSaveState = 'idle';
+    var pbSaveError = '';
+
+    function pbSetSaveState(state, message) {
+        pbSaveState = state;
+        pbSaveError = message || '';
+        pbPaintSaveState();
+    }
+
+    function pbPaintSaveState() {
+        var el = $('#pbSaveState');
+        if (!el) return;
+        var text = '', cls = '';
+        if (pbSaveState === 'pending') { text = 'Saving\u2026'; cls = 'pending'; }
+        else if (pbSaveState === 'saved') { text = 'Draft saved on this device'; cls = 'saved'; }
+        else if (pbSaveState === 'failed') { text = pbSaveError || 'Could not save'; cls = 'failed'; }
+        el.textContent = text;
+        el.className = 'pb-savestate ' + cls;
+        el.hidden = !text;
+    }
+
     /* Local save only. commit(true) skips CMS.remote.publish(), which is
-       what keeps a draft off the live site. */
+       what keeps a draft off the live site. Returns whether the draft
+       actually reached storage, and says so either way. */
     function pbPersist() {
-        CMS.sections.saveDraft(pbSlug, pbDraft);
-        commit(true);
+        var ok = CMS.sections.saveDraft(pbSlug, pbDraft);
+        if (ok) ok = commit(true);
+        if (ok) {
+            pbSetSaveState('saved');
+        } else {
+            /* Deliberately NOT clearing pbDraft: the edit is still correct
+               in memory, and the next save may well succeed. */
+            pbSetSaveState('failed',
+                'Not saved \u2014 this browser refused to store it. Your changes are ' +
+                'still here; free some space and press Save draft.');
+        }
+        return ok;
     }
 
     function pbSelect(slug) {
@@ -121,6 +170,14 @@ window.PBAdmin = function (host) {
         pbSlug = slug;
         pbDraft = CMS.sections.draft(slug).sections;
         pbOpen = null;
+        /* Sub-tab and breakpoint choices are keyed by node id. The nodes of
+           the page being left are gone, so their entries are too -- they
+           would otherwise accumulate for the lifetime of the tab and, worse,
+           could be re-adopted by a node that happened to be minted with a
+           matching id. */
+        pbView = {};
+        pbDevice = {};
+        pbDesignOpen = {};
         buildBuilder();
     }
 
@@ -232,6 +289,82 @@ window.PBAdmin = function (host) {
     }
 
     /* ==========================================================
+       RECOVERY (milestone C)
+       ----------------------------------------------------------
+       Two actions replace a draft outright: applying a template over it
+       and discarding it. Both now take a snapshot first, and the banner
+       below offers it back until it is used or dismissed.
+
+       This is deliberately not an undo stack -- see the note in
+       docs/page-builder.md. One snapshot per page, sections only.
+       ========================================================== */
+
+    function pbSnapshot(reason) {
+        if (!pbDraft.length) return;
+        CMS.sections.recovery.snapshot(pbSlug, pbDraft, reason);
+    }
+
+    var PB_RECOVERY_WORDS = {
+        template: 'before you applied a template',
+        discard: 'before you discarded the draft',
+        replace: 'before the draft was replaced'
+    };
+
+    function pbPaintRecovery() {
+        var host = $('#pbRecovery');
+        if (!host) return;
+        host.innerHTML = '';
+        var snap = CMS.sections.recovery.get(pbSlug);
+        if (!snap) { host.hidden = true; return; }
+        host.hidden = false;
+
+        var msg = document.createElement('span');
+        msg.className = 'pb-recovery-msg';
+        msg.innerHTML = '<i class="fas fa-clock-rotate-left"></i> ' +
+            'The previous draft for this page was kept \u2014 ' +
+            esc(snap.sections.length) + ' section' + (snap.sections.length === 1 ? '' : 's') +
+            ', saved ' + esc(PB_RECOVERY_WORDS[snap.reason] || PB_RECOVERY_WORDS.replace) + '.';
+        host.appendChild(msg);
+
+        var restore = document.createElement('button');
+        restore.type = 'button';
+        restore.className = 'adm-btn';
+        restore.setAttribute('data-act', 'recover-restore');
+        restore.innerHTML = '<i class="fas fa-rotate-left"></i> Restore it';
+        restore.addEventListener('click', function () {
+            if (pbDraft.length && !window.confirm(
+                    'Put the previous draft back? What is in the builder now will be replaced.\n\n' +
+                    'The live page is not affected until you publish.')) return;
+            /* Swapped, not dropped: whatever is being replaced becomes the
+               snapshot, so Restore is itself reversible. */
+            var current = pbDraft.slice();
+            pbDraft.length = 0;
+            snap.sections.forEach(function (x) { pbDraft.push(x); });
+            pbOpen = null;
+            if (current.length) CMS.sections.recovery.snapshot(pbSlug, current, 'replace');
+            else CMS.sections.recovery.clear(pbSlug);
+            pbPersist();
+            buildBuilder();
+            toast('Previous draft restored. Nothing is published yet.');
+        });
+        host.appendChild(restore);
+
+        var drop = document.createElement('button');
+        drop.type = 'button';
+        drop.className = 'adm-btn ghost';
+        drop.setAttribute('data-act', 'recover-discard');
+        drop.innerHTML = 'Discard it';
+        drop.addEventListener('click', function () {
+            if (!window.confirm('Forget the kept draft? This cannot be undone.')) return;
+            CMS.sections.recovery.clear(pbSlug);
+            commit(true);
+            pbPaintRecovery();
+            toast('Kept draft discarded.');
+        });
+        host.appendChild(drop);
+    }
+
+    /* ==========================================================
        TEMPLATES AND THE REUSABLE SECTION LIBRARY (milestone A)
        ----------------------------------------------------------
        Both are thin: the renderer owns the registry, the sanitiser and
@@ -265,6 +398,9 @@ window.PBAdmin = function (host) {
                 'The live page is not affected until you publish.')) return;
         var secs = CMS.sections.fromTemplate(t.id);
         if (!secs || !secs.length) { toast('That template could not be read.', true); return; }
+        /* Kept before it is overwritten, so the confirmation is not the only
+           thing standing between an author and their work. */
+        pbSnapshot('template');
         /* Replaced in place: pbDraft is the array the rest of the panel holds. */
         pbDraft.length = 0;
         secs.forEach(function (x) { pbDraft.push(x); });
@@ -445,6 +581,8 @@ window.PBAdmin = function (host) {
         });
 
         pbPaintState();
+        pbPaintSaveState();
+        pbPaintRecovery();
         pbPaintTemplates();
         pbPaintAdd();
         pbPaintList();
@@ -880,6 +1018,9 @@ window.PBAdmin = function (host) {
     }
 
     function pbEdited(live) {
+        /* Something is typed and not yet written. Said plainly rather than
+           left to look identical to saved. */
+        if (pbSaveState !== 'failed') pbSetSaveState('pending');
         pbPaintPreview();
         if (pbSaveTimer) { clearTimeout(pbSaveTimer); pbSaveTimer = null; }
         if (live) {
@@ -1504,6 +1645,125 @@ window.PBAdmin = function (host) {
        the element has fewer column containers than the layout has tracks.
        Supplied by the element card, which is the only place that can bring
        the content list back in step with the data. */
+    /* ---------- responsive editing (milestone C) ----------
+
+       The data model already stores only real overrides: a breakpoint that
+       has not been given a value has no key, and the renderer's var()
+       chain does the inheriting. What was missing was saying so. A tablet
+       box looked empty whether it inherited 32px or the value simply was
+       not set anywhere, and there was no way to take an override back
+       other than selecting the text and deleting it.
+
+       So each control on a narrower breakpoint now knows three things:
+       what it would inherit, whether it is overriding that, and how to
+       stop. Nothing about what gets STORED changed. */
+
+    /* What this key resolves to at `device` if nothing overrides it here:
+       mobile falls back to tablet, tablet to desktop. Mirrors the CSS. */
+    function pbInheritedValue(node, device, key) {
+        var r = node.responsive || {};
+        if (device === 'mobile') {
+            var t = (r.tablet || {})[key];
+            if (t !== undefined && t !== '') return { value: t, from: 'Tablet' };
+        }
+        var b = (node.style || {})[key];
+        if (b !== undefined && b !== '') return { value: b, from: 'Desktop' };
+        return null;
+    }
+
+    /* Adds the inherited-or-overridden line to one control, and the reset
+       that takes an override back to inheriting. Reuses the control the
+       field already built -- it does not replace it, so every kind
+       (colour, layout, border, shadow) keeps working unchanged. */
+    function pbMarkInherited(row, node, device, key, bag, ctx, host, keys, labels, onLayout) {
+        var line = document.createElement('em');
+        line.className = 'pb-inherit-note';
+        row.appendChild(line);
+
+        var reset = document.createElement('button');
+        reset.type = 'button';
+        reset.className = 'pb-reset';
+        reset.setAttribute('data-act', 'reset-override');
+        reset.setAttribute('data-key', key);
+        reset.title = 'Go back to the inherited value';
+        reset.innerHTML = '<i class="fas fa-rotate-left"></i>';
+        reset.addEventListener('click', function () {
+            /* Deleting the key, not writing a duplicate: inheritance is the
+               absence of a value, so that is what going back has to mean. */
+            delete bag[key];
+            pbPersist();
+            if (ctx && ctx.onChange) ctx.onChange(key, '');
+            /* A reset empties the control, so this one DOES rebuild -- there
+               is no focus to protect and the box has to come back blank. */
+            host.innerHTML = '';
+            pbDesignEditor(host, node, keys, labels, onLayout);
+            pbPaintPreview();
+        });
+        row.appendChild(reset);
+
+        /* Recomputed on every edit rather than only at build time. Typing a
+           tablet value has to turn the row from inherited into overriding
+           there and then -- and it cannot do that by rebuilding the panel,
+           because that would take the focus out of the box being typed in. */
+        function sync() {
+            var overridden = Object.prototype.hasOwnProperty.call(bag, key) &&
+                             bag[key] !== '' && bag[key] != null;
+            var inherited = pbInheritedValue(node, device, key);
+
+            row.className = row.className.replace(/ pb-(inherited|overridden)/g, '') +
+                            (overridden ? ' pb-overridden' : ' pb-inherited');
+            row.setAttribute('data-state', overridden ? 'overridden' : 'inherited');
+
+            if (overridden) {
+                line.textContent = inherited
+                    ? 'Overriding ' + inherited.from + ' (' + inherited.value + ')'
+                    : 'Set for this screen only';
+            } else {
+                line.textContent = inherited
+                    ? 'Inherited from ' + inherited.from + ' (' + inherited.value + ')'
+                    : 'Not set anywhere';
+            }
+            line.setAttribute('data-inherit', overridden ? 'overridden' : 'inherited');
+            reset.hidden = !overridden;
+
+            /* An empty box says what it would be rather than nothing. */
+            var input = row.querySelector('input.pb-in');
+            if (input && input.type !== 'checkbox') {
+                input.placeholder = (!overridden && inherited) ? String(inherited.value) : '';
+            }
+        }
+        sync();
+        return sync;
+    }
+
+    /* Refreshes the little count on each breakpoint tab without rebuilding
+       the tabs, for the same focus reason as sync() above. */
+    function pbPaintDeviceCounts(tabs, node) {
+        if (!tabs) return;
+        PB_DEVICES.forEach(function (d) {
+            var b = tabs.querySelector('.pb-devtab[data-device="' + d[0] + '"]');
+            if (!b) return;
+            var old = b.querySelector('.pb-devtab-count');
+            if (old) old.parentNode.removeChild(old);
+            if (d[0] === 'base') return;
+            var n = pbOverrideCount(node, d[0]);
+            if (!n) return;
+            var dot = document.createElement('em');
+            dot.className = 'pb-devtab-count';
+            dot.textContent = String(n);
+            b.appendChild(dot);
+        });
+    }
+
+    function pbOverrideCount(node, device) {
+        var bag = ((node.responsive || {})[device]) || {};
+        var n = 0;
+        for (var k in bag) {
+            if (Object.prototype.hasOwnProperty.call(bag, k) && bag[k] !== '' && bag[k] != null) n += 1;
+        }
+        return n;
+    }
+
     function pbDesignEditor(host, node, keys, labels, onLayout) {
         var device = pbDevice[node.id] || 'base';
 
@@ -1514,8 +1774,20 @@ window.PBAdmin = function (host) {
             b.type = 'button';
             b.className = 'pb-devtab' + (d[0] === device ? ' active' : '');
             b.setAttribute('data-device', d[0]);
+            b.setAttribute('aria-pressed', d[0] === device ? 'true' : 'false');
             b.textContent = d[1];
+            /* How many values this breakpoint overrides, so an author can
+               see there IS something on the tablet tab without opening it. */
+            var n = d[0] === 'base' ? 0 : pbOverrideCount(node, d[0]);
+            if (n) {
+                var dot = document.createElement('em');
+                dot.className = 'pb-devtab-count';
+                dot.textContent = String(n);
+                b.appendChild(dot);
+            }
             b.addEventListener('click', function () {
+                /* Choosing which breakpoint to EDIT. It writes nothing --
+                   the value only changes when a control is used. */
                 pbDevice[node.id] = d[0];
                 host.innerHTML = '';
                 pbDesignEditor(host, node, keys, labels, onLayout);
@@ -1527,16 +1799,28 @@ window.PBAdmin = function (host) {
         var note = document.createElement('p');
         note.className = 'hint';
         note.textContent = device === 'base'
-            ? 'These apply everywhere unless a narrower screen overrides them.'
+            ? 'The value used everywhere, unless a narrower screen overrides it below.'
             : (device === 'tablet'
-                ? 'Applied at 1024px and below. Leave a box empty to keep the desktop value.'
-                : 'Applied at 768px and below. Leave a box empty to keep the wider value.');
+                ? 'Used at 1024px and below. A box left alone keeps the desktop value \u2014 ' +
+                  'the placeholder shows what that is.'
+                : 'Used at 768px and below. A box left alone keeps the wider value \u2014 ' +
+                  'the placeholder shows what that is.');
         host.appendChild(note);
 
         var bag = pbStyleBag(node, device);
+        /* One sync per marked control, so an edit can refresh exactly the
+           row it touched without rebuilding anything around it. */
+        var marks = {};
+        /* Assigned once the clear button exists, below. Everything that can
+           change an override count has to refresh it, or it goes stale the
+           same way the inheritance note would. */
+        var syncClear = function () {};
         var ctx = {
             device: device,
             onChange: function (key) {
+                if (Object.prototype.hasOwnProperty.call(marks, key)) marks[key]();
+                pbPaintDeviceCounts(tabs, node);
+                syncClear();
                 if (key !== 'columns') return;
                 /* Containers first, then the warning: adding a container is
                    what decides whether there is anything left to warn about. */
@@ -1562,7 +1846,14 @@ window.PBAdmin = function (host) {
                 grids[g] = document.createElement('div');
                 grids[g].className = 'pb-grid';
             }
-            grids[g].appendChild(pbFieldFor(spec, bag, spec[0], ctx));
+            var row = pbFieldFor(spec, bag, spec[0], ctx);
+            /* Only where a narrower breakpoint can actually inherit: the
+               desktop tab has nothing above it to inherit from. */
+            if (device !== 'base') {
+                marks[spec[0]] = pbMarkInherited(row, node, device, spec[0], bag, ctx, host,
+                                                 keys, labels, onLayout);
+            }
+            grids[g].appendChild(row);
             total++;
         });
 
@@ -1625,7 +1916,14 @@ window.PBAdmin = function (host) {
             clr.type = 'button';
             clr.className = 'adm-btn ghost pb-clear';
             clr.setAttribute('data-act', 'clear-device');
-            clr.innerHTML = '<i class="fas fa-eraser"></i> Clear ' + (device === 'tablet' ? 'tablet' : 'mobile') + ' overrides';
+            syncClear = function () {
+                var n = pbOverrideCount(node, device);
+                clr.innerHTML = '<i class="fas fa-eraser"></i> Clear all ' +
+                    (device === 'tablet' ? 'tablet' : 'mobile') + ' overrides' +
+                    (n ? ' (' + n + ')' : '');
+                clr.disabled = !n;
+            };
+            syncClear();
             clr.addEventListener('click', function () {
                 node.responsive[device] = {};
                 pbPersist();
@@ -2195,28 +2493,61 @@ window.PBAdmin = function (host) {
         pbWireLibrary();
         if ((b = $('#pbSaveDraft'))) b.addEventListener('click', function () {
             pbFlush();
-            pbPersist();
-            buildBuilder();
-            toast('Draft saved on this device. The live site is unchanged.');
+            /* Reports what actually happened. A refused write already said
+               so through the save-state line, so this only speaks on
+               success -- it must never claim a save that did not happen. */
+            if (pbPersist()) {
+                buildBuilder();
+                toast('Draft saved on this device. The live site is unchanged.');
+            } else {
+                buildBuilder();
+                toast('Could not save the draft. Your changes are still here.', true);
+            }
         });
 
+        /* Publish reaches the network, so a second click while the first is
+           in flight would publish twice. The button is held until the round
+           trip finishes, whichever way it goes. */
+        var publishing = false;
         if ((b = $('#pbPublish'))) b.addEventListener('click', function () {
-            pbFlush();
-            CMS.sections.saveDraft(pbSlug, pbDraft);
-            CMS.sections.publish(pbSlug);
-            commit();                 /* the one action here that goes live */
-            buildBuilder();
-            if (!CMS.remote.enabled) toast('Published. This page now shows your sections.');
+            if (publishing) return;
+            publishing = true;
+            var btn = b;
+            btn.disabled = true;
+            var release = function () {
+                publishing = false;
+                buildBuilder();       /* re-enables from the draft's own state */
+            };
+            var res;
+            try {
+                pbFlush();
+                CMS.sections.saveDraft(pbSlug, pbDraft);
+                CMS.sections.publish(pbSlug);
+                res = commit();       /* the one action here that goes live */
+                buildBuilder();
+                if (!CMS.remote.enabled) toast('Published. This page now shows your sections.');
+            } catch (e) {
+                release();
+                throw e;
+            }
+            /* Held until the network round trip finishes, not just until
+               this handler returns -- otherwise a second click lands while
+               the first is still in flight and publishes twice. */
+            if (res && typeof res.then === 'function') res.then(release, release);
+            else release();
         });
 
         if ((b = $('#pbDiscard'))) b.addEventListener('click', function () {
             pbFlush();
-            if (!window.confirm('Throw away the draft and start again from what is published?')) return;
+            if (!window.confirm('Throw away the draft and start again from what is published?\n\n' +
+                    'It is kept on this device so you can put it back.')) return;
+            pbSnapshot('discard');
             CMS.sections.discard(pbSlug);
             pbDraft = CMS.sections.draft(pbSlug).sections;
+            pbOpen = null;
             commit(true);
             buildBuilder();
-            toast('Draft discarded.');
+            toast('Draft discarded. You can still restore it above.');
         });
 
         if ((b = $('#pbUnpublish'))) b.addEventListener('click', function () {

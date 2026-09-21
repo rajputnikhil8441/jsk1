@@ -538,6 +538,111 @@ the page, or the responsive overrides, and it never publishes. Tested.
 
 ---
 
+## Editing safety and responsive editing (milestone C)
+
+### What "unsaved" means here
+
+The builder writes the draft to `localStorage` on a ~250 ms debounce and on
+every structural action, so an edit is normally on disk a quarter of a
+second after it is typed. `beforeunload` already guards the rest.
+
+What the save state reports is therefore narrow and precise:
+
+| State | Meaning |
+| --- | --- |
+| *(nothing)* | idle |
+| Saving… | typed, debounce not fired yet |
+| Draft saved on this device | the draft is on disk |
+| **Not saved** | the write was **refused**; the edit is in memory only |
+
+The last one is why this exists. `CMS.save()` returns `false` when
+`localStorage` refuses — a full quota is the usual cause — and the builder
+used to discard that answer and say "Saved". `pbPersist()` now returns
+whether the write happened, keeps the draft in memory either way, and says
+plainly when it did not. **A failed save is never reported as a success,
+and nothing is rolled back because of one.** Pressing *Save draft* again
+after freeing space succeeds.
+
+### Publish fires once per click
+
+`commit()` hands back the publish promise, and the builder holds the button
+until that round trip finishes. Without it a second click landed while the
+first was in flight and published twice. Tested: three clicks in one tick
+produce one POST.
+
+### Recovery
+
+Two actions replace a draft outright — applying a template over it, and
+discarding it. Both now take a snapshot first, stored under a top-level
+`builderRecovery`:
+
+```js
+builderRecovery: { "<slug>": { at, reason, sections } }
+```
+
+**One snapshot per page, sections only.** A new snapshot replaces the old
+one; restoring or dismissing removes it. Device-local like `builderDrafts`
+and `builderLibrary`: stripped from the publish payload, preserved across a
+pull. Sections go through `pbCleanSections()` on the way out, so a snapshot
+edited in storage cannot put anything into a page the builder's own
+controls could not have produced.
+
+Restoring is itself reversible: whatever it replaces becomes the new
+snapshot.
+
+### Undo — deliberately not built
+
+There is no undo/redo stack, and this is a decision rather than an
+omission. The draft auto-saves, so the window an undo would cover is a
+quarter of a second of typing, which the browser's own undo already
+handles inside a field. The moments that actually lost work were the two
+above, and a single snapshot addresses both at a fraction of the
+complexity. A general stack would mean cloning the whole section tree on
+every keystroke and deciding what a "step" is across text, style,
+responsive and structural edits — real complexity for a case the snapshot
+covers. Revisit if the snapshot proves too coarse in practice.
+
+### Responsive editing
+
+The model was already right: **inheritance is the absence of a value.** A
+breakpoint with no key for a property inherits, and the renderer's `var()`
+chain does the work. Mobile falls back to tablet, tablet to desktop.
+
+What was missing was saying so. Each control on the Tablet or Mobile tab
+now shows one of two lines:
+
+- *Inherited from Desktop (32)* — nothing stored here; the inherited value
+  is also the box's placeholder.
+- *Overriding Desktop (32)* — stored here, with a reset button beside it.
+
+**Reset deletes the key** rather than writing a duplicate, because
+inheritance *is* the absence of a value. Each breakpoint tab carries a
+count of how many values it overrides, and *Clear all overrides* is
+disabled when there are none.
+
+The marking updates live on every edit rather than at build time — typing a
+tablet value turns the row from inherited to overriding immediately,
+without rebuilding the panel and taking focus out of the box.
+
+Only properties on the existing per-type style-key allow-lists get these
+controls, so no fake controls are introduced. The Desktop tab has no
+inheritance line, having nothing above it.
+
+Changing the preview viewport, and changing which breakpoint tab is being
+edited, both write nothing at all.
+
+### Known limitations
+
+- The save state describes **local** storage. Publishing to other devices
+  is still the separate *Publish* action and reports separately.
+- One recovery snapshot per page, not a history. Replacing a draft twice
+  leaves only the most recent previous version.
+- No undo/redo — see above.
+- The inheritance line shows the raw stored value (`32`), not the rendered
+  unit (`32px`), because that is what the box holds.
+
+---
+
 ## Safety
 
 - **No arbitrary HTML.** Every element is built with `document.createElement`
