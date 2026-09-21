@@ -849,6 +849,162 @@ again still produces the shipped order.
   moved node in place.
 ---
 
+## Headings, SEO and the admin (milestone E)
+
+The builder and the SEO system are two things that share a page. This
+milestone made the places they touch honest, and changed no schema to do
+it.
+
+### Where the visible H1 comes from
+
+Every page the builder can mount ships this, in its own HTML:
+
+```html
+<h1 data-cms-text="pages.about.heading">About JSK1</h1>
+<p class="info-lead" data-cms-text="pages.about.lead">…</p>
+<div class="info-body" data-cms-html="pages.about.body">…</div>
+<div data-cms-sections="about"></div>   <!-- the builder mounts HERE -->
+```
+
+The mount is **below** the H1. So builder sections are never the page's
+first heading, and a section heading set to `h1` is always a *second* one.
+That is a fact about the HTML, and it was the one thing an author could
+not see from inside the builder.
+
+Three things follow, and none of them is a schema change:
+
+1. **No template ships an `h1` any more.** The six that did now open with
+   an `h2` carrying the `@h1` typography role — it looks like a page title
+   and reads as an `h2` in the outline. Templates are a code registry, so
+   this affects only the next page built from one; pages already built are
+   independent copies and are untouched.
+
+2. **The builder says where the H1 comes from**, quoting the heading that
+   is actually set, and says so differently when `Pages › H1 heading` is
+   empty.
+
+3. **When a draft adds an `h1`, the builder says what that costs** — how
+   many the page would then show, which headings they are, by their own
+   text — and offers *Make it H2* per heading and *Make them all H2*.
+   Nothing changes unless the author presses one. The renderer still
+   honours `h1`; this is the admin telling the truth about the choice, not
+   the schema taking it away.
+
+The **Pages** panel carries the other half: when a page's *published*
+builder content contains H1s, the H1 field says so and points at where to
+change them. A draft is not on the page, so a draft is not counted.
+
+`CMS.sections.outline(sections)` is the reader behind all of it —
+read-only, resolving each level exactly as the renderer does (including
+its fallback to `h2`), skipping disabled sections and elements because
+they render nothing, and walking into columns.
+
+### What the builder does not touch
+
+`pages.<slug>` stays the single SEO record, and nothing was added to it.
+Builder content never reaches:
+
+| | Comes from |
+| --- | --- |
+| `<title>` | `pages.<slug>.title` → `seo.defaultTitle` → the static tag |
+| `meta description` | `pages.<slug>.metaDescription` → `seo.defaultDescription` → the static tag |
+| `link[rel=canonical]`, `og:url` | `pages.<slug>.canonical` → built from `seo.baseUrl` + `url` |
+| `meta robots` | `pages.<slug>.robots` |
+| OG / X tags | `pages.<slug>.og` / `.twitter`, with X inheriting OG |
+| JSON-LD | `seo.*` and `pages.<slug>.schema` / `.breadcrumb` |
+| sitemap | `pages.<slug>.inSitemap`, `.robots.index`, `.url`, `.updatedAt` |
+
+The static-first rule is unchanged: an empty or whitespace-only CMS value
+leaves the tag the file shipped.
+
+### Two fixes this turned up
+
+**A blank-but-not-empty value could blank a good tag.** `paintSeo()` has
+always trimmed before deciding whether the CMS has something to say.
+`paintPageMeta()`, which paints `meta[data-cms-meta]`, did not — so a
+description of three spaces was "truthy" and replaced a perfectly good
+static one with nothing. It trims now, which is the static-first rule it
+was already supposed to be following.
+
+**The structured-data toggles had never reached a page.** Every page loads
+`js/cms.js` from its `<head>`, and the `<script type="application/ld+json">`
+blocks sit a few lines *below* that tag. `applyHead()` therefore ran while
+those elements did not exist yet, `getElementById()` returned `null`, and
+`writeLd()` was a no-op — so *WebPage schema*, *Mark as ContactPage* and
+*BreadcrumbList schema* in `/admin › Pages` were controls that did nothing.
+`paintSchemaLate()` now runs one more pass once the document has parsed,
+writing exactly what `paintSeo()` would have written. The static blocks in
+the files are still correct and still what a crawler without JavaScript
+sees; what changed is that switching a block off now switches it off.
+
+### Publishing builder content dates the page
+
+`publish()` and `unpublish()` now stamp `pages.<slug>.updatedAt` as well as
+the builder block's own date. The sitemap reads it for `<lastmod>`, and a
+`lastmod` that predates the content it describes is worse than none. This
+changes no page's sitemap **membership** — only its date.
+
+### The sitemap never sees builder data
+
+Membership and `lastmod` come from page configuration alone: `inSitemap`,
+`robots.index`, `url`, `updatedAt`. No builder heading, link target or
+image path can reach the XML, a page excluded by hand stays excluded
+whatever is published on it, a `noindex` page stays out whatever the
+*Include in sitemap* toggle says, and `login`, `register` and `/admin`
+stay out as before.
+
+### Choosing an OG or X image
+
+The OG and X image fields now have *Choose from site images*, which opens
+**the Page Builder's own picker** — same manifest, same `pbAsset()` rules,
+same modal. A second picker here would be a second thing to keep honest.
+What lands in the field is a plain relative path; the SEO engine already
+makes it absolute against `seo.baseUrl`, and `crawlableImage()` already
+refuses `data:` and `blob:` for a crawler. The field still accepts a full
+`https://` address typed by hand, exactly as before.
+
+### Admin UX
+
+- **Which page am I editing** is written out under the page tabs — label,
+  address, and how many sections and elements are in the draft — because
+  the tab strip scrolls and highlighting alone can scroll away with it.
+- **The save line says what is true.** The window between a keystroke and
+  the write used to read *Saving…*; the write is synchronous, so nothing
+  was saving. It reads **Unsaved changes** now. The other three states
+  (silent, *Draft saved on this device*, and the refused-write failure
+  from milestone C) are unchanged.
+- **Every disabled button says why it is disabled**, in its own tooltip,
+  rather than just looking broken.
+- **The menu button on a phone is a real target.** It was an icon and
+  nothing else, so when the icon font did not arrive — a slow or blocked
+  CDN, an offline first paint — it collapsed to 0×0 and the panel list
+  became unreachable on a phone. It carries its own 40px size now, and no
+  longer shrinks when the header is crowded.
+- **The admin no longer scrolls sideways** at 390px: the header title gives
+  way instead of pushing *Save* off the edge, and the bar wraps when it
+  must.
+- **Keyboard focus is visible** on every control in the admin, rather than
+  relying on the browser's thin default ring. Reordering from the keyboard
+  is a designed path, so where the keyboard is has to be obvious.
+- Page, SEO and builder tabs carry `aria-current`, and an open section
+  reports `aria-expanded`.
+
+### Known limitations
+
+- The H1 notice describes the **draft** in the builder and the
+  **published** content in Pages. Those are different numbers while a
+  draft is unpublished, on purpose — each panel reports the thing it is
+  about.
+- *Make it H2* is the only level the button offers. Any other level is a
+  choice, and choices belong in the Level control beside the heading.
+- Nothing warns about heading-level *order* (an `h4` directly under an
+  `h2`). Counting H1s is a fact; outline quality is a judgement, and the
+  builder does not make judgements about content.
+- The structured-data blocks a page can publish are still only the ones
+  its HTML file ships a `<script id="ld…">` for. Adding a new block type
+  means adding the tag to the file.
+---
+
 ## Safety
 
 - **No arbitrary HTML.** Every element is built with `document.createElement`
@@ -967,6 +1123,9 @@ that is not in `PB_MOUNTED` in `js/cms.js`, set `builderMount: true` on its
 - The static-first rule is untouched: an empty CMS value never blanks a static
   meta tag.
 - Headings keep their level, so a section can carry a real `h2`/`h3` outline.
+  The page's own H1 is `pages.<slug>.heading`, above the mount — see
+  *Headings, SEO and the admin* above for what happens when a section adds
+  another one.
 - An image with a source but no alt text is flagged in the editor.
 
 ---
@@ -1015,3 +1174,22 @@ each re-checked after forcing a save so an in-memory change could not hide;
 dirty state, a refused write, and zero POSTs; keyboard reordering with focus following the node;
 touch; library and template independence; and 30 sections / 90 columns /
 240 elements with a MutationObserver proving nothing is rebuilt mid-drag.
+
+`tests/test_pagebuilder_seo.js` — 174 assertions, milestone E. The claim
+under test is that builder content and the SEO record share a page without
+either becoming the other.
+
+Covered: what controls the visible H1, on the page and in both admin panels;
+every template asserted to add no second H1; the outline reader, including
+its level fallback, disabled sections and elements, nesting and junk input;
+title, description, canonical and robots reading from the SEO record with an
+empty or whitespace-only value never replacing a valid static tag; OG and X,
+including the URLs `crawlableImage()` refuses; structured data and breadcrumbs
+with the builder's loudest possible content present, asserting no invented
+rating, review or FAQ schema; the sitemap, asserting no builder text, link or
+image can reach it and that membership is page configuration alone; every page
+shape from legacy through empty-builder, template, reusable section,
+responsive overrides and assets; hostile builder input on a page with SEO set;
+the admin's own state, saving, page switching and disabled reasons; and the
+admin at 1440, 900 and 390px with accessible names, tab order and a visible
+keyboard focus ring.

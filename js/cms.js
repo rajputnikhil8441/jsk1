@@ -1055,6 +1055,29 @@
         };
     }
 
+    /* WHY THIS RUNS TWICE.
+
+       Every page loads js/cms.js from its <head>, and the JSON-LD blocks
+       sit a few lines BELOW that script tag. applyHead() therefore runs
+       while those <script type="application/ld+json"> elements do not
+       exist yet, getElementById() returns null, and writeLd() is a no-op
+       -- so the schema toggles in /admin have never actually reached a
+       page. The static blocks in the files are correct on their own, which
+       is why nothing looked wrong, and they still are: this changes
+       nothing for a crawler that runs no JavaScript.
+
+       What it changes is that an admin who turns "BreadcrumbList schema"
+       off now gets it turned off, and a page whose title is edited in the
+       CMS gets that title in its WebPage block. One more pass, once the
+       document has parsed, writing exactly what paintSeo() would have
+       written. */
+    function paintSchemaLate() {
+        var key = pageKey();
+        if (!key) return;
+        var page = pageData(key);
+        if (page) paintSchema(page);
+    }
+
     function paintSchema(page) {
         writeLd('ldOrganization', buildOrganization());
         writeLd('ldWebSite', buildWebSite());
@@ -2584,6 +2607,11 @@
         if (!st.builderDrafts) st.builderDrafts = {};
         st.builderDrafts[slug] = { schemaVersion: PB_SCHEMA, status: 'draft',
                                    sections: clone(sections), updatedAt: pbToday() };
+        /* What a visitor sees on this page has just changed, so the page's
+           own edit date is stale. The sitemap reads it for <lastmod>, and a
+           lastmod that predates the content it describes is worse than none.
+           This changes no page's sitemap MEMBERSHIP -- only its date. */
+        st.pages[slug].updatedAt = pbToday();
         return save();
     }
 
@@ -2594,6 +2622,7 @@
         if (!page || !page.builder) return true;
         page.builder.status = 'draft';
         page.builder.updatedAt = pbToday();
+        page.updatedAt = pbToday();       /* same reason as publishDraft() */
         return save();
     }
 
@@ -2874,12 +2903,22 @@
     }
 
     /* Placeholder copy only. Nothing here states a fact about the site --
-       it is all visibly text waiting to be replaced. */
+       it is all visibly text waiting to be replaced.
+
+       NO TEMPLATE OPENS WITH AN H1, and that is deliberate. Every page the
+       builder can mount ships its own <h1 data-cms-text="pages.<slug>.heading">
+       ABOVE the mount, so a template heading at h1 would guarantee a second
+       one on a live page. The opening headings carry the @h1 TYPOGRAPHY role
+       instead: they look like a page title and read as an h2 in the outline,
+       which is what the document actually needs. An author who wants an h1
+       in a section can still choose one -- the control offers it and the
+       renderer honours it -- and the builder says plainly what that costs.
+       See docs/page-builder.md, "Headings and the page H1". */
     var PB_TEMPLATES = [
         { id: 'blank', name: 'Blank page', version: PB_TEMPLATE_VERSION,
           description: 'One empty text section. Start from nothing.',
           sections: function () { return [tSec('text', [
-              tEl('heading', { text: 'Page heading', level: 'h1' }),
+              tEl('heading', { text: 'Page heading', level: 'h2' }, { typography: '@h1' }),
               tEl('text', { text: 'Write the first paragraph here.' })
           ])]; } },
 
@@ -2887,7 +2926,7 @@
           description: 'A hero, three feature boxes, a short block of copy and a closing banner.',
           sections: function () { return [
               tSec('hero', [
-                  tEl('heading', { text: 'Headline goes here', level: 'h1' }, { typography: '@h1' }),
+                  tEl('heading', { text: 'Headline goes here', level: 'h2' }, { typography: '@h1' }),
                   tEl('text', { text: 'One or two sentences saying what this page is for.' }),
                   tEl('button', { text: 'Primary action', href: '#' }, { bg: '@primary' })
               ]),
@@ -2915,7 +2954,7 @@
           description: 'A title, an introduction, three headed sections and a note.',
           sections: function () { return [
               tSec('text', [
-                  tEl('heading', { text: 'Page title', level: 'h1' }, { typography: '@h1' }),
+                  tEl('heading', { text: 'Page title', level: 'h2' }, { typography: '@h1' }),
                   tEl('text', { text: 'A short introduction to what this page covers.' })
               ]),
               tSec('text', [
@@ -2938,7 +2977,7 @@
           description: 'A title, two columns for the ways to reach you, and social links.',
           sections: function () { return [
               tSec('text', [
-                  tEl('heading', { text: 'Contact', level: 'h1' }, { typography: '@h1' }),
+                  tEl('heading', { text: 'Contact', level: 'h2' }, { typography: '@h1' }),
                   tEl('text', { text: 'Say when you reply and how long it usually takes.' })
               ]),
               tSec('columns', [
@@ -2960,7 +2999,7 @@
           description: 'A hero, three feature boxes, a card row and a closing action.',
           sections: function () { return [
               tSec('hero', [
-                  tEl('heading', { text: 'What this offers', level: 'h1' }, { typography: '@h1' }),
+                  tEl('heading', { text: 'What this offers', level: 'h2' }, { typography: '@h1' }),
                   tEl('text', { text: 'One sentence on who it is for.' })
               ]),
               tSec('columns', [
@@ -2987,7 +3026,7 @@
           description: 'A title, an accordion of three questions and a closing note.',
           sections: function () { return [
               tSec('text', [
-                  tEl('heading', { text: 'Frequently asked questions', level: 'h1' },
+                  tEl('heading', { text: 'Frequently asked questions', level: 'h2' },
                       { typography: '@h1' }),
                   tEl('text', { text: 'A line saying what these questions cover.' })
               ]),
@@ -3004,6 +3043,59 @@
               ])
           ]; } }
     ];
+
+    /* ----------------------------------------------------------
+       THE HEADINGS A SECTION TREE WOULD RENDER  (milestone E)
+
+       Read-only, and the only thing in this file that knows why the
+       admin cares: a builder-mounted page already has an h1 of its own,
+       written into its HTML from pages.<slug>.heading, so the admin has
+       to be able to say how many MORE the sections would add and which
+       ones they are. Nothing here changes any content -- it answers a
+       question, in the renderer's own terms, so the admin never has to
+       keep a second idea of what a heading is.
+
+       Returns { counts: { h1: n, ... }, items: [{ id, level, text }] }
+       in document order. The level is resolved exactly as PB_ELEMENTS
+       .heading resolves it, including its fallback to h2, so the answer
+       is what the page would really show.
+    ---------------------------------------------------------- */
+    function pbHeadingLevel(el) {
+        var lvl = String(((el || {}).content || {}).level || 'h2').toLowerCase();
+        return pbPick(PB_ALL_LEVELS, lvl) ? lvl : 'h2';
+    }
+
+    function pbOutline(sections) {
+        var out = { counts: { h1: 0, h2: 0, h3: 0, h4: 0, h5: 0, h6: 0 }, items: [] };
+        (function walkSecs(list) {
+            if (!isArr(list)) return;
+            for (var i = 0; i < list.length; i++) {
+                var sec = list[i];
+                if (!sec || sec.enabled === false) continue;   /* a hidden section renders nothing */
+                walkEls(sec.elements, 0);
+            }
+        })(sections);
+        function walkEls(list, depth) {
+            if (!isArr(list) || depth > 4) return;
+            for (var i = 0; i < list.length; i++) {
+                var el = list[i];
+                if (!el || el.enabled === false) continue;
+                if (el.type === 'heading') {
+                    var lvl = pbHeadingLevel(el);
+                    out.counts[lvl] += 1;
+                    out.items.push({ id: str(el.id), level: lvl,
+                                     text: str((el.content || {}).text) });
+                }
+                var cols = (el.content || {}).columns;
+                if (isArr(cols)) {
+                    for (var c = 0; c < cols.length; c++) {
+                        walkEls((cols[c] || {}).elements, depth + 1);
+                    }
+                }
+            }
+        }
+        return out;
+    }
 
     function pbCountElements(list, depth) {
         var n = 0;
@@ -3073,7 +3165,11 @@
     ======================================================== */
     function paintPageMeta() {
         each(document.querySelectorAll('meta[data-cms-meta]'), function (el) {
-            var v = get(el.getAttribute('data-cms-meta'), '');
+            /* str() trims. Without it a description of three spaces is
+               "truthy" and replaces a perfectly good static one with
+               nothing -- the exact case the static-first rule exists to
+               prevent. paintSeo() has always trimmed; this did not. */
+            var v = str(get(el.getAttribute('data-cms-meta'), ''));
             if (v) el.setAttribute('content', v);
         });
     }
@@ -3314,6 +3410,7 @@
     }
 
     function applyBody() {
+        paintSchemaLate();
         harvest();
         renderFeatured();
         renderCategories();
@@ -3734,6 +3831,9 @@
                 get: recoveryGet,
                 clear: recoveryClear
             },
+
+            /* what a tree would render, read-only (milestone E) */
+            outline: pbOutline,
 
             /* page templates (code registry) */
             templates: templateList,

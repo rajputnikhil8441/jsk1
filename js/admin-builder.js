@@ -116,9 +116,13 @@ window.PBAdmin = function (host) {
        the truth about it:
 
          idle    nothing waiting, nothing to report
-         pending an edit is typed and the debounce has not fired yet
+         unsaved an edit is typed and the debounce has not fired yet
          saved   the draft is on disk
          failed  the write was REFUSED and the edit is only in memory
+
+       The second one used to read "Saving...", which was not true: the
+       write is synchronous, so during that window nothing is being
+       saved -- the edit is simply not on disk yet. It says so now.
 
        The last one is the reason this exists. CMS.save() returns false
        when localStorage refuses -- a full quota is the usual cause -- and
@@ -139,12 +143,13 @@ window.PBAdmin = function (host) {
         var el = $('#pbSaveState');
         if (!el) return;
         var text = '', cls = '';
-        if (pbSaveState === 'pending') { text = 'Saving\u2026'; cls = 'pending'; }
+        if (pbSaveState === 'unsaved') { text = 'Unsaved changes'; cls = 'unsaved'; }
         else if (pbSaveState === 'saved') { text = 'Draft saved on this device'; cls = 'saved'; }
         else if (pbSaveState === 'failed') { text = pbSaveError || 'Could not save'; cls = 'failed'; }
         el.textContent = text;
         el.className = 'pb-savestate ' + cls;
         el.hidden = !text;
+        el.setAttribute('data-state', text ? pbSaveState : 'idle');
     }
 
     /* Local save only. commit(true) skips CMS.remote.publish(), which is
@@ -1084,6 +1089,7 @@ window.PBAdmin = function (host) {
             b.type = 'button';
             b.className = 'pagetab' + (s === pbSlug ? ' active' : '');
             b.setAttribute('data-slug', s);
+            if (s === pbSlug) b.setAttribute('aria-current', 'page');
             b.textContent = page.label || s;
             if (st.live) {
                 var dot = document.createElement('span');
@@ -1095,16 +1101,32 @@ window.PBAdmin = function (host) {
             tabs.appendChild(b);
         });
 
+        /* A full rebuild may be a different page, so the two cards that
+           skip their own repaint when nothing changed are told to forget
+           what they last said. */
+        pbHeadSig = null;
+        pbWhereSig = null;
+
         pbPaintState();
         pbPaintSaveState();
         pbPaintRecovery();
         pbPaintTemplates();
         pbPaintAdd();
         pbPaintList();
+        pbPaintHeadings();
         pbPaintLibrary();
         pbPaintDevices();
         pbPaintPreview();
         pbFitPreview();
+    }
+
+    /* A disabled button that does not say why is just a button that looks
+       broken, so each one carries its own reason. */
+    function pbDisable(sel, off, why, ready) {
+        var b = $(sel);
+        if (!b) return;
+        b.disabled = !!off;
+        b.title = off ? why : (ready || '');
     }
 
     function pbPaintState() {
@@ -1118,14 +1140,72 @@ window.PBAdmin = function (host) {
         else                                  { label = 'Live and up to date'; cls = 'live'; }
         el.className = 'pb-state ' + cls;
         el.textContent = label;
+        el.setAttribute('data-state', cls);
 
-        $('#pbPublish').disabled  = !pbDraft.length;
-        $('#pbDiscard').disabled  = !CMS.sections.dirty(pbSlug);
-        $('#pbUnpublish').disabled = !st.live;
+        pbDisable('#pbPublish', !pbDraft.length,
+            'There are no sections to publish yet.',
+            st.dirty || !st.live ? 'Put this draft on the live page.'
+                                 : 'Publish again — the live page already matches this draft.');
+        pbDisable('#pbDiscard', !CMS.sections.dirty(pbSlug),
+            'This draft already matches what is published — there is nothing to discard.',
+            'Throw the draft away and start again from what is published.');
+        pbDisable('#pbUnpublish', !st.live,
+            'Nothing is published for this page.',
+            'Take these sections off the live page. The draft is kept.');
 
         var open = $('#pbOpen');
         if (page.url) { open.href = '../' + page.url; open.hidden = false; }
         else { open.hidden = true; }
+
+        pbPaintWhere(page);
+    }
+
+    /* ---------- which page am I editing? (milestone E) ----------
+       The tabs said it, but only by being the highlighted one, and the
+       tab strip scrolls. The answer is written out in full instead, from
+       the same pages entry every other panel reads. */
+    var pbWhereSig = null;
+
+    function pbPaintWhere(page) {
+        var el = $('#pbWhere');
+        if (!el) return;
+        page = page || CMS.data().pages[pbSlug] || {};
+        var n = pbCountAll(pbDraft);
+        /* Rebuilt only when what it says would differ. This runs from
+           pbPaintPreview(), which every keystroke goes through. */
+        var sig = pbSlug + '|' + (page.label || '') + '|' + (page.url || '') +
+                  '|' + pbDraft.length + '|' + n;
+        if (sig === pbWhereSig) return;
+        pbWhereSig = sig;
+        el.innerHTML = '';
+        var lab = document.createElement('strong');
+        lab.textContent = page.label || pbSlug || '—';
+        el.appendChild(lab);
+        if (page.url) {
+            var url = document.createElement('span');
+            url.className = 'pb-where-url';
+            url.textContent = '/' + page.url;
+            el.appendChild(url);
+        }
+        var sum = document.createElement('span');
+        sum.className = 'pb-where-sum';
+        sum.textContent = pbDraft.length + (pbDraft.length === 1 ? ' section' : ' sections') +
+            ', ' + n + (n === 1 ? ' element' : ' elements');
+        el.appendChild(sum);
+    }
+
+    function pbCountAll(sections) {
+        var n = 0;
+        (sections || []).forEach(function (sec) {
+            (function walk(list) {
+                (list || []).forEach(function (e) {
+                    n += 1;
+                    var cols = (e.content || {}).columns;
+                    if (cols && cols.length) cols.forEach(function (c) { walk(c && c.elements); });
+                });
+            })(sec && sec.elements);
+        });
+        return n;
     }
 
     function pbPaintAdd() {
@@ -1164,6 +1244,7 @@ window.PBAdmin = function (host) {
             var expand = document.createElement('button');
             expand.type = 'button';
             expand.className = 'pb-sec-title';
+            expand.setAttribute('aria-expanded', pbOpen === sec.id ? 'true' : 'false');
             expand.innerHTML = '<i class="fas fa-chevron-' + (pbOpen === sec.id ? 'down' : 'right') + '"></i>' +
                 '<strong>' + esc(PB_TYPE_LABEL[sec.type] || sec.type) + '</strong>' +
                 '<span class="pb-sec-sum">' + esc(pbCount(sec)) + '</span>';
@@ -1226,6 +1307,161 @@ window.PBAdmin = function (host) {
             }
             host.appendChild(row);
         });
+    }
+
+    /* ==========================================================
+       HEADINGS AND THE PAGE H1  (milestone E)
+       ----------------------------------------------------------
+       Every page the builder can mount ships its own
+       <h1 data-cms-text="pages.<slug>.heading"> ABOVE the mount, so the
+       sections in this draft are never the page's first heading. That is
+       a fact about the HTML, and it is the one thing an author cannot
+       see from inside the builder.
+
+       So it is said out loud, and when the draft adds an h1 of its own
+       the cost is said out loud too -- with the author's own heading
+       text, so there is no guessing which one is meant.
+
+       Nothing here rewrites anything. A heading only changes level when
+       someone presses the button that says it will, and that change goes
+       through the same save path as any other edit. The renderer still
+       honours h1; this is the admin telling the truth about what that
+       does, not the schema taking the choice away.
+       ========================================================== */
+
+    function pbFindEl(id) {
+        var hit = null;
+        if (typeof id !== 'string' || !id) return null;
+        (pbDraft || []).forEach(function (sec) {
+            (function walk(list) {
+                (list || []).forEach(function (e) {
+                    if (!e) return;
+                    if (e.id === id) hit = e;          /* compared, never indexed */
+                    var cols = (e.content || {}).columns;
+                    if (cols && cols.length) cols.forEach(function (c) { walk(c && c.elements); });
+                });
+            })(sec && sec.elements);
+        });
+        return hit;
+    }
+
+    function pbDemote(ids) {
+        var changed = 0;
+        ids.forEach(function (id) {
+            var el = pbFindEl(id);
+            if (!el || el.type !== 'heading') return;
+            if (!el.content) el.content = {};
+            if (String(el.content.level || '').toLowerCase() !== 'h1') return;
+            el.content.level = 'h2';
+            changed += 1;
+        });
+        if (!changed) return;
+        pbPersist();
+        buildBuilder();
+        toast(changed === 1 ? 'That heading is now an H2.'
+                            : changed + ' headings are now H2.');
+    }
+
+    /* Called from pbPaintPreview(), which every edit and every structural
+       change already goes through. The signature keeps it free when the
+       headings have not moved: typing in a paragraph should not rebuild
+       this card on every keystroke. */
+    var pbHeadSig = null;
+
+    function pbHeadingsMaybe() {
+        var page = CMS.data().pages[pbSlug] || {};
+        var o = CMS.sections.outline(pbDraft);
+        var sig = pbSlug + '|' + String(page.heading || '') + '|' +
+            o.items.map(function (i) { return i.level + ':' + i.id + ':' + i.text; }).join('~');
+        if (sig === pbHeadSig) return;
+        pbHeadSig = sig;
+        pbPaintHeadings();
+    }
+
+    function pbPaintHeadings() {
+        var host = $('#pbHeadings');
+        if (!host) return;
+        host.innerHTML = '';
+
+        var page = CMS.data().pages[pbSlug] || {};
+        var mounted = !!(CMS.sections.mounted[pbSlug] || page.builderMount);
+        var outline = CMS.sections.outline(pbDraft);
+        var ones = outline.items.filter(function (i) { return i.level === 'h1'; });
+
+        /* 1. where the visible H1 comes from */
+        var where = document.createElement('p');
+        where.className = 'hint';
+        if (!mounted) {
+            where.textContent = 'This page has no builder mount in its HTML, so nothing here reaches it.';
+        } else if (String(page.heading || '').trim()) {
+            where.innerHTML = 'The page\u2019s main heading is <strong>' +
+                esc(String(page.heading).trim()) + '</strong>. It is set in ' +
+                '<strong>Pages \u203a H1 heading</strong> and is written above these sections, ' +
+                'so the builder is not what controls it.';
+        } else {
+            where.innerHTML = '<strong>Pages \u203a H1 heading</strong> is empty for this page, ' +
+                'so its H1 renders blank. Set it there \u2014 the builder cannot supply it.';
+        }
+        host.appendChild(where);
+
+        /* 2. what this draft adds */
+        var box = document.createElement('p');
+        if (!ones.length) {
+            box.className = 'pb-h1note ok';
+            box.textContent = outline.items.length
+                ? 'No section heading is set to H1, so this page has exactly one.'
+                : 'This draft has no headings yet.';
+            host.appendChild(box);
+            return;
+        }
+
+        box.className = 'pb-h1note warn';
+        box.innerHTML = '<i class="fas fa-triangle-exclamation" aria-hidden="true"></i> ' +
+            (ones.length === 1
+                ? 'One heading in this draft is set to <strong>H1</strong>.'
+                : ones.length + ' headings in this draft are set to <strong>H1</strong>.') +
+            ' The page would then show ' + (mounted ? ones.length + 1 : ones.length) +
+            ' in total. Search engines expect one, and it is already set in Pages.';
+        host.appendChild(box);
+
+        var list = document.createElement('div');
+        list.className = 'pb-h1list';
+        ones.forEach(function (it) {
+            var row = document.createElement('div');
+            row.className = 'pb-h1row';
+            row.setAttribute('data-h1-id', it.id);
+            var name = document.createElement('span');
+            name.className = 'pb-h1text';
+            name.textContent = it.text || '(no text)';
+            row.appendChild(name);
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'adm-btn ghost';
+            b.setAttribute('data-act', 'h1-demote');
+            b.textContent = 'Make it H2';
+            b.addEventListener('click', function () { pbDemote([it.id]); });
+            row.appendChild(b);
+            list.appendChild(row);
+        });
+        host.appendChild(list);
+
+        if (ones.length > 1) {
+            var all = document.createElement('button');
+            all.type = 'button';
+            all.className = 'adm-btn ghost';
+            all.setAttribute('data-act', 'h1-demote-all');
+            all.textContent = 'Make them all H2';
+            all.addEventListener('click', function () {
+                pbDemote(ones.map(function (i) { return i.id; }));
+            });
+            host.appendChild(all);
+        }
+
+        var keep = document.createElement('p');
+        keep.className = 'hint';
+        keep.textContent = 'Nothing changes unless you press one of these. ' +
+            'An H1 in a section is allowed \u2014 this only says what it costs.';
+        host.appendChild(keep);
     }
 
     function pbSectionBody(host, sec) {
@@ -1536,7 +1772,7 @@ window.PBAdmin = function (host) {
     function pbEdited(live) {
         /* Something is typed and not yet written. Said plainly rather than
            left to look identical to saved. */
-        if (pbSaveState !== 'failed') pbSetSaveState('pending');
+        if (pbSaveState !== 'failed') pbSetSaveState('unsaved');
         pbPaintPreview();
         if (pbSaveTimer) { clearTimeout(pbSaveTimer); pbSaveTimer = null; }
         if (live) {
@@ -3043,6 +3279,8 @@ window.PBAdmin = function (host) {
     }
 
     function pbPaintPreview() {
+        pbHeadingsMaybe();
+        pbPaintWhere();
         var f = $('#pbFrame');
         if (!f) return;
         var page = CMS.data().pages[pbSlug] || {};
@@ -3140,6 +3378,11 @@ window.PBAdmin = function (host) {
         wire:  wireBuilder,
         flush: pbFlush,
         fit:   pbFitPreview,
+        /* The Pages panel needs an image chooser for the Open Graph and
+           X/Twitter fields. It is THIS picker -- same manifest, same
+           pbAsset() rules, same modal -- rather than a second one that
+           would have to be kept honest separately. */
+        pickAsset: function (current, onPick) { pbAssetOpen(current, onPick); },
         /* The drag layer's own entry points. cancel() is what the admin
            shell calls when the panel changes underneath a drag; check()
            and move() are the exact functions the pointer handlers call,

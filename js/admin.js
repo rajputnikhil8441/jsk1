@@ -1265,6 +1265,8 @@
             var b = document.createElement('button');
             b.type = 'button';
             b.className = 'pagetab' + (k === activePageKey ? ' active' : '');
+            b.setAttribute('data-page-key', k);
+            if (k === activePageKey) b.setAttribute('aria-current', 'page');
             b.textContent = page.label || k;
             b.addEventListener('click', function () {
                 activePageKey = k;
@@ -1424,12 +1426,14 @@
         [['og', 'title', 'OG title', 60], ['og', 'description', 'OG description', 155], ['og', 'image', 'OG image URL', 0],
          ['twitter', 'title', 'X title', 60], ['twitter', 'description', 'X description', 155], ['twitter', 'image', 'X image URL', 0]
         ].forEach(function (f) {
-            socGrid.appendChild(seoField(
+            var field = seoField(
                 function () { return page[f[0]][f[1]] || ''; },
                 function (v) { page[f[0]][f[1]] = v; touchPage(page); },
                 { label: f[2], counter: f[3] || 0,
                   kind: f[1] === 'description' ? 'area' : 'input',
-                  onChange: paintSeoPreviews }));
+                  onChange: paintSeoPreviews });
+            if (f[1] === 'image') attachAssetPicker(field, page, f[0]);
+            socGrid.appendChild(field);
         });
         socCard.appendChild(socGrid);
         host.appendChild(socCard);
@@ -1546,6 +1550,56 @@
 
 
 
+    /* ----------------------------------------------------------
+       CHOOSING AN OG / X IMAGE FROM THE SITE'S OWN FILES
+       (milestone E)
+
+       The field is unchanged -- it is still pages.<slug>.og.image, still
+       free text, still allowed to hold an absolute URL someone types in.
+       All this adds is a way to pick one of the images that is actually
+       in the repository, and it does it by opening THE PAGE BUILDER'S
+       picker: same manifest, same pbAsset() rules, same modal. A second
+       picker here would be a second place to keep honest.
+
+       What lands in the field is a plain relative path. The SEO engine
+       already turns that into an absolute URL against seo.baseUrl, and
+       already refuses data: and blob: for a crawler. Nothing about that
+       changes.
+    ---------------------------------------------------------- */
+    function attachAssetPicker(field, page, which) {
+        if (!Builder || typeof Builder.pickAsset !== 'function') return;
+        var input = field.querySelector('input');
+        if (!input) return;
+        var bar = document.createElement('div');
+        bar.className = 'seo-pickbar';
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'adm-btn ghost';
+        b.setAttribute('data-act', which + '-pick');
+        b.innerHTML = '<i class="fas fa-image"></i> Choose from site images';
+        b.addEventListener('click', function () {
+            /* The picker hands back the manifest entry, not a string -- the
+               same shape the builder's own image field receives. Its path
+               goes back through CMS.sections.assetPath() before it is
+               stored, so what lands in the field is provably one of ours
+               rather than whatever the callback happened to carry. */
+            Builder.pickAsset(input.value, function (asset) {
+                var path = CMS.sections.assetPath((asset && asset.path) || '');
+                if (!path) return;
+                input.value = path;
+                page[which].image = path;
+                touchPage(page);
+                paintSeoPreviews();
+            });
+        });
+        bar.appendChild(b);
+        var note = document.createElement('small');
+        note.className = 'hint';
+        note.textContent = 'Or paste any full https:// address. A data: or blob: URL is never written to the tag.';
+        bar.appendChild(note);
+        field.appendChild(bar);
+    }
+
     function pageField(page, def) {
         var wrap = document.createElement('label');
         wrap.className = 'f';
@@ -1572,6 +1626,27 @@
             var n = input.value.length;
             count.textContent = n + ' / ~' + def.counter + ' characters';
             count.classList.toggle('over', n > def.counter);
+        }
+
+        /* The builder renders BELOW this heading, so a section heading set
+           to h1 puts a second one on the page. The count comes from the
+           renderer's own reader, and it describes what is PUBLISHED --
+           a draft is not on the page yet, so it is not counted here. */
+        if (def.key === 'heading') {
+            var live = CMS.sections.live(activePageKey);
+            var extra = live ? CMS.sections.outline(live).counts.h1 : 0;
+            if (extra) {
+                var w = document.createElement('small');
+                w.className = 'pagewarn';
+                w.setAttribute('data-warn', 'h1');
+                w.textContent = extra === 1
+                    ? 'The published Page Builder content for this page also has one H1, ' +
+                      'so the page shows two. Change it in Page Builder \u203a Headings.'
+                    : 'The published Page Builder content for this page has ' + extra +
+                      ' more H1s, so the page shows ' + (extra + 1) +
+                      '. Change them in Page Builder \u203a Headings.';
+                wrap.appendChild(w);
+            }
         }
 
         input.addEventListener('input', function () {
@@ -1700,6 +1775,8 @@
             var b = document.createElement('button');
             b.type = 'button';
             b.className = 'pagetab' + (t[0] === activeSeoTab ? ' active' : '');
+            b.setAttribute('data-seotab', t[0]);
+            if (t[0] === activeSeoTab) b.setAttribute('aria-current', 'true');
             b.textContent = t[1];
             b.addEventListener('click', function () { activeSeoTab = t[0]; buildSeo(); });
             tabs.appendChild(b);
