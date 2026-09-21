@@ -30,7 +30,8 @@ async function head(page){ return page.evaluate(()=>{
     html: document.body.innerHTML.length,
     bodyText: document.body.innerText,
     breadcrumbs: document.querySelectorAll('.breadcrumb').length,
-    footerNav: document.querySelectorAll('.footer-nav a').length,
+    footerNav: document.querySelectorAll('.footer-nav a, .footer-links a').length,
+    footerHrefs: [...document.querySelectorAll('.footer-links a')].map(a=>a.getAttribute('href')),
     indexHtmlLinks: document.querySelectorAll('a[href="index.html"]').length,
     lazyImgs: document.querySelectorAll('img[loading="lazy"]').length,
     imgsNoDim: [...document.querySelectorAll('img')].filter(i=>i.src.includes('/games/') && !i.getAttribute('width')).length,
@@ -147,7 +148,18 @@ async function head(page){ return page.evaluate(()=>{
     const p = await c.newPage();
     await p.goto(`${BASE}/${f}`,{waitUntil:'networkidle'}); await p.waitForTimeout(200);
     const h = await head(p);
-    check(`${f}: footer navigation has 4 links`, h.footerNav===4, h.footerNav);
+    /* The footer carries the global shell's grouped navigation now. Asserted
+       as the exact set of destinations rather than a count, so a link that
+       quietly disappears or a stray one that appears both show up. The last
+       one is the WhatsApp link: it ships as href="#" and the CMS fills it,
+       which is the pattern every support link on the site already uses. */
+    check(`${f}: footer links to every public page, and nowhere else`,
+      h.footerHrefs.slice(0,-1).join(',')==='./,about.html,contact.html,responsible-gaming.html,privacy-policy.html,login.html,register.html,contact.html',
+      h.footerHrefs);
+    check(`${f}: every footer page link is a real local page`,
+      h.footerHrefs.slice(0,-1).every(x=>x==='./'||/^[a-z0-9-]+\.html$/.test(x)), h.footerHrefs);
+    check(`${f}: and the support link resolves to a real WhatsApp address`,
+      /^https:\/\/wa\.me\/\d+$/.test(h.footerHrefs[h.footerHrefs.length-1]), h.footerHrefs);
     if (f==='index.html') {
       check('index: casino tiles lazy loaded', h.lazyImgs>=79, h.lazyImgs);
       check('index: every game tile has width/height', h.imgsNoDim===0, h.imgsNoDim);
@@ -167,15 +179,18 @@ async function head(page){ return page.evaluate(()=>{
   check('404: noindex,follow', h404.robots==='noindex,follow', h404.robots);
   check('404: has one H1 and no canonical', h404.h1s.length===1 && !h404.canon, {h1:h404.h1s,canon:h404.canon});
   check('404: title is not a landing page title', /not found/i.test(h404.title), h404.title);
-  check('404: offers navigation back into the site', h404.footerNav===4);
+  check('404: offers navigation back into the site', h404.footerNav===9, h404.footerNav);
   const robots = await (await p404.request.get(`${BASE}/robots.txt`)).text();
   check('robots.txt: Disallow /admin/', robots.includes('Disallow: /admin/'));
   check('robots.txt: sitemap on jsk-1.com', robots.includes('Sitemap: https://jsk-1.com/sitemap.xml'));
   check('robots.txt: does not block css/js/assets',
         !/Disallow:\s*\/(css|js|assets)/.test(robots));
   const sm = await (await p404.request.get(`${BASE}/sitemap.xml`)).text();
-  check('sitemap: 4 URLs', (sm.match(/<url>/g)||[]).length===4, (sm.match(/<loc>[^<]*/g)||[]));
+  check('sitemap: 5 URLs', (sm.match(/<url>/g)||[]).length===5, (sm.match(/<loc>[^<]*/g)||[]));
   const locs = (sm.match(/<loc>([^<]*)<\/loc>/g)||[]).map(l=>l.replace(/<\/?loc>/g,''));
+  check('sitemap: includes the privacy policy',
+        locs.includes('https://jsk-1.com/privacy-policy.html'), locs);
+  check('sitemap: has no duplicate URLs', new Set(locs).size===locs.length, locs);
   check('sitemap: excludes login/register/admin', !locs.some(l=>/login|register|admin/.test(l)), locs);
   check('sitemap: all URLs on https://jsk-1.com', (sm.match(/<loc>([^<]*)/g)||[]).every(l=>l.includes('https://jsk-1.com')));
   await c404.close();

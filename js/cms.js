@@ -148,6 +148,7 @@
             'nav.crash': 'CRASH',
             'support.title': '24X7 Support',
             'support.link': 'WhatsApp Support',
+            'footer.about': 'The official JSK1 website. Create an account, sign in and reach support any time.',
             'footer.copyright': '© Copyright 2026 JSK1. All Rights Reserved.',
             /* login page */
             'login.heading': 'LOGIN',
@@ -463,6 +464,35 @@
                     '<h2>Talk to us</h2>\n' +
                     '<p>If you have a question about your account or want to limit your play, reach us through the ' +
                     '<a href="contact.html">Contact</a> page.</p>'
+            },
+
+            /* Registered so the page is editable, appears in the sitemap and
+               can carry builder sections like any other. The body is left
+               empty on purpose: a privacy policy is a statement about what
+               this site actually does with data, and only its operator can
+               write that. Nothing is invented here. */
+            'privacy-policy': {
+                label: 'Privacy Policy',
+                slug: 'privacy-policy',
+                canonical: '',
+                robots: { index: true, follow: true },
+                og: { title: '', description: '', image: '' },
+                twitter: { title: '', description: '', image: '' },
+                breadcrumb: { label: 'Privacy Policy', show: true },
+                schema: { webPage: true, breadcrumb: true, contactPage: false },
+                inSitemap: true,
+                updatedAt: '2026-09-21',
+                url: 'privacy-policy.html',
+                builderMount: true,
+                title: 'Privacy Policy | JSK1',
+                metaDescription: 'Read the JSK1 Privacy Policy to understand how information is handled when you use the JSK1 website and services.',
+                heading: 'Privacy Policy',
+                lead: 'This Privacy Policy explains how JSK1 handles information when you use this website and its services.',
+                body:
+                    '<p class="page-note">Editable placeholder — write your own privacy policy here, in ' +
+                    '/admin &gt; Pages &gt; Privacy Policy. It should describe what this site actually ' +
+                    'collects, why, how long it is kept and who to contact about it. Nothing has been ' +
+                    'written for you, because only you know what is true of your site.</p>'
             }
         },
 

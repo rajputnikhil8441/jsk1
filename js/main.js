@@ -348,6 +348,15 @@ document.addEventListener('DOMContentLoaded', function() {
         if (e.target.closest('#gateToast')) return;
         if (e.target.closest('.whatsapp-float, .support-wa-btn')) return;
         if (e.target.closest('.btn-register, .btn-login, .header-logo, .pagemenu')) return;
+        /* The global shell's own navigation. These go to About, Contact,
+           Responsible Gaming, the Privacy Policy and the account pages --
+           the pages a visitor has to be able to reach BEFORE logging in.
+           Gating them made the footer decorative: the first click raised
+           the toast and the second sent you to login.html, so from the home
+           page the privacy policy simply could not be opened. The gate still
+           covers everything it was built for -- the odds, the tables, the
+           casino cards and the category nav are all untouched. */
+        if (e.target.closest('footer.site-footer .footer-links a')) return;
 
         e.preventDefault();
         e.stopPropagation();

@@ -36,7 +36,9 @@ const check=(n,c,e)=>{c?(pass++,console.log('  PASS  '+n)):(fail++,fails.push(n)
 
   // dashboard
   const rows=await p.$$('#seoDashboard .seorow');
-  check('dashboard lists every CMS page', rows.length===6, rows.length);
+  const dashLabels=await p.$$eval('#seoDashboard .seorow',e=>e.map(x=>x.textContent.trim().split('\n')[0].trim()));
+  check('dashboard lists every CMS page', rows.length===7, rows.length);
+  check('and the privacy policy is one of them', dashLabels.some(t=>/Privacy/i.test(t)), dashLabels);
   const checkTxt=await p.$eval('#seoDashboard',e=>e.textContent);
   check('dashboard shows individual checks, not a score', /characters|H1|description/i.test(checkTxt) && !/\d+\s*\/\s*100|score/i.test(checkTxt));
 
@@ -64,7 +66,10 @@ const check=(n,c,e)=>{c?(pass++,console.log('  PASS  '+n)):(fail++,fails.push(n)
   // sitemap
   await p.click('#seoTabs .pagetab >> nth=4'); await p.waitForTimeout(250);
   const smOut=await p.$eval('#seoSitemapOut',e=>e.textContent);
-  check('generated sitemap has 4 URLs', (smOut.match(/<url>/g)||[]).length===4, (smOut.match(/<loc>[^<]*/g)||[]));
+  const smLocs=(smOut.match(/<loc>([^<]*)<\/loc>/g)||[]).map(x=>x.replace(/<\/?loc>/g,''));
+  check('generated sitemap has 5 URLs', (smOut.match(/<url>/g)||[]).length===5, smLocs);
+  check('and it includes the privacy policy', smLocs.includes('https://jsk-1.com/privacy-policy.html'), smLocs);
+  check('and lists no URL twice', new Set(smLocs).size===smLocs.length, smLocs);
   check('generated sitemap excludes noindex pages', !/login|register/.test(smOut));
   check('sitemap table lists index/noindex state', /noindex/.test(await p.$eval('#seoSitemapTable',e=>e.textContent)));
   check('sitemap card says the file must be replaced manually', /real file in the\s+repository|replace/i.test(await p.$eval('#seotab-sitemap',e=>e.textContent)));

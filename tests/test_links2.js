@@ -26,7 +26,7 @@ const check=(n,c,e)=>{c?(pass++,console.log('  PASS  '+n)):(fail++,fails.push(n)
   await p.click('.breadcrumb a'); await p.waitForLoadState('domcontentloaded');
   check('breadcrumb Home goes to the site root', /\/(index\.html)?$/.test(new URL(p.url()).pathname), p.url());
   await p.goto(`${BASE}/about.html`,{waitUntil:'networkidle'});
-  await p.click('.footer-nav a:has-text("Contact")'); await p.waitForLoadState('domcontentloaded');
+  await p.click('.footer-links a:text-is("Contact")'); await p.waitForLoadState('domcontentloaded');
   check('footer nav works', p.url().endsWith('/contact.html'), p.url());
   check('active nav state still correct after the change', (await p.textContent('.nav-link.active')).trim()==='CONTACT');
   await p.click('.info-nav-bar .nav-link:has-text("RESPONSIBLE")'); await p.waitForLoadState('domcontentloaded');

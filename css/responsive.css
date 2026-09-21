@@ -9,7 +9,10 @@
 html,
 body {
     max-width: 100%;
+    /* See the note beside body{} in css/style.css: `hidden` here would make
+       the root a scroll container and stop the sticky header sticking. */
     overflow-x: hidden;
+    overflow-x: clip;
 }
 
 .matches-table,
@@ -103,7 +106,7 @@ body {
      :root {
         --sidebar-w: 210px;
         --hdr-h: 44px;
-        --ticker-h: 18px;
+        --ticker-h: 23px;   /* the ticker does not shrink on mobile; the token used to claim it did */
     }
     /* Show mobile-only elements */
     .mobile-only {
@@ -505,6 +508,14 @@ body {
     justify-content: center;
 }
 
+/* The columns keep their own left alignment inside the centred bar --
+   a column of links reads badly centred. auto-fit already collapses
+   them to one per row when there is no space for two. */
+.footer-col .footer-safe {
+    width: auto;
+    justify-content: flex-start;
+}
+
 .footer-copy {
     order: 2;
 }
@@ -754,13 +765,18 @@ body {
     .footer-nav {
         gap: 4px 12px;
     }
+    .footer-cols {
+        gap: 12px 16px;
+        padding: 4px 0 10px;
+    }
 }
 
 @media (max-width: 375px) {
     .page-headline h1 {
         font-size: 12.5px;
     }
-    .footer-nav a {
+    .footer-nav a,
+    .footer-links a {
         font-size: 10.5px;
     }
 }

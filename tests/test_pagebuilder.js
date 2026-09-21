@@ -644,7 +644,8 @@ const el  = (id, type, content, style, responsive) =>
 
     check('the builder offers exactly the mounted pages',
       JSON.stringify(await p.evaluate(() => CMS.sections.pages())) ===
-      JSON.stringify(['about', 'contact', 'responsible-gaming']));
+      JSON.stringify(['about', 'contact', 'privacy-policy', 'responsible-gaming']),
+      await p.evaluate(() => CMS.sections.pages()));
 
     let r = await p.evaluate((S) => {
       CMS.sections.saveDraft('about', S);
@@ -786,7 +787,8 @@ const el  = (id, type, content, style, responsive) =>
     check('the panel opens', await p.isVisible('#panel-builder'));
     check('one tab per buildable page',
       JSON.stringify(await p.$$eval('#pbTabs .pagetab', e => e.map(x => x.getAttribute('data-slug')))) ===
-      JSON.stringify(['about', 'contact', 'responsible-gaming']));
+      JSON.stringify(['about', 'contact', 'privacy-policy', 'responsible-gaming']),
+      await p.$$eval('#pbTabs .pagetab', e => e.map(x => x.getAttribute('data-slug'))));
     check('all seven section types can be added',
       JSON.stringify(await p.$$eval('#pbAdd .pb-addbtn', e => e.map(x => x.getAttribute('data-type')))) ===
       JSON.stringify(['hero','text','image','imageText','cards','columns','banner']));

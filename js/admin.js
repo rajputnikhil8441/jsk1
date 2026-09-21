@@ -2254,7 +2254,75 @@
                                 msgs.some(function (m) { return m.level === 'bad'; });
     }
 
-    function newPageHtml(key) {
+    /* ----------------------------------------------------------
+       THE GLOBAL SHELL, FOR A PAGE THIS PANEL GENERATES
+
+       A generated page has to arrive complete: it is downloaded and
+       committed, and nothing runs between here and the repository. But
+       pasting the header and footer markup into this file would create
+       the second copy that tools/build-shell.js exists to remove -- and
+       the two would drift, which is exactly how privacy-policy.html came
+       to ship with a comment where its header should be.
+
+       So the shell is READ from a page that already has it, using the
+       same SHELL: markers the tool writes. One source of truth, and a
+       generated page is byte-identical to the pages beside it.
+
+       If the read fails the markers are still emitted, empty, with a note
+       saying how to fill them -- a page that is honestly incomplete and
+       says so, rather than one that silently omits its navigation.
+    ---------------------------------------------------------- */
+    var shellCache = null, shellPending = null;
+
+    function loadShell() {
+        if (shellCache) return Promise.resolve(shellCache);
+        if (shellPending) return shellPending;
+        shellPending = fetch('../about.html', { cache: 'no-cache' })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.text();
+            })
+            .then(function (html) {
+                shellCache = { header: cutRegion(html, 'HEADER'),
+                               nav:    cutRegion(html, 'NAV'),
+                               footer: cutRegion(html, 'FOOTER') };
+                shellPending = null;
+                return shellCache;
+            })
+            .catch(function () {
+                shellPending = null;
+                return { header: null, nav: null, footer: null };
+            });
+        return shellPending;
+    }
+
+    /* The text between a marker pair, or null. Nothing here is inserted
+       into the live DOM -- it goes straight into a downloaded file. */
+    function cutRegion(html, name) {
+        var open = '<!-- SHELL:' + name + ' -->';
+        var close = '<!-- /SHELL:' + name + ' -->';
+        var a = html.indexOf(open), b = html.indexOf(close);
+        if (a === -1 || b === -1 || b < a) return null;
+        return html.slice(a + open.length, b).replace(/^\n|\s+$/g, '');
+    }
+
+    function shellRegion(shell, name, key) {
+        var body = shell ? shell[name] : null;
+        var open = '    <!-- SHELL:' + name.toUpperCase() + ' -->\n';
+        var close = '    <!-- /SHELL:' + name.toUpperCase() + ' -->\n';
+        if (!body) {
+            return open + '    <!-- Empty: run  node tools/build-shell.js  to fill this in. -->\n' + close;
+        }
+        /* The nav marks the page it is on. A generated page is new, so no
+           item is current until it is added to the tool's own table. */
+        if (name === 'nav') {
+            body = body.replace(/ class="(nav-link|mob-cat-item) active"/g, ' class="$1"')
+                       .replace(/ aria-current="page"/g, '');
+        }
+        return open + '    ' + body + '\n' + close;
+    }
+
+    function newPageHtml(key, shell) {
         var p = CMS.data().pages[key];
         var base = sstr(seoGet('seo.baseUrl', '')).replace(/\/+$/, '');
         var url = base + '/' + p.url;
@@ -2285,8 +2353,9 @@
             '    <script src="js/brand.js"></scr' + 'ipt>\n' +
             '    <script src="js/cms.js"></scr' + 'ipt>\n' +
             '</head>\n\n<body>\n\n' +
-            '    <!-- Copy the header, nav and footer blocks from about.html so this\n' +
-            '         page uses exactly the same shell as the rest of the site. -->\n\n' +
+            shellRegion(shell, 'header', key) + '\n' +
+            shellRegion(shell, 'nav', key) + '\n' +
+            '    <!-- CONTENT -->\n' +
             '    <main class="info-main">\n' +
             '        <article class="info-article">\n' +
             '            <h1 data-cms-text="pages.' + e(key) + '.heading">' + e(p.heading) + '</h1>\n' +
@@ -2296,6 +2365,10 @@
             '            <div data-cms-sections="' + e(key) + '"></div>\n' +
             '        </article>\n' +
             '    </main>\n\n' +
+            shellRegion(shell, 'footer', key) + '\n' +
+            '    <!-- js/main.js is deliberately NOT loaded here: it installs a\n' +
+            '         site-wide login gate that swallows every click, which would\n' +
+            '         break the links on an information page. -->\n' +
             '    <script src="js/menu.js"></scr' + 'ipt>\n' +
             '</body>\n\n</html>\n';
     }
@@ -2349,7 +2422,14 @@
 
         if ((b = $('#btnDownloadPage'))) b.addEventListener('click', function () {
             var k = b.getAttribute('data-key');
-            if (k && CMS.data().pages[k]) download(CMS.data().pages[k].url, newPageHtml(k), 'text/html');
+            if (!k || !CMS.data().pages[k]) return;
+            loadShell().then(function (shell) {
+                download(CMS.data().pages[k].url, newPageHtml(k, shell), 'text/html');
+                if (!shell || !shell.header) {
+                    toast('Page downloaded, but the shell could not be read from about.html. ' +
+                          'Run: node tools/build-shell.js', true);
+                }
+            });
         });
     }
 
