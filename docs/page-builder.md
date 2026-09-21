@@ -643,6 +643,212 @@ edited, both write nothing at all.
 
 ---
 
+## Drag and drop (milestone D)
+
+Sections, columns and elements can be dragged into a new order. Nothing
+else about them changes, and nothing about dragging reaches the live site.
+
+### One tree, addressed rather than copied
+
+`pbDraft` is the only representation of the page the builder has, and the
+drag layer does not get a second one. A drag carries an **address** into
+that tree and nothing else:
+
+| Address | Resolves to |
+| --- | --- |
+| `{kind:'section'}` | `pbDraft` |
+| `{kind:'element', sec, el:'', col:-1}` | that section's `elements` |
+| `{kind:'element', sec, el:ID, col:N}` | that column's `elements` |
+| `{kind:'column', sec, el:ID}` | that element's `content.columns` |
+
+Addresses live in `data-*` attributes, which means they come from the DOM,
+which means anyone with the page open can rewrite them. So an address is
+never trusted: `pbListAt()` re-resolves it against the live tree when the
+drop is validated, and again when it is applied. An id that was never
+real, is no longer real, or names the wrong kind of node fails to resolve
+and the drop is refused. **The DOM says where the pointer is; it never
+says what the page is.**
+
+The move itself is a `splice` of the *same object* out of one array and
+into another. Nothing is cloned, re-serialised or rebuilt, which is why
+content, styles, responsive overrides, `@role` references, asset paths and
+dimensions, column ratios, nesting and element ids all survive: they are
+never touched. `@primary` stays `@primary`; it does not become `#0088cc`
+on the way.
+
+### What is refused
+
+Every refusal is in `pbDropOk()`, and each one leaves the draft
+byte-identical:
+
+- a section dropped into an element list, or an element into the section
+  list — kinds never mix;
+- a `columns` element dropped into a column, which is the one nesting the
+  renderer refuses;
+- an element dropped into itself or into its own descendant;
+- a column dropped into a different `columns` element (see *Known
+  limitations*);
+- an unknown, malformed or stale id — including one that resolves to the
+  wrong node type, and including a node that was deleted or replaced
+  between `pointerdown` and `pointerup`;
+- `__proto__`, `constructor` and `prototype` as ids, and anything outside
+  `[A-Za-z0-9_-]{1,64}`;
+- a column index that is not an in-range integer, or a drop index that is
+  not an in-range integer;
+- a drop back onto the node's own position, which is not a change and so
+  is not a save and not a dirty draft either.
+
+Ids are looked up by scanning arrays and comparing strings, never by
+indexing an object with a caller-supplied name, so the prototype keys
+could not have poisoned anything even if they were accepted. They are
+refused anyway — it costs nothing, and it also means a draft that arrived
+carrying such an id cannot be dragged by it.
+
+One of these guards is **redundant as the schema stands**, and it says so
+in the source rather than being counted as work it does not do. `columns`
+is the only container the schema has, so the only element that can contain
+a column is a columns element — and a columns element is already refused
+from a column by the type check above. The descendant walk beneath it can
+therefore never fire today, and no mutation test reaches it. It is kept
+because it states the invariant itself (never into yourself, never into
+what you contain) rather than a fact about which types happen to exist, and
+a second container type would make it the one that matters.
+
+### The drop is checked against the sanitiser
+
+After the splice, `pbCommitMove()` asks the sanitiser — the thing that
+decides what the renderer will accept — whether the move made it discard
+anything it was keeping before. If so, the move is put back and nothing is
+saved.
+
+The check is deliberately **not** "the tree is clean". A draft that arrived
+by hand or by import may already contain something the sanitiser drops,
+and freezing every drag because of it would be both useless and confusing,
+since the move buttons beside the handle would still work. It is also
+counted by node *type*, not by id, because `pbCleanSection()` mints a fresh
+id for any node whose own id it cannot use, and a freshly minted id is
+different on every call — keying on ids would make two runs over the same
+tree disagree. The sanitiser only ever drops nodes, never adds one, so a
+falling count is exactly the question being asked.
+
+It runs **once, on drop**. Never while the pointer moves.
+
+### The pointer layer
+
+`pointerdown` on a handle records the address and the object it points at.
+Movement under 5px is treated as a click, so the handle can be clicked
+without starting anything. Past that, the drag goes live: the source row
+dims, and one absolutely positioned line — `.pb-dropline`, created once and
+reused — shows where the node would land, in the accent colour when the
+target is valid and in the danger colour when it is not.
+
+Everything that happens per `pointermove` is reading rectangles and moving
+that one line. Nothing is rebuilt and nothing in the draft is touched until
+the pointer comes up. On a draft of 30 sections, 90 columns and 240
+elements, 300 pointer moves are handled in about 12ms — 0.04ms each — and a
+MutationObserver over `#pbList` records **zero** nodes added or removed for
+the whole gesture.
+
+A list taller than the window would otherwise be a trap, so moving the
+pointer within 48px of the top or bottom edge scrolls. It is tied to the
+pointer *moving* rather than to a timer, so a still hand never drifts.
+
+### Cancelling changes nothing, by construction
+
+`pbDragEnd()` removes listeners, releases the pointer capture, un-dims the
+row and hides the line. It touches no data at all, because a cancelled drag
+and a drag that never happened have to be indistinguishable in the draft —
+to the author they are the same thing.
+
+Cancelled by: **Escape**, `pointercancel`, the window losing focus,
+releasing outside any list, releasing on an invalid target, switching admin
+panel, and switching the preview viewport.
+
+### Touch: the move buttons, not a drag
+
+**Dragging with a finger is deliberately not implemented.** The section
+list is the thing a finger scrolls, and taking that gesture away from
+scrolling to give it to reordering trades a control people use constantly
+for one they use occasionally. Every long-press-to-drag scheme also has to
+guess how long a press is, and guesses wrong for some people.
+
+So on a coarse pointer the handle is not offered at all: the stylesheet
+hides it under `@media (pointer: coarse)` and `pbDragDown()` refuses a
+`pointerType` of `touch` independently, so neither one alone is
+load-bearing. Touch users reorder with the **Move up / Move down** buttons,
+which are on every section, element and column row and do exactly what a
+drag does. Nobody is trapped without a way to reorder.
+
+Nothing about the public site's touch behaviour changes. This is admin-only.
+
+### The keyboard
+
+Drag is never the only way to move something. The arrow buttons on every
+row were already there for sections and elements; columns now have them
+too, and all three go through the same reorder and the same save path.
+
+The one thing that needed fixing was focus. A move rebuilds a list, so the
+button that was pressed no longer exists. Focus now follows the **node** to
+its new row, and falls back to the opposite button when the one that was
+used has just become disabled at the end of the list — press *Move up*
+repeatedly and focus lands on *Move down* when the node reaches the top,
+rather than on the floor.
+
+Restoring focus is deferred by one turn on purpose: lists nest, and
+rebuilding a section's elements rebuilds the columns inside them, each of
+which finishes before the card that holds it is attached. Anything looking
+for the moved node during that would be looking for it while it is still in
+pieces.
+
+The handle is a real `<button>`, so it is reachable by Tab and says what it
+is (*Drag section* / *Drag column* / *Drag element*), but pressing it does
+nothing: reordering from the keyboard is the arrow buttons' job, and two
+ways to do it from one control is how people end up with neither working.
+A `role="status"` live region beside the list says what happened — *Moving
+this section. Escape cancels.* / *Moved the section.* / *Move cancelled.
+Nothing changed.*
+
+### Saving and publishing
+
+A move is an edit like any other. It goes through `pbPersist()` — the same
+single save path — so it marks the draft, writes it on this device, and
+reports a refused write as a failure rather than as a save. There is no
+second state or save system.
+
+**Dragging never publishes.** It writes `builderDrafts[slug]` and nothing
+else; the publish round trip and the milestone C double-click guard are
+untouched, and the tests assert zero network POSTs across a full session of
+dragging.
+
+### Copies stay copies
+
+Dragging inside a section inserted from the reusable library edits the
+page's own copy. The library entry is byte-identical afterwards, and the
+page remains a plain array of sections with no link back — there is no
+`libraryId`, no live instance, nothing to re-sync.
+
+The same holds for templates: the registry is code, `CMS.sections.templates()`
+is byte-identical after any amount of dragging, and running the template
+again still produces the shipped order.
+
+### Known limitations
+
+- **Columns reorder within the element that owns them**, not between two
+  different `columns` elements. Moving one across would leave the source
+  short of the container count its layout preset asks for, and the layout
+  control deliberately never removes a container.
+- **Element drags stay within the open section**, because only one section
+  is expanded at a time, so a second section's element list is not on
+  screen to drop into. Move the section, or cut across with duplicate and
+  delete.
+- **No touch drag** — see above. This is a decision, not a gap.
+- **No undo**, still. A move is as reversible as the drag that made it:
+  drag it back, or press the opposite arrow. The milestone C reasoning is
+  unchanged.
+- The drop indicator marks a position between rows. It does not preview the
+  moved node in place.
+---
+
 ## Safety
 
 - **No arbitrary HTML.** Every element is built with `document.createElement`
@@ -789,3 +995,23 @@ cd tests && npm test -- test_pagebuilder.js
 Two assertions are the ones that matter most, and they should never be
 weakened: a draft renders nothing for a visitor, and Save draft produces no
 write to the server.
+
+`tests/test_pagebuilder_dnd.js` — 195 assertions, milestone D. Every refusal
+is driven twice: through a real mouse, because the drop position comes from
+real rectangles and a test that computed it would be testing its own
+arithmetic; and through `ADMIN_BUILDER.drag`, which is the pair of functions
+the pointer handlers themselves call, because most refusals cannot be
+produced with a mouse — there is no address you can drag to that reads
+`sec: '__proto__'`, and a stale id needs the tree to change mid-gesture.
+
+Covered: 31 refusal cases, each asserted to leave the draft byte-identical;
+a draft that already carries `__proto__`, `constructor` and a quoted id, and
+the separate claim that its presence does not freeze anything else; what a
+move preserves, down to the moved node being deep-identical; the pointer
+path for sections, elements and columns including the valid and invalid
+states of the indicator; the post-move check against the sanitiser, driven
+at the 200-element limit where it actually fires; seven ways of cancelling,
+each re-checked after forcing a save so an in-memory change could not hide;
+dirty state, a refused write, and zero POSTs; keyboard reordering with focus following the node;
+touch; library and template independence; and 30 sections / 90 columns /
+240 elements with a MutationObserver proving nothing is rebuilt mid-drag.

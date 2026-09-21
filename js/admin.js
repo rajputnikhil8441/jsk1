@@ -343,6 +343,10 @@
            elsewhere. Rebuilt on the way in rather than on every keystroke
            over there. */
         if (name === 'design') buildDesign();
+        /* Leaving the builder pulls the list the pointer was aiming at out
+           from under a drag in flight. It ends here, and ends the way every
+           cancelled drag does: without changing the draft. */
+        pbCancelDrag();
         $('#admSide').classList.remove('open');
         window.scrollTo(0, 0);
     }
@@ -2662,6 +2666,12 @@
     function wireBuilder()   { if (Builder) Builder.wire(); }
     function pbFlush()       { if (Builder) Builder.flush(); }
     function pbFitPreview()  { if (Builder) Builder.fit(); }
+    function pbCancelDrag()  { if (Builder && Builder.drag) Builder.drag.cancel(); }
+
+    /* Same reason as ADMIN_REFRESH above: the tests drive the builder the
+       way the UI does, and the drag layer's refusals have to be reachable
+       with addresses no mouse can produce. */
+    window.ADMIN_BUILDER = Builder;
 
     /* ========================================================
        BOOT

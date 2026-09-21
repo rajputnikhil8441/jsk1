@@ -2529,3 +2529,81 @@ input[type="password"]:focus {
 }
 
 .pb-reset:hover { color: var(--a-text); border-color: var(--a-accent); }
+
+/* ---------------- PAGE BUILDER: DRAG AND DROP ---------------- */
+
+.pb-handle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 20px;
+    height: 26px;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    background: none;
+    color: var(--a-dim);
+    font-size: 12px;
+    cursor: grab;
+    touch-action: auto;
+}
+
+.pb-handle:hover {
+    border-color: var(--a-line);
+    color: var(--a-text);
+}
+
+.pb-handle:focus-visible {
+    outline: 2px solid var(--a-accent);
+    outline-offset: 1px;
+}
+
+/* The handle drags with a pointer. It is NOT how the keyboard reorders --
+   that is the arrow buttons on the same row -- and on a touchscreen it is
+   not offered at all, because the list is the thing a finger scrolls. */
+@media (pointer: coarse) {
+    .pb-handle { display: none; }
+}
+
+body.pb-dragging,
+body.pb-dragging .pb-handle {
+    cursor: grabbing;
+}
+
+/* Nothing in the list may swallow the pointer while a drag is running:
+   the drop position is read from document.elementFromPoint(). */
+body.pb-dragging #pbList iframe {
+    pointer-events: none;
+}
+
+.pb-drag-src {
+    opacity: 0.45;
+}
+
+/* One element, reused for every drag, positioned from viewport rectangles.
+   It must never be hit-testable or it would hide the row underneath it. */
+.pb-dropline {
+    position: fixed;
+    z-index: 60;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--a-accent);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+    display: none;
+}
+
+.pb-dropline.bad {
+    background: var(--a-danger);
+}
+
+.pb-dragstatus {
+    margin: 8px 0 0;
+    min-height: 1em;
+    color: var(--a-dim);
+    font-size: 12px;
+}
+
+.pb-cols {
+    display: block;
+}

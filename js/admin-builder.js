@@ -225,6 +225,12 @@ window.PBAdmin = function (host) {
         var i = pbIndexOf(id), j = i + delta;
         if (i < 0 || j < 0 || j >= pbDraft.length) return;
         var tmp = pbDraft[i]; pbDraft[i] = pbDraft[j]; pbDraft[j] = tmp;
+        /* The list is rebuilt, so the button that was pressed is gone.
+           Focus goes to the same button on the section that moved. */
+        pbWishFocus(function () {
+            var row = pbNodeFor(null, '#pbList > .pb-sec', 'data-sec-id', id);
+            return row && pbFocusIn(row, delta < 0 ? ['up', 'down'] : ['down', 'up']);
+        });
         pbPersist();
         buildBuilder();
     }
@@ -269,6 +275,515 @@ window.PBAdmin = function (host) {
         pbDraft[i].enabled = !!on;
         pbPersist();
         buildBuilder();
+    }
+
+    /* ==========================================================
+       DRAG AND DROP  (milestone D)
+       ----------------------------------------------------------
+       THERE IS ONE TREE. pbDraft is it, and dragging does not get a
+       second one. A drag carries an ADDRESS into that tree and nothing
+       else:
+
+         { kind:'section' }                        -> pbDraft
+         { kind:'element', sec, el:'', col:-1 }    -> section.elements
+         { kind:'element', sec, el:ID, col:N }     -> that column's elements
+         { kind:'column',  sec, el:ID }            -> that element's columns
+
+       Addresses come out of data-* attributes, which is to say they come
+       from the DOM, which is to say anyone with the page open can write
+       them. So an address is never trusted: it is RE-RESOLVED against
+       the live tree when the drop is validated and again when it is
+       applied. An id that was never real, is no longer real, or names
+       the wrong kind of node fails to resolve and the drop is refused.
+       The DOM says where the pointer is. It never says what the page is.
+
+       The move itself is a splice of the SAME OBJECT out of one array
+       and into another. Nothing is cloned, re-serialised or rebuilt, so
+       content, styles, responsive overrides, @role references, asset
+       paths, column ratios, nesting and ids all survive for the simplest
+       possible reason: they are never touched.
+       ========================================================== */
+
+    /* Real ids are minted by pbUid() and look like sec_l3k9f2a1x. An id
+       that cannot have come from there is refused before it is used --
+       not because the lookups below could be poisoned (they scan arrays
+       and compare strings; they never index an object by a caller's
+       name) but because refusing it is free and leaves nothing to argue
+       about. */
+    var PB_BAD_IDS = ['__proto__', 'constructor', 'prototype'];
+
+    function pbSafeId(v) {
+        if (typeof v !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(v)) return false;
+        return PB_BAD_IDS.indexOf(v) === -1;
+    }
+
+    function pbSectionById(id) {
+        if (!pbSafeId(id)) return null;
+        for (var i = 0; i < pbDraft.length; i++) {
+            if (pbDraft[i] && pbDraft[i].id === id) return pbDraft[i];
+        }
+        return null;
+    }
+
+    /* A columns element, by id, at the only depth the renderer allows one
+       to exist: directly inside a section. Anything else -- wrong type, no
+       content, columns that are not an array -- is not a container. */
+    function pbColumnsIn(sec, id) {
+        if (!sec || !pbSafeId(id) || !Array.isArray(sec.elements)) return null;
+        for (var i = 0; i < sec.elements.length; i++) {
+            var e = sec.elements[i];
+            if (!e || e.id !== id) continue;
+            if (e.type !== 'columns') return null;
+            if (!e.content || typeof e.content !== 'object') return null;
+            return Array.isArray(e.content.columns) ? e : null;
+        }
+        return null;
+    }
+
+    function pbIndexIn(list, id) {
+        if (!pbSafeId(id) || !Array.isArray(list)) return -1;
+        for (var i = 0; i < list.length; i++) { if (list[i] && list[i].id === id) return i; }
+        return -1;
+    }
+
+    /* Is `id` this element or anything under it? One call answers both
+       "dropped into itself" and "dropped into its own descendant". */
+    function pbContainsId(el, id) {
+        var found = false;
+        (function walk(node) {
+            if (found || !node || typeof node !== 'object') return;
+            if (node.id === id) { found = true; return; }
+            var cols = (node.content || {}).columns;
+            if (!Array.isArray(cols)) return;
+            cols.forEach(function (c) {
+                if (c && Array.isArray(c.elements)) c.elements.forEach(walk);
+            });
+        })(el);
+        return found;
+    }
+
+    /* An address in, the actual array out -- or null, which is the only
+       thing an unusable address ever produces. */
+    function pbListAt(addr) {
+        if (!addr || typeof addr !== 'object') return null;
+        if (addr.kind === 'section') return pbDraft;
+        var sec = pbSectionById(addr.sec);
+        if (!sec) return null;
+        if (!Array.isArray(sec.elements)) sec.elements = [];
+        if (addr.kind === 'element' && !addr.el) return sec.elements;
+        var owner = pbColumnsIn(sec, addr.el);
+        if (!owner) return null;
+        var cols = owner.content.columns;
+        if (addr.kind === 'column') return cols;
+        if (addr.kind !== 'element') return null;
+        var ci = addr.col;
+        if (typeof ci !== 'number' || !isFinite(ci) || ci !== Math.floor(ci) ||
+            ci < 0 || ci >= cols.length) return null;
+        var col = cols[ci];
+        if (!col || typeof col !== 'object') return null;
+        if (!Array.isArray(col.elements)) col.elements = [];
+        return col.elements;
+    }
+
+    /* Where the dragged thing is RIGHT NOW, not where it was when the
+       pointer went down. If it has been deleted, or something else now
+       sits at that place, there is nothing to move. */
+    function pbDragItem(drag) {
+        if (!drag || typeof drag !== 'object') return null;
+        var from = pbListAt(drag.addr);
+        if (!from) return null;
+        var i;
+        if (drag.kind === 'column') {
+            i = drag.index;
+            if (typeof i !== 'number' || !isFinite(i) || i !== Math.floor(i) ||
+                i < 0 || i >= from.length) return null;
+        } else {
+            i = pbIndexIn(from, drag.id);
+            if (i < 0) return null;
+        }
+        if (drag.ref && from[i] !== drag.ref) return null;
+        return { list: from, index: i, node: from[i] };
+    }
+
+    /* Every reason a drop is refused, in one place. */
+    function pbDropOk(drag, target) {
+        if (!drag || !target) return false;
+        if (drag.kind !== target.kind) return false;          /* no section-into-element, ever */
+        var at = pbDragItem(drag);
+        if (!at) return false;                                 /* unknown, stale or malformed */
+        var to = pbListAt(target.addr);
+        if (!to) return false;
+        if (drag.kind === 'column') {
+            /* Columns reorder inside the element that owns them. Moving one
+               to a different columns element would leave the source short of
+               the container count its layout preset asks for, and the layout
+               control deliberately never removes a container. */
+            return target.addr.sec === drag.addr.sec && target.addr.el === drag.addr.el;
+        }
+        if (drag.kind === 'element' && target.addr.el) {
+            /* Landing inside a column. Two questions, cheapest first.
+
+               The type check is the one that does the work today: columns
+               is the only container the schema has, so the only element
+               that can contain a column is a columns element, and a
+               columns element may not go into a column at all. The
+               descendant walk below it is therefore REDUNDANT as the
+               schema stands -- no mutation test can reach it, and that is
+               reported rather than hidden. It is kept because it states
+               the invariant itself ("never into yourself, never into what
+               you contain") rather than a fact about which types exist,
+               and a second container type would make it the one that
+               matters. */
+            if (at.node.type === 'columns') return false;
+            if (pbContainsId(at.node, target.addr.el)) return false;
+        }
+        var want = target.index;
+        if (typeof want !== 'number' || !isFinite(want) || want !== Math.floor(want) ||
+            want < 0 || want > to.length) return false;
+        return true;
+    }
+
+    /* How many nodes of each kind and type SURVIVE the sanitiser.
+
+       Sorted, so order -- the thing a move is for -- is not looked at.
+       Counted by type rather than by id, because the sanitiser MINTS a
+       fresh id for any node whose own id it cannot use (pbCssId in
+       cms.js), and a freshly minted id is different every call. Keying on
+       ids would therefore make two sanitiser runs over the same tree
+       disagree, and every drag on a draft containing one hand-written id
+       would be refused for no reason.
+
+       Counting is enough for the question being asked. The sanitiser only
+       ever DROPS nodes; it never adds one. So if the count for a type
+       falls, the move made it drop something, and that is the whole
+       claim. (That ids survive a move is a separate property, asserted
+       directly in the tests.) */
+    function pbSurvivors(secs) {
+        var out = [];
+        (Array.isArray(secs) ? secs : []).forEach(function (s) {
+            if (!s) return;
+            out.push('s|' + s.type);
+            (function walk(els) {
+                (Array.isArray(els) ? els : []).forEach(function (e) {
+                    if (!e) return;
+                    out.push('e|' + e.type);
+                    var cols = (e.content || {}).columns;
+                    if (Array.isArray(cols)) cols.forEach(function (c) { walk(c && c.elements); });
+                });
+            })(s.elements);
+        });
+        return out.sort().join('\n');
+    }
+
+    /* The one function that changes the tree.
+
+       Refuses first, moves second, and then checks its own work against
+       the sanitiser, which is the thing that decides what the renderer
+       will accept. The check is not "the tree is clean" -- a draft that
+       arrived by hand or by import may already contain something the
+       sanitiser drops, and freezing every drag because of it would be
+       both useless and confusing, since the move buttons beside the
+       handle would still work. The check is narrower and exactly the
+       question a move raises: DID THIS MOVE MAKE THE SANITISER THROW
+       SOMETHING AWAY THAT IT WAS KEEPING BEFORE? If so, the move created
+       a structure the schema does not allow and it is put back.
+
+       Runs once, on drop. Never while the pointer moves. */
+    function pbCommitMove(drag, target) {
+        if (!pbDropOk(drag, target)) return false;
+        var at = pbDragItem(drag);
+        var to = pbListAt(target.addr);
+        var i = at.index, from = at.list, item = at.node;
+        var want = Math.max(0, Math.min(Math.floor(target.index), to.length));
+        /* Dropping something back where it already is is not a change, so
+           it is not a save and not a dirty draft either. */
+        if (from === to && (want === i || want === i + 1)) return false;
+
+        var kept = pbSurvivors(CMS.sections.sanitize(pbDraft));
+
+        from.splice(i, 1);
+        var put = (from === to && want > i) ? want - 1 : want;
+        to.splice(put, 0, item);
+
+        if (pbSurvivors(CMS.sections.sanitize(pbDraft)) !== kept) {
+            to.splice(put, 1);
+            from.splice(i, 0, item);
+            return false;
+        }
+        return true;
+    }
+
+    /* ---------- the pointer layer ---------- */
+
+    var PB_DRAG_BOX  = { section: '#pbList', element: '.pb-els', column: '.pb-cols' };
+    var PB_DRAG_ITEM = { section: '.pb-sec', element: '.pb-elcard', column: '.pb-col' };
+    var PB_DRAG_WORD = { section: 'section', element: 'element', column: 'column' };
+
+    /* The DOM half of an address. Nothing is read from it that is not
+       fed straight back through pbListAt(). */
+    function pbAddrOfBox(node) {
+        if (!node || !node.getAttribute) return null;
+        if (node.id === 'pbList') return { kind: 'section' };
+        if (node.classList.contains('pb-els')) {
+            var el = node.getAttribute('data-list-el') || '';
+            return { kind: 'element',
+                     sec: node.getAttribute('data-list-sec') || '',
+                     el:  el,
+                     col: el ? parseInt(node.getAttribute('data-list-col'), 10) : -1 };
+        }
+        if (node.classList.contains('pb-cols')) {
+            return { kind: 'column',
+                     sec: node.getAttribute('data-cols-sec') || '',
+                     el:  node.getAttribute('data-cols-el') || '' };
+        }
+        return null;
+    }
+
+    var pbDrag = null;      /* the live drag, or null -- there is only ever one */
+    var pbDragLine = null;  /* the single drop indicator, reused */
+
+    function pbLine() {
+        if (!pbDragLine || !pbDragLine.parentNode) {
+            pbDragLine = document.createElement('div');
+            pbDragLine.className = 'pb-dropline';
+            pbDragLine.id = 'pbDropLine';
+            pbDragLine.setAttribute('aria-hidden', 'true');
+            document.body.appendChild(pbDragLine);
+        }
+        return pbDragLine;
+    }
+
+    /* Said out loud, for anyone not watching the indicator. */
+    function pbSay(msg) {
+        var el = $('#pbDragStatus');
+        if (el) el.textContent = msg || '';
+    }
+
+    var PB_HANDLE_LABEL = { section: 'Drag section', element: 'Drag element', column: 'Drag column' };
+
+    function pbHandle(kind) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'pb-handle';
+        b.setAttribute('data-pb-drag', kind);
+        b.setAttribute('aria-label', PB_HANDLE_LABEL[kind]);
+        b.title = PB_HANDLE_LABEL[kind] + ' — or use the move buttons, which work from the keyboard';
+        b.innerHTML = '<i class="fas fa-grip-vertical"></i>';
+        b.addEventListener('pointerdown', pbDragDown);
+        /* The handle is a real button so it can be tabbed to, but pressing
+           it does nothing: reordering from the keyboard is the move
+           buttons' job, and two ways to do it from one control is how
+           people end up with neither working. */
+        b.addEventListener('click', function (e) { e.preventDefault(); });
+        return b;
+    }
+
+    function pbDragDown(e) {
+        if (pbDrag) return;
+        /* Touch is NOT a drag here. The section list is the thing the
+           finger scrolls, and taking the gesture away from scrolling to
+           give it to reordering trades a control people need constantly
+           for one they need occasionally. Touch reorders with the move
+           buttons, which are on every row. */
+        if (e.pointerType === 'touch') return;
+        if (!e.isPrimary || (e.button !== 0 && e.button !== -1)) return;
+
+        var handle = e.currentTarget;
+        var kind = handle.getAttribute('data-pb-drag');
+        if (!PB_DRAG_ITEM[kind]) return;
+        var item = handle.closest(PB_DRAG_ITEM[kind]);
+        var box = item && item.parentNode && item.parentNode.closest
+            ? item.parentNode.closest(PB_DRAG_BOX[kind]) : null;
+        var addr = pbAddrOfBox(box);
+        if (!addr || addr.kind !== kind) return;
+
+        var drag = { kind: kind, addr: addr, node: item, box: box, handle: handle,
+                     pointerId: e.pointerId, x: e.clientX, y: e.clientY,
+                     live: false, target: null };
+        if (kind === 'column') drag.index = parseInt(item.getAttribute('data-col'), 10);
+        else drag.id = item.getAttribute(kind === 'section' ? 'data-sec-id' : 'data-el-id');
+
+        var at = pbDragItem(drag);
+        if (!at) return;
+        /* Noted so a tree that changes under the drag can be detected
+           rather than acted on. */
+        drag.ref = at.node;
+        pbDrag = drag;
+
+        e.preventDefault();
+        try { handle.setPointerCapture(e.pointerId); } catch (err) { /* not fatal */ }
+        document.addEventListener('pointermove', pbDragMove, true);
+        document.addEventListener('pointerup', pbDragUp, true);
+        document.addEventListener('pointercancel', pbDragBail, true);
+        document.addEventListener('keydown', pbDragKey, true);
+        /* Deliberately not capturing: with capture this would also fire
+           for an inner element losing focus, and a drag begun while a
+           text box was focused would cancel itself. */
+        window.addEventListener('blur', pbDragBail);
+    }
+
+    function pbDragMove(e) {
+        if (!pbDrag) return;
+        if (!pbDrag.live) {
+            /* A few pixels of slop, so a click on the handle is a click. */
+            if (Math.abs(e.clientX - pbDrag.x) + Math.abs(e.clientY - pbDrag.y) < 5) return;
+            pbDrag.live = true;
+            document.body.classList.add('pb-dragging');
+            pbDrag.node.classList.add('pb-drag-src');
+            pbSay('Moving this ' + PB_DRAG_WORD[pbDrag.kind] + '. Escape cancels.');
+        }
+        e.preventDefault();
+        /* A list taller than the window would otherwise be a trap: you can
+           pick a row up at the bottom and have nowhere to put it. Scrolling
+           is tied to the pointer MOVING rather than to a timer, so a still
+           hand never drifts. */
+        var edge = 48;
+        if (e.clientY < edge) window.scrollBy(0, -Math.min(24, edge - e.clientY));
+        else if (e.clientY > window.innerHeight - edge)
+            window.scrollBy(0, Math.min(24, e.clientY - (window.innerHeight - edge)));
+        pbDragAim(e.clientX, e.clientY);
+    }
+
+    /* Everything that happens per pointermove happens here, and all of it
+       is reading rectangles and moving ONE absolutely positioned line.
+       No part of the page is rebuilt and no part of the tree is touched
+       until the pointer comes up. */
+    function pbDragAim(x, y) {
+        var under = document.elementFromPoint(x, y);
+        var box = under && under.closest ? under.closest(PB_DRAG_BOX[pbDrag.kind]) : null;
+        var target = null;
+        if (box) {
+            var items = box.querySelectorAll(':scope > ' + PB_DRAG_ITEM[pbDrag.kind]);
+            var at = items.length, i, r;
+            for (i = 0; i < items.length; i++) {
+                r = items[i].getBoundingClientRect();
+                if (y < r.top + r.height / 2) { at = i; break; }
+            }
+            target = { kind: pbDrag.kind, addr: pbAddrOfBox(box), index: at, box: box, items: items };
+        }
+        var ok = !!(target && pbDropOk(pbDrag, target));
+        pbDrag.target = ok ? target : null;
+        pbDragPaint(target, ok);
+    }
+
+    function pbDragPaint(target, ok) {
+        var line = pbLine();
+        if (!target) {
+            line.style.display = 'none';
+            line.removeAttribute('data-ok');
+            return;
+        }
+        var items = target.items, bx = target.box.getBoundingClientRect(), top;
+        if (!items.length) {
+            top = bx.top + 4;
+        } else if (target.index >= items.length) {
+            top = items[items.length - 1].getBoundingClientRect().bottom;
+        } else {
+            top = items[target.index].getBoundingClientRect().top;
+        }
+        line.style.display = 'block';
+        line.style.left = bx.left + 'px';
+        line.style.width = Math.max(8, bx.width) + 'px';
+        line.style.top = (top - 1) + 'px';
+        line.className = 'pb-dropline' + (ok ? '' : ' bad');
+        line.setAttribute('data-ok', ok ? '1' : '0');
+    }
+
+    function pbDragUp() {
+        if (!pbDrag) return;
+        var drag = pbDrag, target = drag.target, live = drag.live;
+        pbDragEnd();
+        if (!live) return;                       /* a click on the handle, not a drag */
+        if (!target) { pbSay('Not a place this can go. Nothing changed.'); return; }
+        if (!pbCommitMove(drag, target)) { pbSay('Nothing moved.'); return; }
+        pbPersist();
+        buildBuilder();
+        pbSay('Moved the ' + PB_DRAG_WORD[drag.kind] + '.');
+    }
+
+    function pbDragKey(e) {
+        if (!pbDrag || e.key !== 'Escape') return;
+        e.preventDefault();
+        e.stopPropagation();
+        pbDragCancel();
+    }
+
+    function pbDragBail() { pbDragCancel(); }
+
+    /* Ends the gesture. Touches no data, on purpose: a cancelled drag and
+       a drag that never started have to be indistinguishable in the
+       draft, because to the author they are the same thing. */
+    function pbDragEnd() {
+        var d = pbDrag;
+        if (!d) return;
+        pbDrag = null;
+        document.removeEventListener('pointermove', pbDragMove, true);
+        document.removeEventListener('pointerup', pbDragUp, true);
+        document.removeEventListener('pointercancel', pbDragBail, true);
+        document.removeEventListener('keydown', pbDragKey, true);
+        window.removeEventListener('blur', pbDragBail);
+        try { d.handle.releasePointerCapture(d.pointerId); } catch (err) { /* already gone */ }
+        if (d.node) d.node.classList.remove('pb-drag-src');
+        document.body.classList.remove('pb-dragging');
+        if (pbDragLine) { pbDragLine.style.display = 'none'; pbDragLine.removeAttribute('data-ok'); }
+    }
+
+    function pbDragCancel() {
+        if (!pbDrag) return false;
+        var live = pbDrag.live;
+        pbDragEnd();
+        if (live) pbSay('Move cancelled. Nothing changed.');
+        return true;
+    }
+
+    /* ---------- keyboard reordering ----------
+
+       Drag is never the only way to move something. The move buttons on
+       every row do the same reorder through the same save path, and the
+       only thing that needed fixing for them was focus: the list is
+       rebuilt after a move, so the button that was pressed no longer
+       exists. Focus follows the NODE to its new row, and falls back to
+       the opposite button when the one that was used has just become
+       disabled at the end of the list. */
+
+    var pbFocusWish = null;
+
+    /* Deferred by one turn on purpose. A move rebuilds a list, and the
+       lists nest: rebuilding a section's elements rebuilds the columns
+       inside them, each of which finishes before the card that holds it
+       is attached. Anything that looked for the moved node DURING that
+       would look for it while it is still in pieces. */
+    function pbWishFocus(fn) {
+        pbFocusWish = fn;
+        setTimeout(pbTakeFocus, 0);
+    }
+
+    function pbTakeFocus() {
+        var fn = pbFocusWish;
+        pbFocusWish = null;
+        if (!fn) return;
+        var n = null;
+        try { n = fn(); } catch (e) { n = null; }
+        if (n && !n.disabled) { try { n.focus(); } catch (e) { /* detached */ } }
+    }
+
+    /* Ids can be anything an imported draft put there, so they are matched
+       by comparison rather than interpolated into a selector. */
+    function pbNodeFor(root, sel, attr, value) {
+        var all = (root || document).querySelectorAll(sel), i;
+        for (i = 0; i < all.length; i++) {
+            if (all[i].getAttribute(attr) === value) return all[i];
+        }
+        return null;
+    }
+
+    /* acts are literals from this file, never user data. */
+    function pbFocusIn(host, acts) {
+        for (var i = 0; i < acts.length; i++) {
+            var n = host.querySelector('[data-act="' + acts[i] + '"]');
+            if (n && !n.disabled) return n;
+        }
+        return null;
     }
 
     /* ---------- rendering ---------- */
@@ -644,6 +1159,7 @@ window.PBAdmin = function (host) {
 
             var head = document.createElement('div');
             head.className = 'pb-sec-head';
+            head.appendChild(pbHandle('section'));
 
             var expand = document.createElement('button');
             expand.type = 'button';
@@ -727,7 +1243,7 @@ window.PBAdmin = function (host) {
             body.innerHTML = '';
             if (view === 'content') {
                 if (!sec.elements) sec.elements = [];
-                pbElementList(body, sec.elements, 0);
+                pbElementList(body, sec.elements, 0, { sec: sec.id, el: '', col: -1 });
             } else if (view === 'design') {
                 /* Same invariant the element cards hold to: the section
                    renderer owns which keys do something, so the admin cannot
@@ -2015,15 +2531,21 @@ window.PBAdmin = function (host) {
                  content: make ? make() : {} };
     }
 
-    function pbElementList(host, list, depth) {
+    function pbElementList(host, list, depth, addr) {
         var wrap = document.createElement('div');
         wrap.className = 'pb-els';
+        /* The container's address, written where the pointer layer can
+           read it back. Nothing here is trusted on the way in: it goes
+           through pbListAt(), which resolves it against the live tree. */
+        wrap.setAttribute('data-list-sec', addr.sec);
+        wrap.setAttribute('data-list-el', addr.el || '');
+        wrap.setAttribute('data-list-col', addr.el ? String(addr.col) : '');
         host.appendChild(wrap);
 
         function repaint() {
             wrap.innerHTML = '';
             list.forEach(function (el, i) {
-                wrap.appendChild(pbElementCard(el, i, list, depth, repaint));
+                wrap.appendChild(pbElementCard(el, i, list, depth, repaint, addr));
             });
             if (!list.length) {
                 var e = document.createElement('p');
@@ -2056,13 +2578,14 @@ window.PBAdmin = function (host) {
         host.appendChild(add);
     }
 
-    function pbElementCard(el, i, list, depth, repaint) {
+    function pbElementCard(el, i, list, depth, repaint, addr) {
         var card = document.createElement('div');
         card.className = 'pb-elcard';
         card.setAttribute('data-el-id', el.id);
 
         var head = document.createElement('div');
         head.className = 'pb-elcard-head';
+        head.appendChild(pbHandle('element'));
         var name = document.createElement('strong');
         name.textContent = PB_EL_LABEL[el.type] || el.type;
         head.appendChild(name);
@@ -2086,22 +2609,31 @@ window.PBAdmin = function (host) {
         on.appendChild(document.createTextNode('On'));
         tools.appendChild(on);
 
+        /* The same swap the drag layer performs, through the same save
+           path, reachable from the keyboard. Focus follows the element
+           to its new row rather than being dropped on the floor. */
+        function moveEl(delta) {
+            var j = i + delta;
+            if (j < 0 || j >= list.length) return;
+            var t = list[j]; list[j] = list[i]; list[i] = t;
+            var id = el.id;
+            pbWishFocus(function () {
+                var c = pbNodeFor(null, '.pb-elcard', 'data-el-id', id);
+                return c && pbFocusIn(c, delta < 0 ? ['el-up', 'el-down'] : ['el-down', 'el-up']);
+            });
+            pbPersist(); repaint(); pbPaintPreview();
+        }
+
         var up = pbBtn('fa-arrow-up', 'Move up');
         up.disabled = i === 0;
         up.setAttribute('data-act', 'el-up');
-        up.addEventListener('click', function () {
-            var t = list[i - 1]; list[i - 1] = list[i]; list[i] = t;
-            pbPersist(); repaint(); pbPaintPreview();
-        });
+        up.addEventListener('click', function () { moveEl(-1); });
         tools.appendChild(up);
 
         var down = pbBtn('fa-arrow-down', 'Move down');
         down.disabled = i === list.length - 1;
         down.setAttribute('data-act', 'el-down');
-        down.addEventListener('click', function () {
-            var t = list[i + 1]; list[i + 1] = list[i]; list[i] = t;
-            pbPersist(); repaint(); pbPaintPreview();
-        });
+        down.addEventListener('click', function () { moveEl(1); });
         tools.appendChild(down);
 
         var dup = pbBtn('fa-clone', 'Duplicate');
@@ -2149,13 +2681,53 @@ window.PBAdmin = function (host) {
             bar.appendChild(addCol);
             body.appendChild(bar);
 
+            /* One wrapper around the column boxes, so the pointer layer has
+               a container to aim at and an address to read off it. */
+            var colsHost = document.createElement('div');
+            colsHost.className = 'pb-cols';
+            colsHost.setAttribute('data-cols-sec', addr.sec);
+            colsHost.setAttribute('data-cols-el', el.id);
+            body.appendChild(colsHost);
+
+            /* Columns carry no id -- they are positions in an array -- so
+               keyboard focus follows the position the column moved to. */
+            function moveCol(ci, delta) {
+                var j = ci + delta;
+                if (j < 0 || j >= cols.length) return;
+                var t = cols[j]; cols[j] = cols[ci]; cols[ci] = t;
+                var id = el.id, want = String(j);
+                pbWishFocus(function () {
+                    var owner = pbNodeFor(null, '.pb-elcard', 'data-el-id', id);
+                    var boxn = owner && pbNodeFor(owner, '.pb-col', 'data-col', want);
+                    return boxn && pbFocusIn(boxn,
+                        delta < 0 ? ['col-up', 'col-down'] : ['col-down', 'col-up']);
+                });
+                pbPersist(); repaint(); pbPaintPreview();
+            }
+
             cols.forEach(function (col, ci) {
                 var box = document.createElement('div');
                 box.className = 'pb-col';
                 box.setAttribute('data-col', String(ci));
                 var h = document.createElement('div');
                 h.className = 'pb-col-head';
-                h.innerHTML = '<strong>Column ' + (ci + 1) + '</strong>';
+                h.appendChild(pbHandle('column'));
+                var lbl = document.createElement('strong');
+                lbl.textContent = 'Column ' + (ci + 1);
+                h.appendChild(lbl);
+
+                var cup = pbBtn('fa-arrow-up', 'Move column up');
+                cup.disabled = ci === 0;
+                cup.setAttribute('data-act', 'col-up');
+                cup.addEventListener('click', function () { moveCol(ci, -1); });
+                h.appendChild(cup);
+
+                var cdn = pbBtn('fa-arrow-down', 'Move column down');
+                cdn.disabled = ci === cols.length - 1;
+                cdn.setAttribute('data-act', 'col-down');
+                cdn.addEventListener('click', function () { moveCol(ci, 1); });
+                h.appendChild(cdn);
+
                 var rm = pbBtn('fa-trash', 'Remove column', 'danger');
                 rm.setAttribute('data-act', 'del-col');
                 rm.addEventListener('click', function () {
@@ -2165,8 +2737,9 @@ window.PBAdmin = function (host) {
                 h.appendChild(rm);
                 box.appendChild(h);
                 if (!col.elements) col.elements = [];
-                pbElementList(box, col.elements, depth + 1);
-                body.appendChild(box);
+                pbElementList(box, col.elements, depth + 1,
+                    { sec: addr.sec, el: el.id, col: ci });
+                colsHost.appendChild(box);
             });
         } else {
             if (!el.content) el.content = {};
@@ -2395,6 +2968,10 @@ window.PBAdmin = function (host) {
                 /* A viewing mode and nothing else: this changes which width
                    the frame is rendered at and writes nothing to the draft,
                    the page or the responsive overrides. */
+                /* Switching the preview rebuilds nothing in the list, but
+                   a drag in flight loses the rectangles it was aiming at,
+                   so it ends here -- without touching the draft. */
+                pbDragCancel();
                 pbViewport = v[0];
                 pbPaintDevices();
                 pbFitPreview();
@@ -2562,6 +3139,23 @@ window.PBAdmin = function (host) {
         build: buildBuilder,
         wire:  wireBuilder,
         flush: pbFlush,
-        fit:   pbFitPreview
+        fit:   pbFitPreview,
+        /* The drag layer's own entry points. cancel() is what the admin
+           shell calls when the panel changes underneath a drag; check()
+           and move() are the exact functions the pointer handlers call,
+           exposed so the refusals can be driven with addresses the UI
+           cannot produce -- unknown ids, prototype keys, stale nodes --
+           instead of only the ones a mouse can reach. */
+        drag: {
+            check:  function (drag, target) { return pbDropOk(drag, target); },
+            move:   function (drag, target) {
+                if (!pbCommitMove(drag, target)) return false;
+                pbPersist();
+                buildBuilder();
+                return true;
+            },
+            cancel: pbDragCancel,
+            active: function () { return !!(pbDrag && pbDrag.live); }
+        }
     };
 };
