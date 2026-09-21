@@ -547,11 +547,30 @@
     ======================================================== */
     function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
+    /* Keys that are not data, whatever a JSON payload calls them.
+
+       JSON.parse('{"__proto__":{...}}') makes __proto__ an ORDINARY OWN
+       property, so the hasOwnProperty guard below lets it through -- and
+       `out[k] = over[k]` for that key is not an assignment, it is a call
+       to the prototype setter. Everything this file reads afterwards,
+       get() included, then resolves names that were never in the object:
+       a stored page, a stored colour, a stored anything.
+
+       Object.prototype is never reached (the damage is confined to the
+       object being built), but "confined" is not "safe" when the object
+       being built is the whole CMS state. Both the Supabase row and
+       localStorage arrive through here, so this is the one place the
+       guard belongs. */
+    function unsafeKey(k) {
+        return k === '__proto__' || k === 'constructor' || k === 'prototype';
+    }
+
     function merge(base, over) {
         var out = clone(base), k;
         if (!over) return out;
         for (k in over) {
             if (!Object.prototype.hasOwnProperty.call(over, k)) continue;
+            if (unsafeKey(k)) continue;
             if (over[k] && typeof over[k] === 'object' && !Array.isArray(over[k]) &&
                 out[k] && typeof out[k] === 'object' && !Array.isArray(out[k])) {
                 out[k] = merge(out[k], over[k]);
@@ -2315,8 +2334,18 @@
         for (var i = 0; i < list.length; i++) {
             var el = list[i];
             if (!el || el.enabled === false) continue;
-            var make = PB_ELEMENTS[el.type];
-            if (!make) continue;                      /* unknown type: skip, never throw */
+            /* pbPick, not a bare index: PB_ELEMENTS['constructor'] hands
+               back Object, PB_ELEMENTS['toString'] a function that returns a
+               string, and appendChild() then throws on what comes out --
+               taking EVERY section on the page down with it, not just this
+               element. "Skip, never throw" only holds if the lookup is a
+               membership test. */
+            var make = pbPick(PB_ELEMENTS, el.type);
+            /* The typeof is belt and braces: every own value in the map is
+               a function, so with pbPick in front of it no mutation can
+               tell it apart from `!make`. It stays because it states what
+               a renderer entry has to be. */
+            if (typeof make !== 'function') continue;  /* unknown type: skip, never throw */
             var node = make(el, depth);
             if (!node) continue;
             host.appendChild(node);
@@ -2405,7 +2434,7 @@
         /* Types laid out as a flex or grid item align themselves rather than
            their text, so alignment is emitted as box alignment as well. */
         if (out && tokens === PB_EL_TOKENS && (!allow || allow.indexOf('align') > -1)) {
-            var self = PB_SELF[str(style.align)];
+            var self = pbPick(PB_SELF, style.align);
             if (self) out += '--pbe-self:' + self[0] + ';--pbe-justify:' + self[1] + ';';
         }
         return out;
@@ -2432,8 +2461,13 @@
             var el = list[i];
             if (!el) continue;
             var id = pbCssId(el.id);
-            var allow = PB_EL_STYLE_KEYS[el.type];
-            if (id && allow) {
+            /* Same reason: PB_EL_STYLE_KEYS['valueOf'] is a function, and
+               allow.indexOf() inside pbDecls() then throws before a single
+               section has been drawn. */
+            var allow = pbPick(PB_EL_STYLE_KEYS, el.type);
+            /* isArr is redundant in the same way and kept for the same
+               reason: the value has to be a list for allow.indexOf(). */
+            if (id && isArr(allow)) {
                 css += pbScopedCSS('.pb-el[data-el="' + id + '"]', el, PB_EL_TOKENS, allow);
             }
             var cols = (el.content || {}).columns;
@@ -2478,7 +2512,7 @@
         for (var i = 0; i < sections.length; i++) {
             var sec = sections[i];
             if (!sec || sec.enabled === false) continue;
-            var cls = PB_SECTION_CLASS[sec.type] || 'pb-generic';
+            var cls = pbPick(PB_SECTION_CLASS, sec.type) || 'pb-generic';
             var node = pbEl('section', 'pb-section ' + cls);
             if (sec.id) node.setAttribute('data-sec', String(sec.id));
             var vis = sec.visibility || {};
@@ -3148,7 +3182,10 @@
         var pages = load().pages || {}, out = [], k;
         for (k in pages) {
             if (!Object.prototype.hasOwnProperty.call(pages, k)) continue;
-            if (PB_MOUNTED[k] || (pages[k] && pages[k].builderMount)) out.push(k);
+            /* pbPick for consistency with every other allow-list read by a
+               stored name. Unreachable today -- these keys come from the
+               admin's own pages object -- and said so rather than counted. */
+            if (pbPick(PB_MOUNTED, k) || (pages[k] && pages[k].builderMount)) out.push(k);
         }
         out.sort();
         return out;
@@ -3778,6 +3815,11 @@
             schemaOf: pbSchemaOf,
             safeUrl: pbUrl,
             safeCssValue: pbCssValue,
+            /* A URL that is safe INSIDE url(...): pbUrl's scheme rules plus a
+               refusal of every character that could close the function or the
+               declaration around it. Exported so the admin's share-card
+               preview uses this rather than a second copy of the rules. */
+            safeCssUrl: pbCssUrl,
             elementStyleKeys: PB_EL_STYLE_KEYS,
             sectionStyleKeys: PB_SEC_STYLE_KEYS,
             icons: PB_ICONS,

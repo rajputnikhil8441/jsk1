@@ -1516,10 +1516,14 @@
         var url   = CMS.seoUrlFor ? CMS.seoUrlFor(page) : '';
         var ogT   = CMS.seoOgFor ? CMS.seoOgFor(page, 'title') : title;
         var ogD   = CMS.seoOgFor ? CMS.seoOgFor(page, 'description') : desc;
-        var ogI   = CMS.seoOgFor ? CMS.seoAbsUrl(CMS.seoOgFor(page, 'image')) : '';
+        /* seoCrawlableImage, not seoAbsUrl: it is the function paintSeo()
+           itself uses, so the card shows what the tag will actually carry.
+           absUrl() alone would happily show a blob: or data: URL that the
+           real og:image refuses to emit. */
+        var ogI   = CMS.seoOgFor ? CMS.seoCrawlableImage(CMS.seoOgFor(page, 'image')) : '';
         var twT   = CMS.seoTwitterFor ? CMS.seoTwitterFor(page, 'title') : ogT;
         var twD   = CMS.seoTwitterFor ? CMS.seoTwitterFor(page, 'description') : ogD;
-        var twI   = CMS.seoTwitterFor ? CMS.seoAbsUrl(CMS.seoTwitterFor(page, 'image')) : ogI;
+        var twI   = CMS.seoTwitterFor ? CMS.seoCrawlableImage(CMS.seoTwitterFor(page, 'image')) : ogI;
         var crumb = url.replace(/^https?:\/\//, '').replace(/\/$/, '').split('/').join(' › ');
 
         var g = $('#pvGoogle');
@@ -1531,14 +1535,30 @@
                 (page.robots && page.robots.index === false
                     ? '<div class="pv-noindex"><i class="fas fa-eye-slash"></i> This page is set to noindex, so it will not appear at all.</div>' : '');
         }
+        /* The share image is the one value here that is not written as text.
+
+           It used to be interpolated into a style="" attribute, and esc()
+           does not protect that: the attribute is HTML, so &#39; decodes
+           back to a quote BEFORE the CSS parser sees it, and a share image
+           of  x'); background-image:url('http://elsewhere/  closed the
+           declaration and opened its own. The preview then fetched it.
+
+           Two things stop that now. The URL goes through the renderer's own
+           pbCssUrl() -- the same check that guards every url() the builder
+           emits, which refuses quotes, parentheses, semicolons and braces
+           along with the schemes pbUrl() already refuses. And it is applied
+           through the CSSOM rather than as markup, where a value can only
+           ever set the one property it is assigned to. */
         function card(host, t, d, img, dom) {
             if (!host) return;
+            var safe = (CMS.sections && CMS.sections.safeCssUrl) ? CMS.sections.safeCssUrl(img) : '';
             host.innerHTML =
-                (img ? '<div class="pv-img" style="background-image:url(\'' + esc(img) + '\')"></div>'
-                     : '<div class="pv-img pv-img-empty">no share image set</div>') +
+                '<div class="pv-img' + (safe ? '' : ' pv-img-empty') + '">' +
+                    (safe ? '' : 'no share image set') + '</div>' +
                 '<div class="pv-body"><div class="pv-dom">' + esc(dom) + '</div>' +
                 '<div class="pv-ct">' + esc(t || '(no title)') + '</div>' +
                 '<div class="pv-cd">' + esc(d || '') + '</div></div>';
+            if (safe) host.querySelector('.pv-img').style.backgroundImage = 'url("' + safe + '")';
         }
         var domain = url.replace(/^https?:\/\//, '').split('/')[0];
         card($('#pvOg'), ogT, ogD, ogI, domain);

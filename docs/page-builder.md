@@ -1005,6 +1005,141 @@ refuses `data:` and `blob:` for a crawler. The field still accepts a full
   means adding the tag to the file.
 ---
 
+## Final hardening (milestone F)
+
+Milestone F added no features. It audited the whole lifecycle — admin, draft,
+save, Supabase, publish, static page, public render, SEO output — and fixed
+what that turned up.
+
+### What V2 is, finally
+
+| | |
+| --- | --- |
+| **Sections** | hero, text, image, image + text, cards, columns, banner |
+| **Elements** | heading, text, image, button, card, columns, divider, spacer, icon, notice, feature box, FAQ, social links |
+| **Columns** | 13 ratio presets, per-breakpoint column counts, one level of nesting |
+| **Responsive** | desktop / tablet / mobile, at the site's own 1024px and 768px breakpoints; inheritance is the absence of a value |
+| **Global design** | 10 colour roles, 8 typography roles, referenced as `@role` and emitted as `var(--pbg-role, constant)` |
+| **Reusable sections** | device-local library, export / import, inserted as an independent copy |
+| **Templates** | 6, a code registry rather than a table |
+| **Assets** | a committed manifest of what is really on disk, with real dimensions read from file headers |
+| **Preview** | the real page in an iframe at 1280 / 900 / 390 |
+| **Reordering** | pointer drag with handles, and arrow buttons that work from the keyboard and on touch |
+| **Drafts** | device-local, auto-saved, with one recovery snapshot per page |
+| **Publishing** | an explicit action; nothing else writes to the live row |
+| **SEO** | unchanged and authoritative; the builder is visible content, not metadata |
+
+### Defects this pass found
+
+**An allow-list read with a bare index is not a membership test.** Four
+lookups on the *public render path* were keyed by a stored type and read with
+`map[name]`, so a section or element whose type was `constructor`, `toString`
+or `valueOf` got back a function:
+
+- `PB_ELEMENTS[el.type]` — the function was then called and its result passed
+  to `appendChild()`, which threw. **One bad element removed every section on
+  the page**, not just itself.
+- `PB_EL_STYLE_KEYS[el.type]` — a function where an array was expected, and
+  `allow.indexOf()` threw before a single section had been drawn.
+- `PB_SECTION_CLASS[sec.type]` — `function Object() { [native code] }` was
+  concatenated into the section's class attribute.
+- `PB_SELF[style.align]` — `--pbe-self:undefined` was emitted into the CSS.
+
+All four now go through `pbPick()`, the guarded lookup the rest of the file
+already used. The renderer's own promise — *unknown types are skipped, never
+thrown on* — is true now.
+
+This matters because `publishedSections()` deliberately does **not** run the
+whole-tree sanitiser: what was published is what renders, and the renderer's
+per-value guards are the boundary. That design is unchanged; it just has no
+holes in it now.
+
+**`__proto__` is a key, not an instruction.** `JSON.parse` makes it an
+ordinary own property, so the `hasOwnProperty` guard in `merge()` passed it —
+and assigning it is a call to the prototype setter, not a write. A stored
+`{"__proto__":{"pwned":1}}` made `CMS.get('pwned')` return 1, and a page key
+on an injected prototype would have fed the SEO engine values that were never
+in the object. `Object.prototype` was never reached, so the damage was
+confined — but the object being built is the whole CMS state. `merge()` now
+refuses `__proto__`, `constructor` and `prototype`, which covers both the
+localStorage path and the Supabase row, since both arrive through it.
+
+**The share-card preview could be made to fetch anything.** The OG image was
+interpolated into a `style=""` attribute, and escaping for HTML does not
+protect a CSS context: the attribute is parsed as HTML first, so `&#39;`
+becomes a quote again before the CSS parser sees it. An image value of
+`x'); background-image:url('http://elsewhere/` closed the declaration, opened
+its own, and the admin fetched it. The URL now goes through the renderer's own
+`pbCssUrl()` and is applied through the CSSOM, where a value can only ever set
+the property it is assigned to.
+
+**The preview disagreed with the tag.** It resolved the share image with
+`absUrl()` while `paintSeo()` emits it through `crawlableImage()`, so the card
+could show a `data:` or `blob:` image the page would never publish. It uses
+the same function as the tag now.
+
+### The limits, confirmed
+
+| | |
+| --- | --- |
+| Sections per page | 200 |
+| Elements per list | 200 |
+| Columns per element | 12 |
+| Nesting | 3 levels |
+| Library items per import | 500 |
+
+Past those, the extra is dropped rather than stored. Malformed JSON, a file
+that is not a library, `null`, and junk rows inside a valid wrapper each fail
+with a message rather than a stack trace.
+
+### What a corrupted store does
+
+Truncated JSON, a bare string, `null`, an array at the top level, `pages` as a
+string, `sections` as an object, `content` as a string, `columns` as a number,
+`style` as an array — every one of them leaves the page showing the content
+its HTML file ships, with no console error. Where a payload is partly valid,
+the valid part still renders.
+
+### Performance, measured
+
+On 30 sections / 90 columns / 240 elements:
+
+- full repaint of the public page: **~2ms**
+- sanitising the whole tree: **~2ms**
+- generated CSS: ~29KB
+- 25 consecutive repaints: **no style tags added**, the same nodes left behind
+- one Supabase `GET`, no writes, and no host contacted beyond the fonts and
+  icons the site already ships
+
+The admin figures from milestone D are unchanged: 300 pointer moves during a
+drag in ~12ms, with zero nodes added to or removed from the list.
+
+### Known limitations
+
+These are deliberate, not gaps:
+
+- **No undo/redo.** The draft auto-saves; the two actions that used to lose
+  work take a recovery snapshot instead.
+- **No touch drag.** The list is what a finger scrolls. Touch reorders with
+  the arrow buttons, which every row has.
+- **No uploads.** The asset manifest is generated from what is committed;
+  adding an image means committing it and regenerating the manifest.
+- **The builder cannot create a URL.** Every page is a file in the repository.
+- **Columns reorder within their owner**, and element drags stay inside the
+  open section.
+- **One recovery snapshot per page**, not a history.
+- **Structured data is limited to the blocks a page's HTML ships a tag for.**
+- **No WCAG conformance claim is made.** What was verified is specific and
+  listed: accessible names on every control, labelled inputs, correct
+  `aria-expanded` and `aria-current`, a visible keyboard focus ring, working
+  keyboard reordering, disabled controls that say why, decorative icons hidden
+  from screen readers, and alt text preserved — including an empty `alt` for a
+  decorative image rather than none at all.
+- **The public renderer trusts what was published**, by design: the sanitiser
+  runs on import, on templates and on recovery, and the renderer defends
+  value by value. Writing the published row requires an authenticated admin.
+---
+
 ## Safety
 
 - **No arbitrary HTML.** Every element is built with `document.createElement`
@@ -1016,7 +1151,12 @@ refuses `data:` and `blob:` for a crawler. The field still accepts a full
   image is dropped. The admin is warned at the field while typing.
 - **Depth guard.** Nested rendering stops after three levels.
 - **Unknown types are skipped**, never thrown on, so an older site can render a
-  newer draft without breaking.
+  newer draft without breaking. Every allow-list keyed by stored data is read
+  through `pbPick()`, which is a membership test — `map[name]` is not one, and
+  milestone F found four places on the render path where that mattered.
+- **A JSON key cannot become a prototype.** `merge()` refuses `__proto__`,
+  `constructor` and `prototype`, so neither the Supabase row nor localStorage
+  can put names into the state that were never in the object.
 - **Style values cannot inject CSS.** Border and Shadow are free text and end
   up inside a generated `<style>` block, so a value such as
   `1px solid red; } body { display:none } .x {` would otherwise close the rule
@@ -1029,9 +1169,11 @@ refuses `data:` and `blob:` for a crawler. The field still accepts a full
   interpolated into `[data-sec="..."]`, so only `[A-Za-z0-9_-]{1,64}` emits
   CSS. Generated ids always pass; a hand-edited or imported config that does
   not simply gets no CSS, and still renders.
-- **Drafts stay on the device.** `Remote.publish()` strips `builderDrafts`
-  from the payload, so unpublished copy is never uploaded to the public row
-  that every visitor downloads with the anon key.
+- **Drafts stay on the device.** `Remote.publish()` strips `builderDrafts`,
+  `builderLibrary` and `builderRecovery` from the payload, so unpublished copy,
+  the reusable-section workbench and recovery snapshots are never uploaded to
+  the public row that every visitor downloads with the anon key. A pull keeps
+  all three rather than letting the row overwrite them.
 - **Anon key only.** Nothing here touches authentication, RLS or service-role
   credentials.
 
@@ -1193,3 +1335,18 @@ responsive overrides and assets; hostile builder input on a page with SEO set;
 the admin's own state, saving, page switching and disabled reasons; and the
 admin at 1440, 900 and 390px with accessible names, tab order and a visible
 keyboard focus ring.
+
+`tests/test_pagebuilder_hardening.js` — 203 assertions, milestone F. Aimed at
+the public render path, because that is the one place the whole-tree sanitiser
+deliberately does not run.
+
+Covered: a stored type of `constructor`, `toString`, `valueOf`, `__proto__` or
+`hasOwnProperty` in every position that reads an allow-list; `__proto__` as a
+key in localStorage and in the Supabase row; eighteen shapes of corrupted or
+malformed storage; every structural limit; a hostile library file; all
+thirteen element types with nothing and with everything, then again with real
+content and their accessibility attributes; three breakpoints with inheritance
+and overrides in both directions; the share-card preview against ten CSS
+injection attempts; drafts, library and recovery staying off the wire and out
+of the page; 30 sections / 90 columns / 240 elements with repaint, sanitise
+and style-tag counts; and the pages that are not builder pages.
