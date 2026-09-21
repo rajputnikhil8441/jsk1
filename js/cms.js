@@ -1855,6 +1855,80 @@
         return '';
     }
 
+    /* =====================================================
+       ASSET PATHS (milestone B)
+       -----------------------------------------------------
+       pbUrl() above answers "is this safe to put in an href or a src". It
+       says yes to https://anywhere, which is right for a link an author
+       typed and wrong for the asset picker, whose whole point is that it
+       can only ever produce a file that is already in this repository.
+
+       So this is a second, STRICTER question asked only of asset paths:
+       is this one of ours? It is built on pbUrl rather than beside it --
+       a path has to pass that first -- and then has to be a plain relative
+       path, under a root that is already public, ending in a real image
+       extension.
+
+       The Image element itself keeps pbUrl, so a page that already names
+       an image some other way goes on rendering. This is what the picker
+       and the manifest are held to, not a new rule for old data. */
+
+    var PB_ASSET_ROOTS = ['assets/images/', 'assets/icons/'];
+    var PB_ASSET_EXT = /\.(png|jpe?g|gif|svg|webp)$/i;
+
+    function pbAsset(raw) {
+        var v = str(raw);
+        if (!v) return '';
+        /* Defence in depth, and honestly redundant today: the character
+           class below already refuses everything pbUrl would (a scheme
+           needs a colon, and a colon is not in it). It stays because pbUrl
+           is the one place this project decides what a scheme may be, and
+           relaxing the class later should not quietly reopen that. No test
+           can tell it apart from its absence -- removing it alone breaks
+           nothing, which is the point of saying so here. */
+        if (pbUrl(v) !== v) return '';
+        /* A traversal segment anywhere, however it is spelled. */
+        if (v.indexOf('..') > -1) return '';
+        /* No query, fragment, backslash or anything else exotic: an asset
+           path is a plain file path and nothing else. */
+        if (!/^[A-Za-z0-9][A-Za-z0-9._\/-]*$/.test(v)) return '';
+        if (v.indexOf('//') > -1) return '';
+        if (!PB_ASSET_EXT.test(v)) return '';
+        for (var i = 0; i < PB_ASSET_ROOTS.length; i++) {
+            if (v.lastIndexOf(PB_ASSET_ROOTS[i], 0) === 0 &&
+                v.length > PB_ASSET_ROOTS[i].length) return v;
+        }
+        return '';
+    }
+
+    /* The manifest is a generated file (tools/build-asset-manifest.js), but
+       it arrives over the network like anything else, so it is rebuilt here
+       rather than trusted: an entry whose path is not one of ours is
+       dropped, and every other field is re-derived or bounded. */
+    function pbAssetList(raw) {
+        var out = [], seen = {}, i;
+        var items = (raw && isArr(raw.assets)) ? raw.assets : (isArr(raw) ? raw : []);
+        for (i = 0; i < items.length && i < 2000; i++) {
+            var it = items[i];
+            if (!it || typeof it !== 'object') continue;
+            var path = pbAsset(it.path);
+            if (!path) continue;
+            if (Object.prototype.hasOwnProperty.call(seen, path)) continue;
+            seen[path] = 1;
+            var entry = { path: path, name: str(it.name).slice(0, 120) || path,
+                          group: str(it.group).slice(0, 60) || 'Images' };
+            /* Dimensions are optional on purpose: the generator leaves them
+               out rather than guessing, and so does this. */
+            var w = parseInt(it.w, 10), h = parseInt(it.h, 10);
+            if (w > 0 && h > 0 && w < 100000 && h < 100000) { entry.w = w; entry.h = h; }
+            var bytes = parseInt(it.bytes, 10);
+            if (bytes > 0) entry.bytes = bytes;
+            out.push(entry);
+        }
+        out.sort(function (a, b) { return a.path < b.path ? -1 : a.path > b.path ? 1 : 0; });
+        return out;
+    }
+
     /* A URL that is about to be interpolated into a CSS url("...") rather
        than handed to setAttribute. Quotes, parentheses and whitespace could
        close the function and the rule, so they are refused outright. */
@@ -3561,6 +3635,11 @@
             renderInto: renderSectionsInto,
 
             /* untrusted data in, clean sections out */
+            /* asset paths (milestone B) */
+            assetPath: pbAsset,
+            assetList: pbAssetList,
+            assetRoots: PB_ASSET_ROOTS,
+
             sanitize: pbCleanSections,
             reid: pbReidSections,
             contentKeys: PB_CONTENT_KEYS,

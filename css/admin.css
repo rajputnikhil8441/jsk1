@@ -1774,7 +1774,10 @@ input[type="password"]:focus {
 
 .pb-split {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 430px;
+    /* The preview holds a page laid out at up to 1280px, so every pixel the
+       column gains is a pixel less scaling. It grows with the window and
+       stops before it starves the editor beside it. */
+    grid-template-columns: minmax(0, 1fr) clamp(430px, 40vw, 820px);
     gap: 16px;
     align-items: start;
 }
@@ -1928,6 +1931,14 @@ input[type="password"]:focus {
     display: block;
     border: 0;
     background: #fff;
+    /* A hairline so the viewport edge is visible against the stage, which
+       is what tells an author where the page actually ends. */
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, .18), 0 6px 18px rgba(0, 0, 0, .28);
+}
+
+.pb-viewport-tag {
+    margin: 6px 0 8px;
+    font-variant-numeric: tabular-nums;
 }
 
 .pb-devices .pb-devtab {
@@ -2363,4 +2374,93 @@ input[type="password"]:focus {
     background: #ffffff;
     color: #222222;
     overflow: hidden;
+}
+
+
+/* ---------- asset picker (milestone B) ---------- */
+
+.pb-asset-card { max-width: 900px; }
+
+.pb-asset-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.pb-asset {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 7px;
+    border: 1px solid var(--a-line);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, .02);
+    color: var(--a-text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.pb-asset:hover { border-color: var(--a-accent); }
+
+.pb-asset.selected {
+    border-color: var(--a-accent);
+    box-shadow: 0 0 0 1px var(--a-accent) inset;
+}
+
+/* A light tile behind the thumbnail: many of these images are drawn for a
+   white page and vanish on the admin's dark panel. */
+.pb-asset-thumb {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 78px;
+    border-radius: 5px;
+    background: #f2f4f7;
+    overflow: hidden;
+}
+
+.pb-asset-thumb img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+.pb-asset-name {
+    font-size: 11.5px;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.pb-asset-meta { color: var(--a-dim); font-size: 10.5px; }
+
+.pb-asset-chosen {
+    margin-right: auto;
+    color: var(--a-dim);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+.pb-asset-empty { color: var(--a-dim); font-size: 12.5px; padding: 14px 2px; }
+
+/* the field's own button + current-image strip */
+.pb-imgpick { display: flex; align-items: center; gap: 8px; }
+.pb-imgpick .adm-btn { flex: none; }
+
+.pb-imgpick-thumb {
+    flex: none;
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--a-line);
+    border-radius: 5px;
+    background: #f2f4f7;
+    object-fit: contain;
+}
+
+.pb-imgpick-path {
+    color: var(--a-dim);
+    font-size: 11px;
+    overflow-wrap: anywhere;
+    min-width: 0;
 }

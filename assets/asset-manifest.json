@@ -1,0 +1,707 @@
+{
+ "kind": "jsk1-asset-manifest",
+ "version": 1,
+ "roots": [
+  "assets/images/",
+  "assets/images/games/",
+  "assets/icons/"
+ ],
+ "assets": [
+  {
+   "path": "assets/icons/18plus.png",
+   "name": "18plus",
+   "group": "Icons",
+   "bytes": 8446,
+   "w": 150,
+   "h": 150
+  },
+  {
+   "path": "assets/icons/gamecare.png",
+   "name": "gamecare",
+   "group": "Icons",
+   "bytes": 7146,
+   "w": 150,
+   "h": 150
+  },
+  {
+   "path": "assets/icons/gt.png",
+   "name": "gt",
+   "group": "Icons",
+   "bytes": 5426,
+   "w": 150,
+   "h": 150
+  },
+  {
+   "path": "assets/icons/lock.svg",
+   "name": "lock",
+   "group": "Icons",
+   "bytes": 516,
+   "w": 448,
+   "h": 512
+  },
+  {
+   "path": "assets/icons/whatsapp.png",
+   "name": "whatsapp",
+   "group": "Icons",
+   "bytes": 2662,
+   "w": 225,
+   "h": 225
+  },
+  {
+   "path": "assets/images/favicon.png",
+   "name": "favicon",
+   "group": "Site images",
+   "bytes": 6327,
+   "w": 512,
+   "h": 512
+  },
+  {
+   "path": "assets/images/games/3cardj.jpg",
+   "name": "3cardj",
+   "group": "Games",
+   "bytes": 45633,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/aaa.jpg",
+   "name": "aaa",
+   "group": "Games",
+   "bytes": 23673,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/aaa2.jpg",
+   "name": "aaa2",
+   "group": "Games",
+   "bytes": 20400,
+   "w": 300,
+   "h": 300
+  },
+  {
+   "path": "assets/images/games/ab20.jpg",
+   "name": "ab20",
+   "group": "Games",
+   "bytes": 32852,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/ab3.jpg",
+   "name": "ab3",
+   "group": "Games",
+   "bytes": 32446,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/ab4.jpg",
+   "name": "ab4",
+   "group": "Games",
+   "bytes": 38275,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/abj.jpg",
+   "name": "abj",
+   "group": "Games",
+   "bytes": 32321,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/baccarat.jpg",
+   "name": "baccarat",
+   "group": "Games",
+   "bytes": 41374,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/baccarat2.jpg",
+   "name": "baccarat2",
+   "group": "Games",
+   "bytes": 34316,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/ballbyball.jpg",
+   "name": "ballbyball",
+   "group": "Games",
+   "bytes": 26876,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/btable.jpg",
+   "name": "btable",
+   "group": "Games",
+   "bytes": 37914,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/btable2.jpg",
+   "name": "btable2",
+   "group": "Games",
+   "bytes": 29023,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/card32.jpg",
+   "name": "card32",
+   "group": "Games",
+   "bytes": 24643,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/card32eu.jpg",
+   "name": "card32eu",
+   "group": "Games",
+   "bytes": 16483,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/cmatch20.jpg",
+   "name": "cmatch20",
+   "group": "Games",
+   "bytes": 35273,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/cmeter.jpg",
+   "name": "cmeter",
+   "group": "Games",
+   "bytes": 39760,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/cmeter1.jpg",
+   "name": "cmeter1",
+   "group": "Games",
+   "bytes": 8282,
+   "w": 300,
+   "h": 300
+  },
+  {
+   "path": "assets/images/games/cricketv3.jpg",
+   "name": "cricketv3",
+   "group": "Games",
+   "bytes": 34586,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/dt20.jpg",
+   "name": "dt20",
+   "group": "Games",
+   "bytes": 44377,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/dt202.jpg",
+   "name": "dt202",
+   "group": "Games",
+   "bytes": 30598,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/dt6.jpg",
+   "name": "dt6",
+   "group": "Games",
+   "bytes": 39977,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/dtl20.jpg",
+   "name": "dtl20",
+   "group": "Games",
+   "bytes": 36136,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/dum10.jpg",
+   "name": "dum10",
+   "group": "Games",
+   "bytes": 12677,
+   "w": 300,
+   "h": 300
+  },
+  {
+   "path": "assets/images/games/goal.jpg",
+   "name": "goal",
+   "group": "Games",
+   "bytes": 28925,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/goal2.jpg",
+   "name": "goal2",
+   "group": "Games",
+   "bytes": 44591,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/joker1.jpg",
+   "name": "joker1",
+   "group": "Games",
+   "bytes": 30932,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/joker120.jpg",
+   "name": "joker120",
+   "group": "Games",
+   "bytes": 34978,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/joker20.jpg",
+   "name": "joker20",
+   "group": "Games",
+   "bytes": 29201,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/lottcard.jpg",
+   "name": "lottcard",
+   "group": "Games",
+   "bytes": 29874,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/lucky15.jpg",
+   "name": "lucky15",
+   "group": "Games",
+   "bytes": 30305,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/lucky5.jpg",
+   "name": "lucky5",
+   "group": "Games",
+   "bytes": 19242,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/lucky7.jpg",
+   "name": "lucky7",
+   "group": "Games",
+   "bytes": 23560,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/lucky7eu.jpg",
+   "name": "lucky7eu",
+   "group": "Games",
+   "bytes": 37692,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/lucky7eu2.jpg",
+   "name": "lucky7eu2",
+   "group": "Games",
+   "bytes": 34507,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/notenum.jpg",
+   "name": "notenum",
+   "group": "Games",
+   "bytes": 29699,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/ourroullete.jpg",
+   "name": "ourroullete",
+   "group": "Games",
+   "bytes": 34033,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/patti2.jpg",
+   "name": "patti2",
+   "group": "Games",
+   "bytes": 27901,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/poison.jpg",
+   "name": "poison",
+   "group": "Games",
+   "bytes": 21814,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/poison20.jpg",
+   "name": "poison20",
+   "group": "Games",
+   "bytes": 31559,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/poker.jpg",
+   "name": "poker",
+   "group": "Games",
+   "bytes": 27361,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/poker20.jpg",
+   "name": "poker20",
+   "group": "Games",
+   "bytes": 36077,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/poker6.jpg",
+   "name": "poker6",
+   "group": "Games",
+   "bytes": 21925,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/queen.jpg",
+   "name": "queen",
+   "group": "Games",
+   "bytes": 32298,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/race17.jpg",
+   "name": "race17",
+   "group": "Games",
+   "bytes": 31512,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/race2.jpg",
+   "name": "race2",
+   "group": "Games",
+   "bytes": 20850,
+   "w": 300,
+   "h": 300
+  },
+  {
+   "path": "assets/images/games/race20.jpg",
+   "name": "race20",
+   "group": "Games",
+   "bytes": 34895,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/roulette11.jpg",
+   "name": "roulette11",
+   "group": "Games",
+   "bytes": 34570,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/roulette12.jpg",
+   "name": "roulette12",
+   "group": "Games",
+   "bytes": 44277,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/roulette13.jpg",
+   "name": "roulette13",
+   "group": "Games",
+   "bytes": 52014,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/sicbo.jpg",
+   "name": "sicbo",
+   "group": "Games",
+   "bytes": 30474,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/sicbo2.jpg",
+   "name": "sicbo2",
+   "group": "Games",
+   "bytes": 37999,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/superover.jpg",
+   "name": "superover",
+   "group": "Games",
+   "bytes": 27666,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/superover2.jpg",
+   "name": "superover2",
+   "group": "Games",
+   "bytes": 31346,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/superover3.jpg",
+   "name": "superover3",
+   "group": "Games",
+   "bytes": 21994,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/teen.jpg",
+   "name": "teen",
+   "group": "Games",
+   "bytes": 32370,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/teen1.jpg",
+   "name": "teen1",
+   "group": "Games",
+   "bytes": 33211,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/teen120.jpg",
+   "name": "teen120",
+   "group": "Games",
+   "bytes": 34350,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/teen20.jpg",
+   "name": "teen20",
+   "group": "Games",
+   "bytes": 37338,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/teen20b.jpg",
+   "name": "teen20b",
+   "group": "Games",
+   "bytes": 26679,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/teen20c.jpg",
+   "name": "teen20c",
+   "group": "Games",
+   "bytes": 34276,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/teen20v1.jpg",
+   "name": "teen20v1",
+   "group": "Games",
+   "bytes": 24316,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/teen3.jpg",
+   "name": "teen3",
+   "group": "Games",
+   "bytes": 23988,
+   "w": 300,
+   "h": 300
+  },
+  {
+   "path": "assets/images/games/teen32.jpg",
+   "name": "teen32",
+   "group": "Games",
+   "bytes": 24023,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/teen33.jpg",
+   "name": "teen33",
+   "group": "Games",
+   "bytes": 26494,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/teen41.jpg",
+   "name": "teen41",
+   "group": "Games",
+   "bytes": 42298,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/teen42.jpg",
+   "name": "teen42",
+   "group": "Games",
+   "bytes": 35177,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/teen6.jpg",
+   "name": "teen6",
+   "group": "Games",
+   "bytes": 44994,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/teen62.gif",
+   "name": "teen62",
+   "group": "Games",
+   "bytes": 2995769,
+   "w": 224,
+   "h": 225
+  },
+  {
+   "path": "assets/images/games/teen8.jpg",
+   "name": "teen8",
+   "group": "Games",
+   "bytes": 13966,
+   "w": 300,
+   "h": 300
+  },
+  {
+   "path": "assets/images/games/teen9.jpg",
+   "name": "teen9",
+   "group": "Games",
+   "bytes": 44538,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/teenmuf.jpg",
+   "name": "teenmuf",
+   "group": "Games",
+   "bytes": 35004,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/teensin.jpg",
+   "name": "teensin",
+   "group": "Games",
+   "bytes": 29023,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/teenunique.jpg",
+   "name": "teenunique",
+   "group": "Games",
+   "bytes": 36709,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/trap.jpg",
+   "name": "trap",
+   "group": "Games",
+   "bytes": 37781,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/trio.jpg",
+   "name": "trio",
+   "group": "Games",
+   "bytes": 28298,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/war.jpg",
+   "name": "war",
+   "group": "Games",
+   "bytes": 38168,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/worli.jpg",
+   "name": "worli",
+   "group": "Games",
+   "bytes": 38637,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/worli2.jpg",
+   "name": "worli2",
+   "group": "Games",
+   "bytes": 39236,
+   "w": 400,
+   "h": 400
+  },
+  {
+   "path": "assets/images/games/worli3.gif",
+   "name": "worli3",
+   "group": "Games",
+   "bytes": 961467,
+   "w": 169,
+   "h": 169
+  },
+  {
+   "path": "assets/images/logo.png",
+   "name": "logo",
+   "group": "Site images",
+   "bytes": 17947,
+   "w": 675,
+   "h": 229
+  },
+  {
+   "path": "assets/images/ssl.png",
+   "name": "ssl",
+   "group": "Site images",
+   "bytes": 19873,
+   "w": 202,
+   "h": 100
+  }
+ ]
+}

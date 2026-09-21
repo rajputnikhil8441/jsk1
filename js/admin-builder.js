@@ -647,13 +647,13 @@ window.PBAdmin = function (host) {
         heading: [['text', 'Text', 'text'],
                   ['level', 'Level', 'select', ['h1', 'h2', 'h3', 'h4']]],
         text:    [['text', 'Text', 'area']],
-        image:   [['src', 'Image URL', 'url'], ['alt', 'Alt text', 'text'],
+        image:   [['src', 'Image', 'asset'], ['alt', 'Alt text', 'text'],
                   ['width', 'Width (px)', 'num'], ['height', 'Height (px)', 'num'],
                   ['href', 'Links to', 'url'], ['newTab', 'Open in a new tab', 'bool']],
         button:  [['text', 'Label', 'text'], ['href', 'Links to', 'url'],
                   ['newTab', 'Open in a new tab', 'bool']],
         card:    [['title', 'Title', 'text'], ['text', 'Text', 'area'],
-                  ['image', 'Image URL', 'url'], ['imageAlt', 'Image alt', 'text'],
+                  ['image', 'Image', 'asset'], ['imageAlt', 'Image alt', 'text'],
                   ['buttonText', 'Button label', 'text'], ['buttonHref', 'Button links to', 'url'],
                   ['buttonNewTab', 'Open in a new tab', 'bool']],
 
@@ -669,7 +669,7 @@ window.PBAdmin = function (host) {
                   ['linkText', 'Link text', 'text'], ['href', 'Links to', 'url'],
                   ['newTab', 'Open in a new tab', 'bool']],
         featureBox: [['icon', 'Icon', 'iconSelect'],
-                  ['image', 'Image URL (used when no icon)', 'url'],
+                  ['image', 'Image (used when no icon)', 'asset'],
                   ['imageAlt', 'Image alt', 'text'],
                   ['title', 'Heading', 'text'],
                   ['titleLevel', 'Heading level', 'select', ['h2', 'h3', 'h4', 'h5', 'h6']],
@@ -682,6 +682,13 @@ window.PBAdmin = function (host) {
 
     /* Repeating sub-items: which element types have them, what one blank
        row looks like, and the fields shown per row. */
+    /* Where an asset's real dimensions go, per element type. A type absent
+       here has nowhere to put them, so they are simply not written. */
+    var PB_ASSET_DIMS = {
+        image: ['width', 'height'],
+        card:  ['imageWidth', 'imageHeight']
+    };
+
     var PB_ITEM_FIELDS = {
         faq: {
             key: 'items', label: 'Questions', addLabel: 'Add question',
@@ -987,6 +994,258 @@ window.PBAdmin = function (host) {
         return el;
     }
 
+    /* ==========================================================
+       ASSET PICKER (milestone B)
+       ----------------------------------------------------------
+       The list comes from assets/asset-manifest.json, a file generated
+       from what is actually in the repository
+       (tools/build-asset-manifest.js). It is fetched once, lazily, and
+       rebuilt by CMS.sections.assetList() before anything is shown --
+       so an entry whose path is not one of ours never reaches the grid,
+       whatever the file says.
+
+       Nothing is uploaded and nothing is encoded: choosing an image
+       stores its path. Dimensions come from the manifest when the
+       generator could read them from the file's own header, and are
+       simply absent when it could not.
+       ========================================================== */
+
+    var pbAssets = null;        /* null = not fetched yet */
+    var pbAssetsError = '';
+    var pbAssetPending = null;  /* the promise, so two opens share one fetch */
+
+    function pbLoadAssets() {
+        if (pbAssets) return Promise.resolve(pbAssets);
+        if (pbAssetPending) return pbAssetPending;
+        pbAssetPending = fetch('../assets/asset-manifest.json', { cache: 'no-cache' })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function (raw) {
+                pbAssets = CMS.sections.assetList(raw);
+                pbAssetsError = '';
+                pbAssetPending = null;
+                return pbAssets;
+            })
+            .catch(function (e) {
+                pbAssetsError = 'The image list could not be loaded (' + e.message + ').';
+                pbAssets = [];
+                pbAssetPending = null;
+                return pbAssets;
+            });
+        return pbAssetPending;
+    }
+
+    function pbAssetByPath(path) {
+        var p = CMS.sections.assetPath(path);
+        if (!p || !pbAssets) return null;
+        for (var i = 0; i < pbAssets.length; i++) {
+            if (pbAssets[i].path === p) return pbAssets[i];
+        }
+        return null;
+    }
+
+    function pbKb(n) { return n ? Math.max(1, Math.round(n / 1024)) + ' KB' : ''; }
+
+    /* The picker is modal and resolves through a callback: it either hands
+       back a chosen asset or it hands back nothing, and "nothing" must
+       leave whatever was there alone. */
+    var pbAssetState = { open: false, current: '', selected: '', onPick: null, wired: false };
+
+    function pbAssetOpen(currentPath, onPick) {
+        var modal = $('#pbAssetModal');
+        if (!modal) return;
+        pbAssetWire();
+        pbAssetState.open = true;
+        pbAssetState.current = CMS.sections.assetPath(currentPath) || '';
+        /* Reopening keeps the image the element is already using selected,
+           so the picker opens on what the author last chose. */
+        pbAssetState.selected = pbAssetState.current;
+        pbAssetState.onPick = onPick;
+        var search = $('#pbAssetSearch');
+        if (search) search.value = '';
+        modal.hidden = false;
+        pbAssetPaint();
+        pbLoadAssets().then(function () { if (pbAssetState.open) pbAssetPaint(); });
+    }
+
+    function pbAssetClose() {
+        var modal = $('#pbAssetModal');
+        pbAssetState.open = false;
+        pbAssetState.onPick = null;
+        if (modal) modal.hidden = true;
+    }
+
+    function pbAssetPaint() {
+        var grid = $('#pbAssetGrid');
+        if (!grid) return;
+        grid.innerHTML = '';
+
+        var chosen = $('#pbAssetChosen');
+        var use = $('#pbAssetUse');
+        if (use) use.disabled = !pbAssetState.selected;
+        if (chosen) {
+            chosen.textContent = pbAssetState.selected
+                ? 'Selected: ' + pbAssetState.selected
+                : (pbAssetState.current ? 'Currently using: ' + pbAssetState.current : '');
+        }
+
+        if (pbAssets === null) {
+            grid.innerHTML = '<p class="pb-asset-empty">Loading images\u2026</p>';
+            return;
+        }
+        if (pbAssetsError) {
+            grid.innerHTML = '<p class="pb-asset-empty">' + esc(pbAssetsError) +
+                ' You can still type a path into the field.</p>';
+            return;
+        }
+
+        var q = String(($('#pbAssetSearch') || {}).value || '').trim().toLowerCase();
+        var shown = 0;
+        pbAssets.forEach(function (a) {
+            if (q && (a.name + ' ' + a.group + ' ' + a.path).toLowerCase().indexOf(q) === -1) return;
+            shown += 1;
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'pb-asset' + (a.path === pbAssetState.selected ? ' selected' : '');
+            b.setAttribute('data-asset', a.path);
+            if (a.path === pbAssetState.selected) b.setAttribute('aria-pressed', 'true');
+
+            var thumb = document.createElement('span');
+            thumb.className = 'pb-asset-thumb';
+            var img = document.createElement('img');
+            /* The admin lives one folder down, so its own preview needs the
+               step up; what gets STORED is always the plain path. */
+            img.src = '../' + a.path;
+            img.alt = '';
+            img.loading = 'lazy';
+            img.decoding = 'async';
+            thumb.appendChild(img);
+            b.appendChild(thumb);
+
+            var name = document.createElement('span');
+            name.className = 'pb-asset-name';
+            name.textContent = a.name;
+            b.appendChild(name);
+
+            var meta = document.createElement('span');
+            meta.className = 'pb-asset-meta';
+            meta.textContent = (a.w ? a.w + '\u00d7' + a.h : 'size unknown') +
+                               (a.bytes ? ' \u00b7 ' + pbKb(a.bytes) : '');
+            b.appendChild(meta);
+
+            b.addEventListener('click', function () {
+                pbAssetState.selected = a.path;
+                pbAssetPaint();
+            });
+            b.addEventListener('dblclick', function () { pbAssetConfirm(); });
+            grid.appendChild(b);
+        });
+
+        if (!shown) {
+            grid.innerHTML = '<p class="pb-asset-empty">' +
+                (pbAssets.length ? 'No image matches that search.' : 'No images are listed.') +
+                '</p>';
+        }
+    }
+
+    function pbAssetConfirm() {
+        var a = pbAssetByPath(pbAssetState.selected);
+        var cb = pbAssetState.onPick;
+        if (!a || !cb) { pbAssetClose(); return; }
+        pbAssetClose();
+        cb(a);
+    }
+
+    function pbAssetWire() {
+        if (pbAssetState.wired) return;
+        pbAssetState.wired = true;
+        var modal = $('#pbAssetModal');
+        if (!modal) return;
+        var close = function () { pbAssetClose(); };
+        [$('#pbAssetClose'), $('#pbAssetCancel')].forEach(function (b) {
+            if (b) b.addEventListener('click', close);
+        });
+        /* Clicking the backdrop cancels, the same as Cancel does. */
+        modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && pbAssetState.open) close();
+        });
+        var use = $('#pbAssetUse');
+        if (use) use.addEventListener('click', pbAssetConfirm);
+        var search = $('#pbAssetSearch');
+        if (search) search.addEventListener('input', pbAssetPaint);
+    }
+
+    /* The field: the existing text input, with a button beside it and a
+       thumbnail of whatever is currently set. The text input stays because
+       a page may already name an image the picker does not list, and that
+       must remain editable. */
+    function pbImagePickField(spec, bag, key, ctx) {
+        var row = pbFieldFor([spec[0], spec[1], 'url'], bag, key, ctx);
+        var input = row.querySelector('.pb-in');
+
+        var strip = document.createElement('span');
+        strip.className = 'pb-imgpick';
+
+        var thumb = document.createElement('img');
+        thumb.className = 'pb-imgpick-thumb';
+        thumb.alt = '';
+        thumb.loading = 'lazy';
+
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'adm-btn ghost';
+        btn.setAttribute('data-act', 'pick-asset');
+        btn.innerHTML = '<i class="fas fa-images"></i> Choose image';
+
+        var path = document.createElement('span');
+        path.className = 'pb-imgpick-path';
+
+        function sync() {
+            var v = CMS.sections.assetPath(bag[key]);
+            if (v) {
+                thumb.src = '../' + v;
+                thumb.hidden = false;
+                path.textContent = '';
+            } else {
+                thumb.hidden = true;
+                path.textContent = bag[key] ? 'Not one of this site\u2019s images' : 'No image chosen';
+            }
+        }
+
+        btn.addEventListener('click', function () {
+            pbAssetOpen(bag[key], function (asset) {
+                bag[key] = asset.path;
+                if (input) input.value = asset.path;
+                /* Real numbers from the manifest, never invented ones: an
+                   asset whose header could not be read simply leaves the
+                   dimension fields alone. */
+                var dims = ctx && ctx.dimensionKeys;
+                if (dims && asset.w && asset.h) {
+                    bag[dims[0]] = asset.w;
+                    bag[dims[1]] = asset.h;
+                }
+                sync();
+                if (ctx && ctx.onChange) ctx.onChange(key, asset.path);
+                pbEdited(false);
+                if (ctx && ctx.repaint) ctx.repaint();
+            });
+        });
+
+        if (input) {
+            input.addEventListener('input', sync);
+            input.addEventListener('change', sync);
+        }
+        strip.appendChild(btn);
+        strip.appendChild(thumb);
+        strip.appendChild(path);
+        row.appendChild(strip);
+        sync();
+        return row;
+    }
+
     /* ---------- Stage 6: global design references ----------
 
        A colour control offers the global roles and a custom value in one
@@ -1218,6 +1477,7 @@ window.PBAdmin = function (host) {
         if (spec[2] === 'colsSelect') {
             spec = [spec[0], spec[1], 'select', pbColOptions((ctx && ctx.device) || 'base')];
         }
+        if (spec[2] === 'asset')        return pbImagePickField(spec, bag, key, ctx);
         if (spec[2] === 'colorRef')     return pbColorRefField(spec, bag, key, ctx);
         if (spec[2] === 'typoRef')      return pbTypoRefField(spec, bag, key, ctx);
         if (spec[2] === 'borderParts')  return pbBorderField(spec, bag, key, ctx);
@@ -1614,8 +1874,14 @@ window.PBAdmin = function (host) {
             if (!el.content) el.content = {};
             var grid = document.createElement('div');
             grid.className = 'pb-grid';
+            var cctx = {
+                dimensionKeys: PB_ASSET_DIMS[el.type],
+                /* Choosing an image can fill in the width and height boxes
+                   beside it, so those inputs have to be rebuilt. */
+                repaint: function () { pbPersist(); repaint(); pbPaintPreview(); }
+            };
             (PB_CONTENT_FIELDS[el.type] || []).forEach(function (spec) {
-                grid.appendChild(pbFieldFor(spec, el.content, spec[0]));
+                grid.appendChild(pbFieldFor(spec, el.content, spec[0], cctx));
             });
             body.appendChild(grid);
 
@@ -1782,17 +2048,36 @@ window.PBAdmin = function (host) {
        sections the public gate would refuse, so the admin sees the draft
        while visitors keep seeing what is published. Nothing is written. */
 
-    var PB_VIEWPORTS = [['desktop', 'Desktop', 1280, 'fa-desktop'],
-                        ['tablet',  'Tablet',   900, 'fa-tablet-screen-button'],
-                        ['mobile',  'Mobile',   390, 'fa-mobile-screen-button']];
+    /* The widths are device widths chosen to sit inside the site's OWN
+       breakpoints, which are 1024px and 768px (css/sections.css,
+       css/responsive.css). Nothing here invents a breakpoint:
+
+         desktop 1280  ->  above 1024, so the desktop rules apply
+         tablet   900  ->  769..1024, the tablet band
+         mobile   390  ->  at or below 768, the mobile band
+
+       The band is shown on the button so an author can see which set of
+       rules they are looking at rather than having to know. */
+    var PB_VIEWPORTS = [
+        ['desktop', 'Desktop', 1280, 'fa-desktop',                 'over 1024px'],
+        ['tablet',  'Tablet',   900, 'fa-tablet-screen-button',    '769\u20131024px'],
+        ['mobile',  'Mobile',   390, 'fa-mobile-screen-button',    'up to 768px']
+    ];
     var pbViewport = 'desktop';
-    var PB_FRAME_H = 900;
+
+    /* Taller on a phone than on a desktop, because the same content is
+       three times longer there and a fixed height would cut it off. */
+    var PB_FRAME_H = { desktop: 900, tablet: 1000, mobile: 1100 };
 
     function pbViewportWidth() {
         for (var i = 0; i < PB_VIEWPORTS.length; i++) {
             if (PB_VIEWPORTS[i][0] === pbViewport) return PB_VIEWPORTS[i][2];
         }
         return 1280;
+    }
+
+    function pbViewportHeight() {
+        return PB_FRAME_H[pbViewport] || 900;
     }
 
     function pbPaintDevices() {
@@ -1804,9 +2089,14 @@ window.PBAdmin = function (host) {
             b.type = 'button';
             b.className = 'pb-devtab' + (v[0] === pbViewport ? ' active' : '');
             b.setAttribute('data-viewport', v[0]);
+            b.setAttribute('aria-pressed', v[0] === pbViewport ? 'true' : 'false');
+            b.title = esc(v[1]) + ' \u2014 ' + v[2] + 'px, the ' + v[4] + ' rules';
             b.innerHTML = '<i class="fas ' + v[3] + '"></i> ' + esc(v[1]) +
                           ' <em>' + v[2] + '</em>';
             b.addEventListener('click', function () {
+                /* A viewing mode and nothing else: this changes which width
+                   the frame is rendered at and writes nothing to the draft,
+                   the page or the responsive overrides. */
                 pbViewport = v[0];
                 pbPaintDevices();
                 pbFitPreview();
@@ -1815,21 +2105,40 @@ window.PBAdmin = function (host) {
         });
     }
 
-    /* Scale the real viewport width down to whatever room the column has,
-       so the section really is laid out at 390px on the mobile setting
-       rather than just squeezed. */
+    /* Lay the frame out at the real viewport width and then scale the whole
+       thing down to fit the column, rather than squeezing it: the page
+       inside is genuinely 390px wide on the mobile setting, so it takes the
+       mobile rules and the columns really do stack.
+
+       Scaling down never distorts, because it is a uniform transform on an
+       already-correct layout. Scaling UP would, so it does not happen --
+       a narrow viewport in a wide column is centred at its own size. */
     function pbFitPreview() {
         var stage = $('#pbStage'), f = $('#pbFrame');
         if (!stage || !f) return;
         var w = pbViewportWidth();
+        var h = pbViewportHeight();
         var avail = stage.clientWidth - 20;
         var k = avail > 0 ? Math.min(1, avail / w) : 1;
         f.style.width = w + 'px';
-        f.style.height = PB_FRAME_H + 'px';
+        f.style.height = h + 'px';
         f.style.transform = 'scale(' + k + ')';
         f.style.transformOrigin = 'top left';
         f.setAttribute('data-viewport', pbViewport);
-        stage.style.height = Math.round(PB_FRAME_H * k) + 'px';
+        /* The transform does not change layout size, so the stage is told
+           what the scaled frame actually occupies, and the frame is nudged
+           to the middle of whatever is left over. */
+        var shown = Math.round(w * k);
+        stage.style.height = Math.round(h * k) + 'px';
+        f.style.marginLeft = Math.max(0, Math.round((stage.clientWidth - 20 - shown) / 2)) + 'px';
+        var tag = $('#pbViewportTag');
+        if (tag) {
+            for (var i = 0; i < PB_VIEWPORTS.length; i++) {
+                if (PB_VIEWPORTS[i][0] !== pbViewport) continue;
+                tag.textContent = PB_VIEWPORTS[i][2] + 'px \u00b7 ' + PB_VIEWPORTS[i][4] +
+                    (k < 1 ? ' \u00b7 shown at ' + Math.round(k * 100) + '%' : '');
+            }
+        }
     }
 
     function pbFrameWin() {

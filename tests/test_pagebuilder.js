@@ -923,7 +923,10 @@ const el  = (id, type, content, style, responsive) =>
     await p.click(`${ADD}[data-el-type="image"]`); await p.waitForTimeout(400);
     const img = await lastTop();
     const IMG = `${TOP} > .pb-els > .pb-elcard[data-el-id="${img}"]`;
-    await p.fill(`${IMG} .pb-field:has(> span:text-is("Image URL")) .pb-in`, 'images/logo.png');
+    /* Milestone B put a picker beside this field, and the label lost the
+       "URL" with it: it is now "Image". The field itself is unchanged and
+       so is the assertion below. */
+    await p.fill(`${IMG} .pb-field:has(> span:text-is("Image")) .pb-in`, 'images/logo.png');
     await p.waitForTimeout(400);
     check('an image without alt text is flagged',
       await p.$eval(IMG, e => { const w = e.querySelector('[data-warn="alt"]'); return !!w && !w.hidden; }));
