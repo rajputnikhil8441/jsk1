@@ -512,25 +512,74 @@ window.PBAdmin = function (host) {
         /* V2: column tracks. First in the list because it is the control
            that decides what the element looks like. */
         ['columns',    'Column layout',     'colsSelect'],
-        ['bg',         'Background',        'color'],
+        ['bg',         'Background colour', 'color'],
         ['color',      'Text colour',       'color'],
         ['bgImage',    'Background image',  'url'],
-        ['fontSize',   'Font size (px)',    'num'],
-        ['fontWeight', 'Font weight',       'select', ['', '300', '400', '500', '600', '700', '800']],
-        ['align',      'Align',             'select', ['', 'left', 'center', 'right']],
-        ['padding',    'Padding (px)',      'num'],
-        ['margin',     'Outer space (px)',  'num'],
-        ['gap',        'Gap (px)',          'num'],
+        ['fontSize',   'Text size (px)',    'num'],
+        ['fontWeight', 'Text weight',       'select',
+            [['', '(inherit)'], ['300', 'Light'], ['400', 'Normal'], ['500', 'Medium'],
+             ['600', 'Semi-bold'], ['700', 'Bold'], ['800', 'Extra bold']]],
+        ['lineHeight',    'Line spacing',   'select',
+            [['', '(inherit)'], ['1', 'Tight (1.0)'], ['1.2', 'Snug (1.2)'],
+             ['1.5', 'Normal (1.5)'], ['1.8', 'Roomy (1.8)'], ['2', 'Airy (2.0)']]],
+        ['letterSpacing', 'Letter spacing (px)', 'num'],
+        ['align',      'Alignment',         'select',
+            [['', '(inherit)'], ['left', 'Left'], ['center', 'Centre'], ['right', 'Right']]],
+        ['padding',    'Space inside (px)', 'num'],
+        ['margin',     'Space outside (px)', 'num'],
+        ['gap',        'Space between items (px)', 'num'],
         ['maxWidth',   'Max width (px)',    'num'],
         ['height',     'Min height (px)',   'num'],
+        /* One stored shorthand behind three friendly inputs -- see
+           pbBorderField. The wire format is unchanged. Ordered before the
+           radius so the Border group reads border-then-corners. */
+        ['border',     'Border',            'borderParts'],
         ['radius',     'Corner radius (px)', 'num'],
-        ['border',     'Border',            'text'],
-        ['shadow',     'Shadow',            'text'],
+        ['shadow',     'Shadow',            'shadowPreset'],
         /* V2: a divider draws a rule, which is three controls rather than
            one free-text border string. */
         ['lineWidth',  'Line thickness (px)', 'num'],
-        ['lineStyle',  'Line style',        'select', ['', 'solid', 'dashed', 'dotted', 'double']],
+        ['lineStyle',  'Line style',        'select',
+            [['', '(inherit)'], ['solid', 'Solid'], ['dashed', 'Dashed'],
+             ['dotted', 'Dotted'], ['double', 'Double']]],
         ['lineColor',  'Line colour',       'color']
+    ];
+
+    /* ---------- Stage 5: the seven control groups ----------
+       Order here is the order they appear. A key may belong to exactly one
+       group; anything not listed falls into "More" so a new control can
+       never become invisible, and a test asserts that "More" is empty. */
+    var PB_STYLE_GROUPS = [
+        ['layout',     'Layout',     ['columns', 'align', 'maxWidth', 'height', 'gap']],
+        ['spacing',    'Spacing',    ['padding', 'margin']],
+        ['typography', 'Typography', ['fontSize', 'fontWeight', 'lineHeight', 'letterSpacing']],
+        ['colors',     'Colors',     ['color', 'bg']],
+        ['border',     'Border',     ['border', 'lineWidth', 'lineStyle', 'lineColor', 'radius']],
+        ['shadow',     'Shadow',     ['shadow']],
+        ['background', 'Background', ['bgImage']]
+    ];
+
+    function pbGroupOf(key) {
+        for (var i = 0; i < PB_STYLE_GROUPS.length; i++) {
+            if (PB_STYLE_GROUPS[i][2].indexOf(key) > -1) return PB_STYLE_GROUPS[i][0];
+        }
+        return 'more';
+    }
+
+    /* Which groups are expanded. Kept per group rather than per element, so
+       an author who opens Typography keeps it open as they move down the
+       page instead of reopening it on every card. */
+    var pbGroupOpen = { layout: true };
+
+    /* Shadow presets. Same approach as the column layouts: the value stored
+       is one of these constants, never something typed into a CSS box --
+       but a value that is already stored and is not a preset still shows,
+       in the custom field, so nothing an author wrote is ever lost. */
+    var PB_SHADOWS = [
+        ['0 1px 3px rgba(0,0,0,.12)',  'Soft'],
+        ['0 4px 12px rgba(0,0,0,.15)', 'Medium'],
+        ['0 10px 30px rgba(0,0,0,.22)', 'Strong'],
+        ['none',                        'None']
     ];
 
     /* Human wording for the column presets. The list of presets itself is
@@ -587,9 +636,7 @@ window.PBAdmin = function (host) {
     }
 
     function pbSectionStyleKeys() {
-        var t = CMS.sections.sectionTokens || {}, out = [];
-        for (var k in t) { if (Object.prototype.hasOwnProperty.call(t, k)) out.push(k); }
-        return out;
+        return CMS.sections.sectionStyleKeys || [];
     }
 
     /* The shared field list carries one label per key, but the same key can
@@ -744,6 +791,106 @@ window.PBAdmin = function (host) {
         return el;
     }
 
+    /* ---------- Stage 5: composite controls over an existing key ----------
+
+       Both of these keep the stored wire format exactly as it was -- one
+       string under `border`, one under `shadow` -- and only change how that
+       string is put together. Nothing is migrated, and a value that was
+       already stored keeps working whether or not this UI can take it
+       apart again. */
+
+    var PB_BORDER_STYLES = ['solid', 'dashed', 'dotted', 'double', 'none',
+                            'groove', 'ridge', 'inset', 'outset'];
+
+    /* "2px dashed #ccc" -> {width:'2', style:'dashed', color:'#ccc'}, or null
+       when the stored value is something this UI would not be able to put
+       back together. */
+    function pbBorderParse(v) {
+        var m = /^\s*(-?[0-9.]+)(?:px)?\s+([a-z]+)\s+(\S.*?)\s*$/i.exec(String(v == null ? '' : v));
+        if (!m) return null;
+        if (PB_BORDER_STYLES.indexOf(m[2].toLowerCase()) === -1) return null;
+        return { width: m[1], style: m[2].toLowerCase(), color: m[3] };
+    }
+
+    function pbBorderCompose(parts) {
+        if (!parts.width && !parts.style && !parts.color) return '';
+        return (parts.width === '' ? '1' : parts.width) + 'px ' +
+               (parts.style || 'solid') + ' ' +
+               (parts.color || 'currentColor');
+    }
+
+    /* Width / style / colour, writing the one `border` string the renderer
+       has always read. A stored value this cannot parse is offered as text
+       instead, so an author never loses what they wrote. */
+    function pbBorderField(spec, bag, key, ctx) {
+        var raw = bag[key];
+        var parts = pbBorderParse(raw);
+        if (raw != null && raw !== '' && !parts) {
+            return pbFieldFor([spec[0], spec[1] + ' (custom value)', 'text'], bag, key, ctx);
+        }
+        parts = parts || { width: '', style: '', color: '' };
+
+        var box = document.createElement('span');
+        box.className = 'pb-parts';
+
+        function write() {
+            var v = pbBorderCompose(parts);
+            if (v) bag[key] = v; else delete bag[key];
+            if (ctx && ctx.onChange) ctx.onChange(key, v);
+        }
+        function sub(kind, opts, which, ph) {
+            var el = pbInput(kind, opts,
+                function () { return parts[which]; },
+                function (val) { parts[which] = val; write(); }, null);
+            var node = el;
+            if (ph && node.tagName === 'INPUT') node.placeholder = ph;
+            node.setAttribute('data-part', which);
+            box.appendChild(node);
+            return node;
+        }
+        sub('num', null, 'width', 'px');
+        sub('select', [['', 'Solid']].concat(PB_BORDER_STYLES.map(function (x) {
+            return [x, x.charAt(0).toUpperCase() + x.slice(1)];
+        })), 'style');
+        sub('color', null, 'color');
+
+        return pbRow(spec[1], box, 'Thickness, style and colour.');
+    }
+
+    /* A short list of shadows rather than a box-shadow builder. Choosing one
+       stores that exact constant; a stored value that is not on the list
+       still appears, in the custom box beneath. */
+    function pbShadowField(spec, bag, key, ctx) {
+        var box = document.createElement('span');
+        box.className = 'pb-parts pb-parts-col';
+        var known = PB_SHADOWS.some(function (o) { return o[0] === bag[key]; });
+
+        var sel = pbInput('select',
+            [['', '(inherit)']].concat(PB_SHADOWS).concat([['custom', 'Custom\u2026']]),
+            function () { return (bag[key] == null || bag[key] === '') ? '' : (known ? bag[key] : 'custom'); },
+            function (v) {
+                if (v === 'custom') { custom.hidden = false; custom.focus(); return; }
+                custom.hidden = true;
+                if (v === '') delete bag[key]; else bag[key] = v;
+                if (ctx && ctx.onChange) ctx.onChange(key, v);
+            }, null);
+        sel.setAttribute('data-part', 'preset');
+        box.appendChild(sel);
+
+        var custom = pbInput('text', null,
+            function () { return known ? '' : bag[key]; },
+            function (v) {
+                if (v === '') delete bag[key]; else bag[key] = v;
+                if (ctx && ctx.onChange) ctx.onChange(key, v);
+            }, null);
+        custom.setAttribute('data-part', 'custom');
+        custom.placeholder = '0 4px 12px rgba(0,0,0,.15)';
+        custom.hidden = known || bag[key] == null || bag[key] === '';
+        box.appendChild(custom);
+
+        return pbRow(spec[1], box);
+    }
+
     function pbFieldFor(spec, bag, key, ctx) {
         /* iconSelect and socialSelect are ordinary selects whose options
            come from the renderer, resolved here so the two lists can never
@@ -754,6 +901,8 @@ window.PBAdmin = function (host) {
         if (spec[2] === 'colsSelect') {
             spec = [spec[0], spec[1], 'select', pbColOptions((ctx && ctx.device) || 'base')];
         }
+        if (spec[2] === 'borderParts')  return pbBorderField(spec, bag, key, ctx);
+        if (spec[2] === 'shadowPreset') return pbShadowField(spec, bag, key, ctx);
 
         var hint = document.createElement('em');
         hint.className = 'pb-warn';
@@ -806,8 +955,6 @@ window.PBAdmin = function (host) {
         host.appendChild(note);
 
         var bag = pbStyleBag(node, device);
-        var grid = document.createElement('div');
-        grid.className = 'pb-grid';
         var ctx = {
             device: device,
             onChange: function (key) {
@@ -818,20 +965,53 @@ window.PBAdmin = function (host) {
                 syncColsWarn();
             }
         };
+
+        /* ---- Stage 5: the controls, sorted into groups ----
+           One pass over the field list fills a grid per group, then the
+           groups are rendered in their declared order. A group with nothing
+           in it is not rendered at all, which is what keeps section-only and
+           element-only controls where they belong without a second list to
+           maintain. */
+        var grids = {}, total = 0;
         PB_STYLE_FIELDS.forEach(function (spec) {
             if (keys && keys.indexOf(spec[0]) === -1) return;
             if (labels && labels[spec[0]]) {
                 spec = [spec[0], labels[spec[0]], spec[2], spec[3]];
             }
-            grid.appendChild(pbFieldFor(spec, bag, spec[0], ctx));
+            var g = pbGroupOf(spec[0]);
+            if (!grids[g]) {
+                grids[g] = document.createElement('div');
+                grids[g].className = 'pb-grid';
+            }
+            grids[g].appendChild(pbFieldFor(spec, bag, spec[0], ctx));
+            total++;
         });
-        if (!grid.children.length) {
+
+        PB_STYLE_GROUPS.concat([['more', 'More', []]]).forEach(function (g) {
+            var grid = grids[g[0]];
+            if (!grid) return;
+            var box = document.createElement('details');
+            box.className = 'pb-group';
+            box.setAttribute('data-group', g[0]);
+            box.open = !!pbGroupOpen[g[0]];
+            var sum = document.createElement('summary');
+            sum.textContent = g[1];
+            var count = document.createElement('span');
+            count.className = 'pb-group-count';
+            count.textContent = String(grid.children.length);
+            sum.appendChild(count);
+            box.appendChild(sum);
+            box.appendChild(grid);
+            box.addEventListener('toggle', function () { pbGroupOpen[g[0]] = box.open; });
+            host.appendChild(box);
+        });
+
+        if (!total) {
             var none = document.createElement('p');
             none.className = 'hint';
             none.textContent = 'This element type has no design controls at this breakpoint.';
-            grid.appendChild(none);
+            host.appendChild(none);
         }
-        host.appendChild(grid);
 
         /* A layout draws a fixed number of tracks; the columns themselves
            are content. Saying so beats leaving an author to work out why a

@@ -50,6 +50,8 @@
     --pbe-cols: initial;
     --pbe-cols-t: initial;
     --pbe-cols-m: initial;
+    --pbe-line-height: initial;
+    --pbe-letter-spacing: initial;
 }
 
 
@@ -70,6 +72,7 @@
     border-radius: var(--pbs-radius, 0);
     box-shadow: var(--pbs-shadow, none);
     text-align: var(--pbs-align, left);
+    letter-spacing: var(--pbs-letter-spacing, normal);
 }
 
 .pb-section .pb-inner {
@@ -97,7 +100,8 @@
     border: var(--pbe-border, 0);
     border-radius: var(--pbe-radius, 0);
     box-shadow: var(--pbe-shadow, none);
-    line-height: 1.25;
+    line-height: var(--pbe-line-height, 1.25);
+    letter-spacing: var(--pbe-letter-spacing, inherit);
 }
 
 /* Sensible defaults per level, so an h3 does not arrive the same size as an
@@ -123,7 +127,8 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
     border: var(--pbe-border, 0);
     border-radius: var(--pbe-radius, 0);
     box-shadow: var(--pbe-shadow, none);
-    line-height: 1.6;
+    line-height: var(--pbe-line-height, 1.6);
+    letter-spacing: var(--pbe-letter-spacing, inherit);
     white-space: pre-line;      /* authored line breaks survive without markup */
 }
 
@@ -166,7 +171,8 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
     font-weight: var(--pbe-font-weight, 600);
     text-align: center;
     text-decoration: none;
-    line-height: 1.2;
+    line-height: var(--pbe-line-height, 1.2);
+    letter-spacing: var(--pbe-letter-spacing, inherit);
 }
 
 .pb-el.pb-btn:hover { filter: brightness(1.08); }
@@ -184,6 +190,7 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
     display: flex;
     flex-direction: column;
     gap: var(--pbe-gap, 10px);
+    letter-spacing: var(--pbe-letter-spacing, inherit);
 }
 
 /* Card internals carry .pb-el too, so the card's own background, padding
@@ -352,7 +359,8 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
     border: var(--pbe-border, 1px solid var(--pb-notice-line));
     border-radius: var(--pbe-radius, 6px);
     box-shadow: var(--pbe-shadow, none);
-    line-height: 1.55;
+    line-height: var(--pbe-line-height, 1.55);
+    letter-spacing: var(--pbe-letter-spacing, inherit);
 }
 
 /* Variant defaults are plain custom properties, so an author who sets a
@@ -390,6 +398,7 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
     border: var(--pbe-border, 0);
     border-radius: var(--pbe-radius, 0);
     box-shadow: var(--pbe-shadow, none);
+    letter-spacing: var(--pbe-letter-spacing, inherit);
 }
 
 .pb-feature-icon { font-size: 2em; line-height: 1; color: inherit; }
@@ -399,9 +408,14 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
     color: inherit;
     font-size: 1.25em;
     font-weight: 700;
-    line-height: 1.3;
+    line-height: var(--pbe-line-height, 1.3);
 }
-.pb-feature .pb-feature-text { margin: 0; color: inherit; line-height: 1.55; white-space: pre-line; }
+.pb-feature .pb-feature-text {
+    margin: 0;
+    color: inherit;
+    line-height: var(--pbe-line-height, 1.55);
+    white-space: pre-line;
+}
 .pb-feature .pb-feature-link {
     color: inherit;
     font-weight: 600;
@@ -426,6 +440,7 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
     border: var(--pbe-border, 0);
     border-radius: var(--pbe-radius, 0);
     box-shadow: var(--pbe-shadow, none);
+    letter-spacing: var(--pbe-letter-spacing, inherit);
 }
 
 .pb-faq .pb-faq-item {
@@ -449,7 +464,7 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
     font: inherit;
     font-weight: 600;
     text-align: left;
-    line-height: 1.4;
+    line-height: var(--pbe-line-height, 1.4);
     cursor: pointer;
 }
 
@@ -474,7 +489,12 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
 
 .pb-faq .pb-faq-a { padding: 0 14px 12px; }
 .pb-faq .pb-faq-a[hidden] { display: none; }
-.pb-faq .pb-faq-text { margin: 0; color: inherit; line-height: 1.55; white-space: pre-line; }
+.pb-faq .pb-faq-text {
+    margin: 0;
+    color: inherit;
+    line-height: var(--pbe-line-height, 1.55);
+    white-space: pre-line;
+}
 
 /* ---------- social links ---------- */
 

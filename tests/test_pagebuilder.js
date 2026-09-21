@@ -931,17 +931,28 @@ const el  = (id, type, content, style, responsive) =>
     check('three breakpoints are offered',
       JSON.stringify(await p.$$eval(`${SEC} .pb-devtab`, e => e.map(x => x.getAttribute('data-device')))) ===
       JSON.stringify(['base', 'tablet', 'mobile']));
-    const PAD = `${SEC} .pb-subbody .pb-field:has(> span:text-is("Padding (px)")) .pb-in`;
+    /* Stage 5 puts the controls into collapsible groups, so a test that
+       types into one has to open the group first, exactly as a person
+       would. The label moved with it: "Padding (px)" is now worded
+       "Space inside (px)". */
+    const openGroups = async () => {
+      await p.$$eval(`${SEC} .pb-group`, gs => gs.forEach(g => { g.open = true; }));
+      await p.waitForTimeout(120);
+    };
+    await openGroups();
+    const PAD = `${SEC} .pb-subbody .pb-field:has(> span:text-is("Space inside (px)")) .pb-in`;
     await p.fill(PAD, '64'); await p.waitForTimeout(500);
     check('a desktop value is stored on style',
       await p.evaluate(id => CMS.sections.draft('about').sections.find(s => s.id === id).style.padding === '64', secId));
     await p.click(`${SEC} .pb-devtab[data-device="mobile"]`); await p.waitForTimeout(350);
+    await openGroups();
     check('the mobile box starts empty rather than inheriting', (await p.inputValue(PAD)) === '');
     await p.fill(PAD, '18'); await p.waitForTimeout(500);
     check('a mobile value is stored as an override, leaving desktop alone',
       await p.evaluate(id => { const s = CMS.sections.draft('about').sections.find(x => x.id === id);
         return s.responsive.mobile.padding === '18' && s.style.padding === '64'; }, secId));
     await p.click(`${SEC} [data-act="clear-device"]`); await p.waitForTimeout(500);
+    await openGroups();
     check('clearing a breakpoint touches only that breakpoint',
       await p.evaluate(id => { const s = CMS.sections.draft('about').sections.find(x => x.id === id);
         return JSON.stringify(s.responsive.mobile) === '{}' && s.style.padding === '64'; }, secId));
@@ -1016,6 +1027,9 @@ const el  = (id, type, content, style, responsive) =>
     /* a design change must be visible in the preview, as computed style */
     await p.click(`${TOP2} > .pb-els > .pb-elcard > .pb-elcard-body > .pb-details > summary`).catch(() => {});
     await p.waitForTimeout(250);
+    await p.$$eval(`${TOP2} > .pb-els > .pb-elcard > .pb-elcard-body > .pb-details .pb-group`,
+      gs => gs.forEach(g => { g.open = true; }));
+    await p.waitForTimeout(120);
     const colorIn = `${TOP2} > .pb-els > .pb-elcard > .pb-elcard-body > .pb-details .pb-field:has(> span:text-is("Text colour")) .pb-in`;
     if (await p.$(colorIn)) {
       await p.fill(colorIn, '#ff0055'); await p.waitForTimeout(700);

@@ -1153,7 +1153,12 @@
         border:     ['--pbs-border', ''],
         radius:     ['--pbs-radius', 'px'],
         shadow:     ['--pbs-shadow', ''],
-        gap:        ['--pbs-gap', 'px']
+        gap:        ['--pbs-gap', 'px'],
+        /* Stage 5. Line height is deliberately NOT a section token: every
+           element sets its own, so a section-level value would never show.
+           Letter spacing does reach them, because each element's rule falls
+           back to `inherit`. */
+        letterSpacing: ['--pbs-letter-spacing', 'px']
     };
 
     var PB_EL_TOKENS = {
@@ -1176,22 +1181,35 @@
         lineColor:  ['--pbe-line-color', ''],
         /* V2: column tracks. The value written is never the author's text;
            it is a constant looked up from PB_COL_LAYOUTS (see pbDecls). */
-        columns:    ['--pbe-cols', '']
+        columns:    ['--pbe-cols', ''],
+        /* Stage 5 typography. Each element rule reads these with its own
+           existing value as the fallback, so an element that has never been
+           given one renders exactly as before. */
+        lineHeight:    ['--pbe-line-height', ''],
+        letterSpacing: ['--pbe-letter-spacing', 'px']
     };
 
     /* Which controls actually do something for each element type. The admin
        builds its Design tab from this, so a control is never offered for an
        element whose CSS would ignore it. */
     var PB_EL_STYLE_KEYS = {
-        heading: ['color', 'fontSize', 'fontWeight', 'align', 'bg', 'padding',
+        heading: ['color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+                  'align', 'bg', 'padding',
                   'margin', 'maxWidth', 'border', 'radius', 'shadow'],
-        text:    ['color', 'fontSize', 'fontWeight', 'align', 'bg', 'padding',
+        text:    ['color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+                  'align', 'bg', 'padding',
                   'margin', 'maxWidth', 'border', 'radius', 'shadow'],
         image:   ['align', 'margin', 'maxWidth', 'height', 'border', 'radius', 'shadow'],
-        button:  ['bg', 'color', 'fontSize', 'fontWeight', 'align', 'padding',
+        button:  ['bg', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+                  'align', 'padding',
                   'margin', 'border', 'radius', 'shadow'],
-        card:    ['bg', 'color', 'align', 'padding', 'margin', 'maxWidth', 'gap',
-                  'border', 'radius', 'shadow'],
+        /* A card's title and text carry .pb-el of their own, which resets the
+           element namespace -- so the card's line height would stop at the
+           wrapper and never reach the words. Letter spacing still reaches
+           them, because that is an inherited CSS property and the children
+           do not declare it. */
+        card:    ['bg', 'color', 'letterSpacing', 'align', 'padding', 'margin',
+                  'maxWidth', 'gap', 'border', 'radius', 'shadow'],
         columns: ['columns', 'align', 'margin', 'maxWidth', 'gap'],
 
         /* V2 elements. Same rule as above: a key appears here only if the
@@ -1200,14 +1218,29 @@
         divider:     ['lineWidth', 'lineStyle', 'lineColor', 'maxWidth', 'align', 'margin'],
         spacer:      ['height', 'maxWidth'],
         icon:        ['color', 'fontSize', 'align', 'bg', 'padding', 'margin', 'radius'],
-        notice:      ['bg', 'color', 'fontSize', 'fontWeight', 'align', 'padding', 'margin',
+        notice:      ['bg', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+                      'align', 'padding', 'margin',
                       'maxWidth', 'gap', 'border', 'radius', 'shadow'],
-        featureBox:  ['bg', 'color', 'fontSize', 'fontWeight', 'align', 'padding', 'margin',
+        featureBox:  ['bg', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+                      'align', 'padding', 'margin',
                       'maxWidth', 'gap', 'border', 'radius', 'shadow'],
-        faq:         ['bg', 'color', 'fontSize', 'fontWeight', 'align', 'padding', 'margin',
+        faq:         ['bg', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+                      'align', 'padding', 'margin',
                       'maxWidth', 'gap', 'border', 'radius', 'shadow'],
         socialLinks: ['color', 'fontSize', 'align', 'bg', 'padding', 'margin', 'gap', 'radius']
     };
+
+    /* The keys a SECTION reacts to. Derived from the section token map, so
+       there is exactly one place that decides, and the admin cannot drift
+       from it -- the "offer everything" fallback it used to have was how the
+       divider and column controls ended up on sections. */
+    var PB_SEC_STYLE_KEYS = (function () {
+        var out = [], k;
+        for (k in PB_SEC_TOKENS) {
+            if (Object.prototype.hasOwnProperty.call(PB_SEC_TOKENS, k)) out.push(k);
+        }
+        return out;
+    }());
 
     /* ---- V2: column layout presets ----
        A layout is chosen by NAME from this map. The value emitted into
@@ -2594,6 +2627,7 @@
             safeUrl: pbUrl,
             safeCssValue: pbCssValue,
             elementStyleKeys: PB_EL_STYLE_KEYS,
+            sectionStyleKeys: PB_SEC_STYLE_KEYS,
             icons: PB_ICONS,
             social: PB_SOCIAL,
             colLayouts: PB_COL_LAYOUTS,

@@ -2088,6 +2088,68 @@ input[type="password"]:focus {
     font-size: 12px;
 }
 
+/* ---------- Stage 5: grouped design controls ---------- */
+
+.pb-group {
+    border: 1px solid var(--a-line);
+    border-radius: 7px;
+    margin-top: 8px;
+    background: rgba(255, 255, 255, .015);
+}
+
+.pb-group > summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    color: var(--a-text);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+}
+
+.pb-group[open] > summary {
+    border-bottom: 1px solid var(--a-line);
+}
+
+.pb-group-count {
+    margin-left: auto;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .07);
+    color: var(--a-dim);
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.pb-group > .pb-grid {
+    padding: 10px;
+}
+
+/* Several inputs that write one stored value (border, shadow). Given the
+   whole row, because three controls do not fit in half of one. */
+.pb-field:has(.pb-parts) { grid-column: 1 / -1; }
+
+.pb-parts {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.pb-parts > * { min-width: 0; }
+.pb-parts > .pb-in-num { flex: 0 0 80px; }
+.pb-parts > .pb-in-select { flex: 0 0 110px; }
+.pb-parts > .pb-color { flex: 1 1 140px; }
+.pb-parts-col { flex-direction: column; align-items: stretch; }
+.pb-parts-col > .pb-in { flex: 1 1 auto; }
+
+.pb-field-note {
+    color: var(--a-dim);
+    font-size: 11px;
+    font-style: normal;
+}
+
 .pb-details {
     margin-top: 10px;
     border-top: 1px solid var(--a-line);
