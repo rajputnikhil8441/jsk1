@@ -2649,7 +2649,7 @@
        than a broken admin.
     ======================================================== */
     var Builder = (typeof window.PBAdmin === 'function')
-        ? window.PBAdmin({ $: $, esc: esc, toast: toast, commit: commit })
+        ? window.PBAdmin({ $: $, esc: esc, toast: toast, commit: commit, download: download })
         : null;
 
     function buildBuilder()  { if (Builder) Builder.build(); }

@@ -9,7 +9,7 @@
    well as the whole builder.
 
    THE BOUNDARY
-   The builder needs exactly four things from js/admin.js:
+   The builder needs exactly five things from js/admin.js:
 
      $        querySelector helper
      esc      HTML escaping for the admin's own markup
@@ -18,6 +18,8 @@
               skips CMS.remote.publish(); commit() publishes. That
               distinction is what keeps a draft off the live site, so it
               is deliberately NOT reimplemented here.
+     download the admin's file-save helper, used by the reusable-section
+              export so there is one download path, not two.
 
    It talks to the CMS through the global window.CMS, same as before.
 
@@ -56,6 +58,10 @@ window.PBAdmin = function (host) {
     var esc = host.esc;
     var toast = host.toast;
     var commit = host.commit;
+    /* Fifth, added for milestone A: the admin's file-save helper, so the
+       reusable-section export reuses the same download path the sitemap
+       and the image exports already use. */
+    var download = host.download;
 
     /* ========================================================
        PAGE BUILDER
@@ -225,6 +231,184 @@ window.PBAdmin = function (host) {
         return n === 1 ? '1 element' : n + ' elements';
     }
 
+    /* ==========================================================
+       TEMPLATES AND THE REUSABLE SECTION LIBRARY (milestone A)
+       ----------------------------------------------------------
+       Both are thin: the renderer owns the registry, the sanitiser and
+       the copying, and everything here is the UI over it. Nothing in this
+       file decides what is safe to insert.
+       ========================================================== */
+
+    function pbPaintTemplates() {
+        var host = $('#pbTemplates');
+        if (!host) return;
+        host.innerHTML = '';
+        CMS.sections.templates().forEach(function (t) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'pb-template';
+            b.setAttribute('data-template', t.id);
+            b.innerHTML = '<strong>' + esc(t.name) + '</strong>' +
+                '<em>' + esc(t.description) + '</em>' +
+                '<span class="pb-template-meta">' + t.sections + ' section' +
+                (t.sections === 1 ? '' : 's') + ' \u00b7 ' + t.elements + ' element' +
+                (t.elements === 1 ? '' : 's') + '</span>';
+            b.addEventListener('click', function () { pbApplyTemplate(t); });
+            host.appendChild(b);
+        });
+    }
+
+    function pbApplyTemplate(t) {
+        if (pbDraft.length && !window.confirm(
+                'Replace the ' + pbDraft.length + ' section' + (pbDraft.length === 1 ? '' : 's') +
+                ' in this draft with the "' + t.name + '" template?\n\n' +
+                'The live page is not affected until you publish.')) return;
+        var secs = CMS.sections.fromTemplate(t.id);
+        if (!secs || !secs.length) { toast('That template could not be read.', true); return; }
+        /* Replaced in place: pbDraft is the array the rest of the panel holds. */
+        pbDraft.length = 0;
+        secs.forEach(function (x) { pbDraft.push(x); });
+        pbOpen = null;
+        /* Provenance, not a link. The sections above are a copy, so a later
+           change to the template cannot reach this page. */
+        var page = CMS.data().pages[pbSlug];
+        if (page) page.builderTemplate = { id: t.id, version: t.version };
+        pbPersist();
+        buildBuilder();
+        toast('Started from the "' + t.name + '" template. Nothing is published yet.');
+    }
+
+    function pbSaveReusable(id) {
+        var i = pbIndexOf(id);
+        if (i < 0) return;
+        var suggested = PB_TYPE_LABEL[pbDraft[i].type] || 'Section';
+        var name = window.prompt('Name this reusable section:', suggested);
+        if (name === null) return;
+        var libId = CMS.sections.library.save(name, pbDraft[i]);
+        if (!libId) { toast('That section could not be saved.', true); return; }
+        commit(true);
+        pbPaintLibrary();
+        toast('Saved to reusable sections, in this browser only.');
+    }
+
+    function pbInsertLibrary(libId) {
+        var sec = CMS.sections.library.instance(libId);
+        if (!sec) { toast('That saved section could not be read.', true); return; }
+        pbDraft.push(sec);
+        pbOpen = sec.id;
+        pbPersist();
+        buildBuilder();
+        toast('Inserted a copy. Editing it will not change what is saved.');
+    }
+
+    /* The preview renders through the public factories into a plain node,
+       with the same generated CSS the page would carry. It is what would be
+       published, not an approximation of it. */
+    function pbPreviewLibrary(libId, box) {
+        if (box.firstChild) { box.innerHTML = ''; box.hidden = true; return; }
+        var sec = CMS.sections.library.instance(libId);
+        if (!sec) { toast('That saved section could not be read.', true); return; }
+        var tag = $('#pbLibCss');
+        if (!tag) {
+            tag = document.createElement('style');
+            tag.id = 'pbLibCss';
+            document.head.appendChild(tag);
+        }
+        tag.textContent = CMS.sections.css([sec]);
+        CMS.sections.renderInto(box, [sec]);
+        box.hidden = false;
+    }
+
+    function pbPaintLibrary() {
+        var host = $('#pbLibrary');
+        if (!host) return;
+        host.innerHTML = '';
+        var items = CMS.sections.library.list();
+        if (!items.length) {
+            host.innerHTML = '<p class="hint">Nothing saved yet. Use <em>Save as reusable</em> ' +
+                'on any section above.</p>';
+            return;
+        }
+        items.forEach(function (it) {
+            var row = document.createElement('div');
+            row.className = 'pb-lib-item';
+            row.setAttribute('data-lib-id', it.id);
+
+            var head = document.createElement('div');
+            head.className = 'pb-lib-head';
+            head.innerHTML = '<strong>' + esc(it.name) + '</strong>' +
+                '<span class="pb-lib-meta">' + esc(PB_TYPE_LABEL[it.type] || it.type) +
+                ' \u00b7 ' + it.elements + ' element' + (it.elements === 1 ? '' : 's') + '</span>';
+            row.appendChild(head);
+
+            var prev = document.createElement('div');
+            prev.className = 'pb-lib-preview';
+            prev.hidden = true;
+
+            var tools = document.createElement('div');
+            tools.className = 'pb-lib-tools';
+            [['insert', 'Insert', 'fa-plus', function () { pbInsertLibrary(it.id); }],
+             ['preview', 'Preview', 'fa-eye', function () { pbPreviewLibrary(it.id, prev); }],
+             ['rename', 'Rename', 'fa-pen', function () {
+                 var n = window.prompt('Rename this reusable section:', it.name);
+                 if (n === null) return;
+                 CMS.sections.library.rename(it.id, n);
+                 commit(true); pbPaintLibrary();
+             }],
+             ['duplicate', 'Duplicate', 'fa-clone', function () {
+                 CMS.sections.library.duplicate(it.id);
+                 commit(true); pbPaintLibrary();
+             }],
+             ['delete', 'Delete', 'fa-trash', function () {
+                 if (!window.confirm('Delete "' + it.name + '" from your reusable sections? ' +
+                     'Pages that already use it are not affected.')) return;
+                 CMS.sections.library.remove(it.id);
+                 commit(true); pbPaintLibrary();
+             }]].forEach(function (b) {
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'adm-btn ghost' + (b[0] === 'delete' ? ' danger' : '');
+                btn.setAttribute('data-act', 'lib-' + b[0]);
+                btn.innerHTML = '<i class="fas ' + b[2] + '"></i> ' + b[1];
+                btn.addEventListener('click', b[3]);
+                tools.appendChild(btn);
+            });
+            row.appendChild(tools);
+            row.appendChild(prev);
+            host.appendChild(row);
+        });
+    }
+
+    function pbWireLibrary() {
+        var ex = $('#pbLibExport'), im = $('#pbLibImport'), file = $('#pbLibFile');
+        if (ex) ex.addEventListener('click', function () {
+            var items = CMS.sections.library.list();
+            if (!items.length) { toast('There is nothing saved to export.', true); return; }
+            download('page-builder-sections.json', CMS.sections.library.exportJSON(),
+                     'application/json');
+            toast('Exported ' + items.length + ' reusable section' +
+                  (items.length === 1 ? '' : 's') + '.');
+        });
+        if (im && file) {
+            im.addEventListener('click', function () { file.value = ''; file.click(); });
+            file.addEventListener('change', function () {
+                var f = file.files && file.files[0];
+                if (!f) return;
+                var fr = new FileReader();
+                fr.onload = function () {
+                    var res = CMS.sections.library.importJSON(fr.result);
+                    if (res.error) { toast(res.error, true); return; }
+                    commit(true);
+                    pbPaintLibrary();
+                    toast(res.added + ' imported' +
+                          (res.skipped ? ', ' + res.skipped + ' skipped as unreadable' : '') + '.');
+                };
+                fr.onerror = function () { toast('That file could not be read.', true); };
+                fr.readAsText(f);
+            });
+        }
+    }
+
     function buildBuilder() {
         var tabs = $('#pbTabs');
         if (!tabs) return;
@@ -261,8 +445,10 @@ window.PBAdmin = function (host) {
         });
 
         pbPaintState();
+        pbPaintTemplates();
         pbPaintAdd();
         pbPaintList();
+        pbPaintLibrary();
         pbPaintDevices();
         pbPaintPreview();
         pbFitPreview();
@@ -364,6 +550,11 @@ window.PBAdmin = function (host) {
             dup.setAttribute('data-act', 'dup');
             dup.addEventListener('click', function () { pbDuplicate(sec.id); });
             tools.appendChild(dup);
+
+            var lib = pbBtn('fa-bookmark', 'Save as reusable');
+            lib.setAttribute('data-act', 'save-reusable');
+            lib.addEventListener('click', function () { pbSaveReusable(sec.id); });
+            tools.appendChild(lib);
 
             var del = pbBtn('fa-trash', 'Delete', 'danger');
             del.setAttribute('data-act', 'del');
@@ -1692,6 +1883,7 @@ window.PBAdmin = function (host) {
     /* ---------- draft / publish buttons ---------- */
     function wireBuilder() {
         var b;
+        pbWireLibrary();
         if ((b = $('#pbSaveDraft'))) b.addEventListener('click', function () {
             pbFlush();
             pbPersist();

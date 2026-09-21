@@ -740,9 +740,14 @@ const el  = (id, type, content, style, responsive) =>
     check('and the shipped content comes back',
       (await p.evaluate(() => document.querySelectorAll('.info-body h2').length)) >= 3);
 
-    check('only builderDrafts was added at the top level',
+    /* Still an exact list, not a loosened one: the builder is allowed two
+       top-level keys and no more. builderDrafts is this device's working
+       copy; builderLibrary is its reusable-section library. Both are
+       device-local and both are stripped from the publish payload. */
+    check('the builder owns exactly two top-level keys, both device-local',
       JSON.stringify(await p.evaluate(() =>
-        Object.keys(CMS.data()).filter(k => /^builder/.test(k)).sort())) === JSON.stringify(['builderDrafts']));
+        Object.keys(CMS.data()).filter(k => /^builder/.test(k)).sort())) ===
+      JSON.stringify(['builderDrafts', 'builderLibrary']));
     check('the other panels’ config is untouched',
       await p.evaluate(() => typeof CMS.data().colors === 'object' && typeof CMS.data().sportsTable === 'object'));
     check('each page keeps its own builder data',

@@ -9,6 +9,11 @@
          alone cannot guarantee that, so the directive lives here too. -->
     <meta name="robots" content="noindex,nofollow" />
     <link rel="stylesheet" href="../css/admin.css" />
+    <!-- The Page Builder's own stylesheet, so a reusable section can be
+         previewed here exactly as it renders on the page. Every selector in
+         it is scoped to a .pb-* class the builder emits; none collide with
+         the admin's own. -->
+    <link rel="stylesheet" href="../css/sections.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" />
 </head>
 
@@ -629,9 +634,39 @@
         <div class="pb-split">
             <div class="pb-col-edit">
                 <div class="card">
+                    <h2>Start from a template</h2>
+                    <p class="hint">
+                        Replaces the sections in this draft with a ready-made layout you can edit.
+                        Placeholder wording only &mdash; nothing is published until you press
+                        <strong>Publish</strong>.
+                    </p>
+                    <div class="pb-templates" id="pbTemplates"></div>
+                </div>
+
+                <div class="card">
                     <h2>Sections</h2>
                     <div class="pb-add" id="pbAdd"></div>
                     <div class="pb-list" id="pbList"></div>
+                </div>
+
+                <div class="card">
+                    <h2>Reusable sections</h2>
+                    <p class="hint">
+                        Save a section here and drop it into any page. Each one is saved
+                        <strong>in this browser only</strong> &mdash; it is never published and
+                        never leaves this device unless you export it. Inserting one makes an
+                        independent copy, so editing the page does not change what is saved here.
+                    </p>
+                    <div class="pb-bar">
+                        <button type="button" class="adm-btn ghost" id="pbLibExport">
+                            <i class="fas fa-file-export"></i> Export
+                        </button>
+                        <button type="button" class="adm-btn ghost" id="pbLibImport">
+                            <i class="fas fa-file-import"></i> Import
+                        </button>
+                        <input type="file" id="pbLibFile" accept="application/json,.json" hidden />
+                    </div>
+                    <div class="pb-lib" id="pbLibrary"></div>
                 </div>
             </div>
             <div class="pb-col-prev">

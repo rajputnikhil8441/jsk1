@@ -322,6 +322,116 @@ shipped values without throwing.
 
 ---
 
+## Reusable sections and templates (milestone A)
+
+Both rest on one primitive, `pbCleanSections()`: untrusted section-shaped
+data in, a freshly **built** array out.
+
+### The sanitiser
+
+Nothing is copied unless its key is on a list, and a new object is built
+rather than the input cleaned in place. That is what makes `__proto__`,
+`constructor` and `prototype` non-events — they are not on any list, so they
+are never copied, and nothing is ever written onto `Object.prototype`.
+
+| Layer | Rule |
+| --- | --- |
+| Section | `type` must be in `PB_SECTION_CLASS`, else the section is dropped |
+| Element | `type` must be in `PB_ELEMENTS`, else that element is dropped |
+| Content | key must be in `PB_CONTENT_KEYS[type]`; values must be a boolean, a finite number or a control-character-free string under 4000 chars |
+| URLs | `src`, `href`, `image`, `buttonHref`, `url` go through `pbUrl()` |
+| Names | `icon`, `variant`, `level`, `titleLevel`, `platform` must be on the renderer's own allow-list |
+| Items | a row missing a required key (`question`; `platform`+`url`) is dropped |
+| Style | key must be in that type's `PB_EL_STYLE_KEYS` / `PB_SEC_STYLE_KEYS`; a `@role` must resolve, anything else must pass `pbCssValue()` |
+| Depth | elements nest three deep, 200 per list, 12 columns, 100 items |
+
+No second set of checks exists: these are the renderer's own.
+
+### Reusable sections
+
+Stored under a top-level `builderLibrary`:
+
+```js
+builderLibrary: {
+  version: 1,
+  items: [ { id, name, createdAt, updatedAt, section: { …a full section… } } ]
+}
+```
+
+**Device-local, exactly like `builderDrafts`**: stripped from
+`Remote.publish()` and preserved across `Remote.pull()`. A saved section is
+never part of what a visitor downloads and never travels between devices
+except through an export file someone chooses to move.
+
+An item holds a **copy**. `library.instance(id)` returns another copy with
+fresh ids, so a page and a library entry have no link: editing either leaves
+the other alone. There are deliberately **no live-linked instances** —
+nothing in the current architecture could keep them consistent across a
+publish.
+
+`CMS.sections.library`: `list()`, `save(name, section)`, `rename(id, name)`,
+`duplicate(id)`, `remove(id)`, `instance(id)`, `exportJSON()`,
+`importJSON(text)`.
+
+### Export / import format
+
+```json
+{ "kind": "jsk1-page-builder-library", "version": 1,
+  "schemaVersion": 2, "exportedAt": "2026-09-21",
+  "items": [ { "name": "…", "createdAt": "…", "section": { … } } ] }
+```
+
+Device-local ids are not exported. Import accepts that shape or a bare array
+of entries, and never trusts either: every section is rebuilt by
+`pbCleanSections()`, so an entry carrying an unknown element type, a
+`javascript:` link, a style value that would close a CSS rule or a
+`__proto__` key arrives as the clean part of itself or not at all.
+`importJSON()` returns `{ added, skipped, error }` and never throws.
+
+A `builderLibrary` that is missing, `null`, a string, a number, an array or
+half-built reads as an empty library and still accepts a save.
+
+### Templates
+
+A **code registry**, not a table: deterministic, diffable and testable.
+Six entries — `blank`, `landing`, `information`, `contact`, `feature`,
+`faq` — each plain data in the existing section schema, each passed through
+`pbCleanSections()` like anything else. A template therefore cannot reach a
+page with something the builder's own controls could not have produced.
+
+`CMS.sections.templates()` lists them with a name, description, version and
+section/element counts. `CMS.sections.fromTemplate(id)` returns a clean,
+freshly-ided **copy** — the registry entry is never handed out, so editing a
+page cannot change the registry and changing the registry cannot change a
+page that already exists.
+
+Content is placeholder wording only. Nothing in a template states a fact
+about the site.
+
+`version` records which revision a page started from, stored on the page as
+`pages[slug].builderTemplate = { id, version }`. It is **provenance, not a
+link** — the copy is what holds pages still.
+
+### Draft and publish
+
+Applying a template or inserting a reusable section writes to the **draft**
+only, through the same `saveDraft()` the rest of the builder uses. Nothing
+reaches a visitor until Publish. SEO fields, the page schema and the
+static-first SEO behaviour are untouched by both features.
+
+### Known limitations
+
+- The library lives in this browser. Clearing site data loses it; export
+  first. It is not synced, by design.
+- No live-linked instances: updating a library entry does not update pages
+  that already use it.
+- Applying a template **replaces** the current draft (after a confirmation)
+  rather than merging into it.
+- Templates are code, so adding one is a commit, not an admin action.
+- Large images are still referenced by path; nothing here stores base64.
+
+---
+
 ## Safety
 
 - **No arbitrary HTML.** Every element is built with `document.createElement`

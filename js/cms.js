@@ -280,6 +280,11 @@
            status. Editing here cannot change what visitors see. */
         builderDrafts: {},
 
+        /* The reusable-section library. Device-local, exactly like
+           builderDrafts: stripped from the publish payload and preserved
+           across a pull. See docs/page-builder.md. */
+        builderLibrary: { version: 1, items: [] },
+
         pages: {
 
             /* The homepage is part of the SEO system too — its title is
@@ -1262,7 +1267,279 @@
         return out;
     }());
 
-    /* ---- V2: column layout presets ----
+    /* =====================================================
+       UNTRUSTED SECTION DATA (milestone A)
+       -----------------------------------------------------
+       Reusable sections come back from a JSON file a person chose, and
+       templates come from a code registry -- neither is as trustworthy as
+       something the admin's own controls produced. Both go through here.
+
+       The method is the same one the rest of this file uses: nothing is
+       copied unless its key is on a list. A fresh object is BUILT from the
+       input rather than the input being cleaned up in place, so a key that
+       is not named below simply never exists in the result. That is what
+       makes __proto__, constructor and prototype non-events: they are not
+       on any list, so they are not copied, and the object being written
+       into is a plain literal whose own keys are assigned directly.
+
+       Values go through the same checks the renderer already applies --
+       pbUrl for links, pbCssValue for style values, the icon, social,
+       variant and heading-level allow-lists -- rather than a second set. */
+
+    /* Ids address the generated CSS, so two must never collide. The counter
+       covers duplicating a section, which mints several ids inside one
+       millisecond -- the same reason the admin's own minter has one. */
+    var pbIdSeq = 0;
+    function pbNewId(prefix) {
+        pbIdSeq += 1;
+        return prefix + '_' + Date.now().toString(36) + pbIdSeq.toString(36) +
+               Math.floor(Math.random() * 1e6).toString(36);
+    }
+
+    var PB_CONTENT_KEYS = {
+        heading:     ['text', 'level'],
+        text:        ['text'],
+        image:       ['src', 'alt', 'width', 'height', 'href', 'newTab'],
+        button:      ['text', 'href', 'newTab'],
+        card:        ['title', 'text', 'image', 'imageAlt', 'imageWidth', 'imageHeight',
+                      'buttonText', 'buttonHref', 'buttonNewTab'],
+        columns:     [],                       /* its containers are handled below */
+        divider:     [],
+        spacer:      [],
+        icon:        ['icon', 'label', 'href', 'newTab'],
+        notice:      ['variant', 'icon', 'text', 'linkText', 'href', 'newTab'],
+        featureBox:  ['icon', 'image', 'imageAlt', 'title', 'titleLevel', 'text',
+                      'linkText', 'href', 'newTab'],
+        faq:         ['single'],
+        socialLinks: []
+    };
+
+    /* Which content keys hold a URL, and which hold a repeating list. */
+    var PB_URL_KEYS = { src: 1, href: 1, image: 1, buttonHref: 1, url: 1 };
+
+    /* Content keys whose value is a name from a list rather than free text.
+       The renderer already refuses an unrecognised one at render time, but
+       an import is the moment to drop it: storing "constructor" as an icon
+       name is inert and pointless, and validating here means the library
+       only ever holds values the builder's own controls could have set.
+       Each list is the renderer's own, never a second copy. */
+    var PB_ENUM_KEYS = {
+        icon:       function () { return PB_ICONS; },
+        variant:    function () { return PB_NOTICE_VARIANTS; },
+        titleLevel: function () { return PB_HEADING_LEVELS; },
+        platform:   function () { return PB_SOCIAL; },
+        level:      function () { return PB_ALL_LEVELS; }
+    };
+
+    var PB_ALL_LEVELS = { h1: 1, h2: 1, h3: 1, h4: 1, h5: 1, h6: 1 };
+
+    function pbEnumOk(key, value) {
+        var get = pbPick(PB_ENUM_KEYS, key);
+        if (!get) return true;
+        return !!pbPick(get(), String(value).toLowerCase());
+    }
+    var PB_ITEM_KEYS = {
+        faq:         ['question', 'answer', 'open'],
+        socialLinks: ['platform', 'url', 'label']
+    };
+
+    /* A row that lost one of these is not a row the renderer could draw, so
+       it is dropped rather than stored as something an author would have to
+       notice is broken. */
+    var PB_ITEM_REQUIRED = {
+        faq:         ['question'],
+        socialLinks: ['platform', 'url']
+    };
+
+    /* A single stored value: kept as a boolean, a finite number or a string
+       with anything that could terminate an attribute stripped out. Objects
+       and arrays are refused, which is what stops a nested payload riding in
+       on a content key. */
+    function pbScalar(v) {
+        if (typeof v === 'boolean') return v;
+        if (typeof v === 'number') return isFinite(v) ? v : null;
+        if (typeof v !== 'string') return null;
+        if (/[\u0000-\u001f\u007f]/.test(v)) return null;
+        return v.length > 4000 ? v.slice(0, 4000) : v;
+    }
+
+    function pbCleanContent(type, raw) {
+        var out = {}, keys = pbPick(PB_CONTENT_KEYS, type) || [], i, k, v;
+        if (!raw || typeof raw !== 'object') return out;
+        for (i = 0; i < keys.length; i++) {
+            k = keys[i];
+            if (!Object.prototype.hasOwnProperty.call(raw, k)) continue;
+            v = pbScalar(raw[k]);
+            if (v === null) continue;
+            /* A URL that the renderer would refuse is dropped here rather
+               than stored, so nothing downstream has to remember to check. */
+            if (Object.prototype.hasOwnProperty.call(PB_URL_KEYS, k)) {
+                v = pbUrl(v);
+                if (!v) continue;
+            }
+            if (!pbEnumOk(k, v)) continue;
+            out[k] = v;
+        }
+        var items = pbPick(PB_ITEM_KEYS, type);
+        if (items && isArr(raw.items)) {
+            var list = [];
+            for (i = 0; i < raw.items.length && i < 100; i++) {
+                var src = raw.items[i];
+                if (!src || typeof src !== 'object') continue;
+                var row = {}, kept = 0;
+                for (var j = 0; j < items.length; j++) {
+                    var ik = items[j];
+                    if (!Object.prototype.hasOwnProperty.call(src, ik)) continue;
+                    var iv = pbScalar(src[ik]);
+                    if (iv === null) continue;
+                    if (Object.prototype.hasOwnProperty.call(PB_URL_KEYS, ik)) {
+                        iv = pbUrl(iv);
+                        if (!iv) continue;
+                    }
+                    if (!pbEnumOk(ik, iv)) continue;
+                    row[ik] = iv;
+                    kept += 1;
+                }
+                var need = pbPick(PB_ITEM_REQUIRED, type) || [];
+                var whole = true;
+                for (var n = 0; n < need.length; n++) {
+                    if (!Object.prototype.hasOwnProperty.call(row, need[n])) whole = false;
+                }
+                if (kept && whole) list.push(row);
+            }
+            out.items = list;
+        }
+        return out;
+    }
+
+    /* Style and responsive maps, filtered to the keys this node's renderer
+       reads and to values that survive the checks it would apply anyway. */
+    function pbCleanStyle(raw, allow) {
+        var out = {}, i, k, v;
+        if (!raw || typeof raw !== 'object') return out;
+        for (i = 0; i < allow.length; i++) {
+            k = allow[i];
+            if (!Object.prototype.hasOwnProperty.call(raw, k)) continue;
+            v = pbScalar(raw[k]);
+            if (v === null) continue;
+            v = str(v);
+            if (!v) continue;
+            /* A global design reference is legal here; anything else has to
+               pass the ordinary value check. */
+            if (v.charAt(0) === '@') {
+                if (k === 'typography') { if (!pbPick(PB_TYPO_ROLES, v.slice(1))) continue; }
+                else if (!pbColorRef(v)) continue;
+            } else if (!pbCssValue(v)) {
+                continue;
+            }
+            out[k] = typeof raw[k] === 'number' ? raw[k] : v;
+        }
+        return out;
+    }
+
+    function pbCleanResponsive(raw, allow) {
+        var out = {};
+        if (!raw || typeof raw !== 'object') return out;
+        if (raw.tablet) out.tablet = pbCleanStyle(raw.tablet, allow);
+        if (raw.mobile) out.mobile = pbCleanStyle(raw.mobile, allow);
+        return out;
+    }
+
+    function pbCleanElement(raw, depth) {
+        if (!raw || typeof raw !== 'object' || depth > 3) return null;
+        var type = str(raw.type);
+        /* Unknown types are refused outright rather than carried along: an
+           import is the one place where dropping the unrecognised is safer
+           than keeping it for a future version to understand. */
+        if (!pbPick(PB_ELEMENTS, type)) return null;
+        var allow = pbPick(PB_EL_STYLE_KEYS, type) || [];
+        var out = {
+            id: pbCssId(raw.id) || pbNewId('el'),
+            type: type,
+            content: pbCleanContent(type, raw.content),
+            style: pbCleanStyle(raw.style, allow),
+            responsive: pbCleanResponsive(raw.responsive, allow)
+        };
+        if (raw.enabled === false) out.enabled = false;
+        if (type === 'columns') {
+            var cols = ((raw.content || {}).columns);
+            var kept = [];
+            if (isArr(cols)) {
+                for (var i = 0; i < cols.length && i < 12; i++) {
+                    kept.push({ elements: pbCleanElements((cols[i] || {}).elements, depth + 1) });
+                }
+            }
+            out.content.columns = kept;
+        }
+        return out;
+    }
+
+    function pbCleanElements(raw, depth) {
+        var out = [];
+        if (!isArr(raw)) return out;
+        for (var i = 0; i < raw.length && i < 200; i++) {
+            var el = pbCleanElement(raw[i], depth);
+            if (el) out.push(el);
+        }
+        return out;
+    }
+
+    function pbCleanSection(raw) {
+        if (!raw || typeof raw !== 'object') return null;
+        var type = str(raw.type);
+        if (!pbPick(PB_SECTION_CLASS, type)) return null;
+        var allow = PB_SEC_STYLE_KEYS;
+        var vis = raw.visibility && typeof raw.visibility === 'object' ? raw.visibility : {};
+        return {
+            id: pbCssId(raw.id) || pbNewId('sec'),
+            type: type,
+            enabled: raw.enabled !== false,
+            visibility: {
+                desktop: vis.desktop !== false,
+                tablet: vis.tablet !== false,
+                mobile: vis.mobile !== false
+            },
+            style: pbCleanStyle(raw.style, allow),
+            responsive: pbCleanResponsive(raw.responsive, allow),
+            elements: pbCleanElements(raw.elements, 0)
+        };
+    }
+
+    /* The public entry point: any array of section-shaped data in, a clean
+       array out. Never throws, never returns the input. */
+    function pbCleanSections(raw) {
+        var out = [];
+        if (!isArr(raw)) return out;
+        for (var i = 0; i < raw.length && i < 200; i++) {
+            var sec = pbCleanSection(raw[i]);
+            if (sec) out.push(sec);
+        }
+        return out;
+    }
+
+    /* Fresh ids throughout, so an inserted copy can never address the same
+       generated CSS rule as the thing it was copied from. */
+    function pbReidSections(sections) {
+        function walk(list, depth) {
+            if (!isArr(list) || depth > 4) return;
+            for (var i = 0; i < list.length; i++) {
+                var el = list[i];
+                if (!el) continue;
+                el.id = pbNewId('el');
+                var cols = (el.content || {}).columns;
+                if (isArr(cols)) {
+                    for (var j = 0; j < cols.length; j++) walk((cols[j] || {}).elements, depth + 1);
+                }
+            }
+        }
+        for (var i = 0; i < (sections || []).length; i++) {
+            sections[i].id = pbNewId('sec');
+            walk(sections[i].elements, 0);
+        }
+        return sections;
+    }
+
+    /* ---- V2: column layout presets ----    /* ---- V2: column layout presets ----
        A layout is chosen by NAME from this map. The value emitted into
        grid-template-columns is always the constant string stored here, so
        no author-entered text can ever reach that property. The second
@@ -2267,6 +2544,373 @@
                  updatedAt: (pub && str(pub.updatedAt)) || '' };
     }
 
+    /* =====================================================
+       REUSABLE SECTION LIBRARY (milestone A, stage 7)
+       -----------------------------------------------------
+       Local to this browser, like builderDrafts: stripped from the publish
+       payload and preserved across a pull, so a saved section is never part
+       of what a visitor downloads and never travels between devices except
+       through the export file a person chooses to move.
+
+       An item holds a COPY of the section. Inserting one copies it again
+       and re-ids it, so the page and the library entry have no link at all:
+       editing either leaves the other alone. There are deliberately no
+       live-linked instances -- nothing in the current architecture could
+       keep them consistent across a publish.
+
+       LIBRARY_VERSION marks the stored shape and the export file. It is a
+       marker, not a gate: a file from a future version still imports,
+       because every section in it goes through pbCleanSections() anyway. */
+
+    var LIBRARY_VERSION = 1;
+
+    function libraryStore() {
+        var st = load();
+        var lib = st.builderLibrary;
+        if (!lib || typeof lib !== 'object' || !isArr(lib.items)) {
+            lib = { version: LIBRARY_VERSION, items: [] };
+            st.builderLibrary = lib;
+        }
+        if (typeof lib.version !== 'number') lib.version = LIBRARY_VERSION;
+        return lib;
+    }
+
+    function libraryName(raw, fallback) {
+        var n = str(raw).replace(/[\u0000-\u001f\u007f<>]/g, '').trim();
+        if (n.length > 80) n = n.slice(0, 80);
+        return n || fallback || 'Saved section';
+    }
+
+    function libraryList() {
+        var items = libraryStore().items, out = [], i;
+        for (i = 0; i < items.length; i++) {
+            var it = items[i];
+            if (!it || !it.section) continue;
+            out.push({ id: it.id, name: it.name, createdAt: it.createdAt,
+                       updatedAt: it.updatedAt, type: it.section.type,
+                       elements: pbCountElements(it.section.elements, 0) });
+        }
+        return out;
+    }
+
+    /* A copy of the stored section, cleaned and re-ided: what the caller
+       gets can be dropped straight into a page. */
+    function libraryInstance(id) {
+        var items = libraryStore().items, i;
+        for (i = 0; i < items.length; i++) {
+            if (items[i] && items[i].id === id) {
+                var out = pbCleanSections([clone(items[i].section)]);
+                return out.length ? pbReidSections(out)[0] : null;
+            }
+        }
+        return null;
+    }
+
+    function librarySave(name, section) {
+        var clean = pbCleanSections([section]);
+        if (!clean.length) return null;
+        var lib = libraryStore();
+        var item = { id: pbNewId('lib'), name: libraryName(name, 'Saved section'),
+                     createdAt: pbToday(), updatedAt: pbToday(), section: clean[0] };
+        lib.items.push(item);
+        save();
+        return item.id;
+    }
+
+    function libraryFind(id) {
+        var items = libraryStore().items;
+        for (var i = 0; i < items.length; i++) {
+            if (items[i] && items[i].id === id) return items[i];
+        }
+        return null;
+    }
+
+    function libraryRename(id, name) {
+        var it = libraryFind(id);
+        if (!it) return false;
+        it.name = libraryName(name, it.name);
+        it.updatedAt = pbToday();
+        return save();
+    }
+
+    function libraryDuplicate(id) {
+        var it = libraryFind(id);
+        if (!it) return null;
+        var lib = libraryStore();
+        var copy = { id: pbNewId('lib'), name: libraryName(it.name + ' copy'),
+                     createdAt: pbToday(), updatedAt: pbToday(),
+                     section: clone(it.section) };
+        lib.items.splice(lib.items.indexOf(it) + 1, 0, copy);
+        save();
+        return copy.id;
+    }
+
+    function libraryRemove(id) {
+        var lib = libraryStore();
+        for (var i = 0; i < lib.items.length; i++) {
+            if (lib.items[i] && lib.items[i].id === id) {
+                lib.items.splice(i, 1);
+                return save();
+            }
+        }
+        return false;
+    }
+
+    function libraryExport() {
+        var lib = libraryStore();
+        var out = { kind: 'jsk1-page-builder-library', version: LIBRARY_VERSION,
+                    schemaVersion: PB_SCHEMA, exportedAt: pbToday(), items: [] };
+        for (var i = 0; i < lib.items.length; i++) {
+            var it = lib.items[i];
+            if (!it || !it.section) continue;
+            out.items.push({ name: it.name, createdAt: it.createdAt, section: clone(it.section) });
+        }
+        return JSON.stringify(out, null, 2);
+    }
+
+    /* Import never trusts the file. Every section is rebuilt by
+       pbCleanSections(), so an entry carrying an unknown element type, a
+       javascript: link, a style value that would close a CSS rule or a
+       __proto__ key arrives as the clean part of itself or not at all. */
+    function libraryImport(text) {
+        var res = { added: 0, skipped: 0, error: '' };
+        var data;
+        try { data = JSON.parse(String(text == null ? '' : text)); }
+        catch (e) { res.error = 'That file is not valid JSON.'; return res; }
+        if (!data || typeof data !== 'object') { res.error = 'That file does not hold a library.'; return res; }
+        var items = isArr(data.items) ? data.items : (isArr(data) ? data : null);
+        if (!items) { res.error = 'That file does not hold a library.'; return res; }
+        var lib = libraryStore();
+        for (var i = 0; i < items.length && i < 500; i++) {
+            var raw = items[i];
+            if (!raw || typeof raw !== 'object') { res.skipped += 1; continue; }
+            var section = raw.section || raw;
+            var clean = pbCleanSections([section]);
+            if (!clean.length) { res.skipped += 1; continue; }
+            lib.items.push({ id: pbNewId('lib'),
+                             name: libraryName(raw.name, 'Imported section'),
+                             createdAt: pbToday(), updatedAt: pbToday(),
+                             section: clean[0] });
+            res.added += 1;
+        }
+        if (res.added) save();
+        return res;
+    }
+
+    /* =====================================================
+       PAGE TEMPLATES (milestone A, stage 8)
+       -----------------------------------------------------
+       A code registry, not a table: deterministic, diffable and testable.
+       Every template is plain data in the existing section schema and goes
+       through pbCleanSections() like anything else, so a template can never
+       reach the page with something the builder's own controls could not
+       have produced.
+
+       Instantiating copies and re-ids, so editing a page never touches the
+       registry and changing the registry never touches a page that was
+       already created. `version` records which revision a page started
+       from; it is provenance, not a link.
+
+       The copy is what actually holds pages still. The version exists so a
+       later change to a template is visibly a different revision rather
+       than something that might have altered an existing page. */
+
+    var PB_TEMPLATE_VERSION = 1;
+
+    function tSec(type, elements, style) {
+        return { type: type, enabled: true,
+                 visibility: { desktop: true, tablet: true, mobile: true },
+                 style: style || {}, responsive: {}, elements: elements || [] };
+    }
+    function tEl(type, content, style) {
+        return { type: type, content: content || {}, style: style || {}, responsive: {} };
+    }
+    /* A columns element with its containers filled in. A layout preset alone
+       is not enough: the containers are content, and an element with none
+       renders nothing at all. */
+    function tCols(preset, groups) {
+        return tEl('columns', { columns: groups.map(function (g) { return { elements: g }; }) },
+                   { columns: preset });
+    }
+
+    /* Placeholder copy only. Nothing here states a fact about the site --
+       it is all visibly text waiting to be replaced. */
+    var PB_TEMPLATES = [
+        { id: 'blank', name: 'Blank page', version: PB_TEMPLATE_VERSION,
+          description: 'One empty text section. Start from nothing.',
+          sections: function () { return [tSec('text', [
+              tEl('heading', { text: 'Page heading', level: 'h1' }),
+              tEl('text', { text: 'Write the first paragraph here.' })
+          ])]; } },
+
+        { id: 'landing', name: 'Landing page', version: PB_TEMPLATE_VERSION,
+          description: 'A hero, three feature boxes, a short block of copy and a closing banner.',
+          sections: function () { return [
+              tSec('hero', [
+                  tEl('heading', { text: 'Headline goes here', level: 'h1' }, { typography: '@h1' }),
+                  tEl('text', { text: 'One or two sentences saying what this page is for.' }),
+                  tEl('button', { text: 'Primary action', href: '#' }, { bg: '@primary' })
+              ]),
+              tSec('columns', [
+                  tCols('3', [
+                      [tEl('featureBox', { icon: 'star', title: 'First point',
+                                           text: 'A sentence describing it.' })],
+                      [tEl('featureBox', { icon: 'shield', title: 'Second point',
+                                           text: 'A sentence describing it.' })],
+                      [tEl('featureBox', { icon: 'bolt', title: 'Third point',
+                                           text: 'A sentence describing it.' })]
+                  ])
+              ]),
+              tSec('text', [
+                  tEl('heading', { text: 'Section heading', level: 'h2' }),
+                  tEl('text', { text: 'Replace this paragraph with your own copy.' })
+              ]),
+              tSec('banner', [
+                  tEl('heading', { text: 'Closing heading', level: 'h2' }),
+                  tEl('button', { text: 'Secondary action', href: '#' }, { bg: '@primary' })
+              ])
+          ]; } },
+
+        { id: 'information', name: 'Information page', version: PB_TEMPLATE_VERSION,
+          description: 'A title, an introduction, three headed sections and a note.',
+          sections: function () { return [
+              tSec('text', [
+                  tEl('heading', { text: 'Page title', level: 'h1' }, { typography: '@h1' }),
+                  tEl('text', { text: 'A short introduction to what this page covers.' })
+              ]),
+              tSec('text', [
+                  tEl('heading', { text: 'First topic', level: 'h2' }),
+                  tEl('text', { text: 'Replace with your own copy.' }),
+                  tEl('divider', {}, { lineColor: '@border' }),
+                  tEl('heading', { text: 'Second topic', level: 'h2' }),
+                  tEl('text', { text: 'Replace with your own copy.' }),
+                  tEl('divider', {}, { lineColor: '@border' }),
+                  tEl('heading', { text: 'Third topic', level: 'h2' }),
+                  tEl('text', { text: 'Replace with your own copy.' })
+              ]),
+              tSec('text', [
+                  tEl('notice', { text: 'Use this box for anything a reader should not miss.',
+                                  variant: 'info', icon: 'info' })
+              ])
+          ]; } },
+
+        { id: 'contact', name: 'Contact page', version: PB_TEMPLATE_VERSION,
+          description: 'A title, two columns for the ways to reach you, and social links.',
+          sections: function () { return [
+              tSec('text', [
+                  tEl('heading', { text: 'Contact', level: 'h1' }, { typography: '@h1' }),
+                  tEl('text', { text: 'Say when you reply and how long it usually takes.' })
+              ]),
+              tSec('columns', [
+                  tCols('2', [
+                      [tEl('heading', { text: 'Message us', level: 'h3' }),
+                       tEl('text', { text: 'Put the best way to reach you here.' })],
+                      [tEl('heading', { text: 'Support hours', level: 'h3' }),
+                       tEl('text', { text: 'Put your hours here.' })]
+                  ])
+              ]),
+              tSec('text', [
+                  tEl('heading', { text: 'Find us elsewhere', level: 'h2' }),
+                  tEl('socialLinks', { items: [{ platform: 'whatsapp', url: '#' },
+                                               { platform: 'telegram', url: '#' }] })
+              ])
+          ]; } },
+
+        { id: 'feature', name: 'Feature page', version: PB_TEMPLATE_VERSION,
+          description: 'A hero, three feature boxes, a card row and a closing action.',
+          sections: function () { return [
+              tSec('hero', [
+                  tEl('heading', { text: 'What this offers', level: 'h1' }, { typography: '@h1' }),
+                  tEl('text', { text: 'One sentence on who it is for.' })
+              ]),
+              tSec('columns', [
+                  tCols('3', [
+                      [tEl('featureBox', { icon: 'star', title: 'First feature',
+                                           text: 'A sentence describing it.' })],
+                      [tEl('featureBox', { icon: 'shield', title: 'Second feature',
+                                           text: 'A sentence describing it.' })],
+                      [tEl('featureBox', { icon: 'bolt', title: 'Third feature',
+                                           text: 'A sentence describing it.' })]
+                  ])
+              ]),
+              tSec('cards', [
+                  tEl('card', { title: 'Card one', text: 'Replace this text.' }),
+                  tEl('card', { title: 'Card two', text: 'Replace this text.' })
+              ]),
+              tSec('banner', [
+                  tEl('heading', { text: 'Ready when you are', level: 'h2' }),
+                  tEl('button', { text: 'Get started', href: '#' }, { bg: '@primary' })
+              ])
+          ]; } },
+
+        { id: 'faq', name: 'FAQ page', version: PB_TEMPLATE_VERSION,
+          description: 'A title, an accordion of three questions and a closing note.',
+          sections: function () { return [
+              tSec('text', [
+                  tEl('heading', { text: 'Frequently asked questions', level: 'h1' },
+                      { typography: '@h1' }),
+                  tEl('text', { text: 'A line saying what these questions cover.' })
+              ]),
+              tSec('text', [
+                  tEl('faq', { single: false, items: [
+                      { question: 'First question?', answer: 'Answer.' },
+                      { question: 'Second question?', answer: 'Answer.' },
+                      { question: 'Third question?', answer: 'Answer.' }
+                  ] })
+              ]),
+              tSec('text', [
+                  tEl('notice', { text: 'Tell readers where to go if their question is not here.',
+                                  variant: 'info', icon: 'question' })
+              ])
+          ]; } }
+    ];
+
+    function pbCountElements(list, depth) {
+        var n = 0;
+        if (!isArr(list) || depth > 4) return n;
+        for (var i = 0; i < list.length; i++) {
+            if (!list[i]) continue;
+            n += 1;
+            var cols = (list[i].content || {}).columns;
+            if (isArr(cols)) {
+                for (var c = 0; c < cols.length; c++) {
+                    n += pbCountElements((cols[c] || {}).elements, depth + 1);
+                }
+            }
+        }
+        return n;
+    }
+
+    function templateList() {
+        var out = [];
+        for (var i = 0; i < PB_TEMPLATES.length; i++) {
+            var t = PB_TEMPLATES[i];
+            var secs = pbCleanSections(t.sections());
+            /* Counted through the nesting: an author sees the feature boxes
+               inside a columns element, not the columns element. */
+            var els = 0;
+            for (var j = 0; j < secs.length; j++) els += pbCountElements(secs[j].elements, 0);
+            out.push({ id: t.id, name: t.name, version: t.version,
+                       description: t.description, sections: secs.length, elements: els });
+        }
+        return out;
+    }
+
+    function templateFind(id) {
+        var k = str(id);
+        for (var i = 0; i < PB_TEMPLATES.length; i++) {
+            if (PB_TEMPLATES[i].id === k) return PB_TEMPLATES[i];
+        }
+        return null;
+    }
+
+    /* A clean, freshly-ided copy. The registry entry is never handed out. */
+    function templateSections(id) {
+        var t = templateFind(id);
+        if (!t) return null;
+        return pbReidSections(pbCleanSections(t.sections()));
+    }
+
     /* Slugs the builder can edit: the shipped mounts plus admin-created pages. */
     function builderPages() {
         var pages = load().pages || {}, out = [], k;
@@ -2604,11 +3248,18 @@
                        page in this browser pulls — so without this, opening
                        the site in another tab rolled the admin's unsaved
                        Page Builder work back to the last published state. */
-                    var localDrafts = (load() || {}).builderDrafts;
+                    var local = load() || {};
+                    var localDrafts = local.builderDrafts;
+                    var localLibrary = local.builderLibrary;
                     /* server wins — localStorage is only a cache here */
                     state = merge(merge(DEFAULTS, window.CMS_BRAND || null), remoteData);
                     if (localDrafts && Object.keys(localDrafts).length) {
                         state.builderDrafts = localDrafts;
+                    }
+                    /* Same reasoning: the library lives on this device, so a
+                       row that does not carry it must not wipe it. */
+                    if (localLibrary && isArr(localLibrary.items) && localLibrary.items.length) {
+                        state.builderLibrary = localLibrary;
                     }
                     try {
                         window.localStorage.setItem(KEY, JSON.stringify(state));
@@ -2661,6 +3312,9 @@
                visitor downloads with the anon key. */
             var payload = clone(load());
             delete payload.builderDrafts;
+            /* Local-only by decision: the library is a workbench, not
+               content, and every visitor downloads this row. */
+            delete payload.builderLibrary;
 
             var body = JSON.stringify({
                 id: RC.siteId,
@@ -2900,6 +3554,34 @@
             paintDesign: paintDesign,
             sectionTokens: PB_SEC_TOKENS,
             elementTokens: PB_EL_TOKENS,
+
+            /* Renders sections into any host node, for the admin's library
+               preview. Same factories as the public page, so what is shown
+               is what would be published. */
+            renderInto: renderSectionsInto,
+
+            /* untrusted data in, clean sections out */
+            sanitize: pbCleanSections,
+            reid: pbReidSections,
+            contentKeys: PB_CONTENT_KEYS,
+
+            /* reusable section library (device-local) */
+            library: {
+                version: LIBRARY_VERSION,
+                list: libraryList,
+                save: librarySave,
+                rename: libraryRename,
+                duplicate: libraryDuplicate,
+                remove: libraryRemove,
+                instance: libraryInstance,
+                exportJSON: libraryExport,
+                importJSON: libraryImport
+            },
+
+            /* page templates (code registry) */
+            templates: templateList,
+            templateVersion: PB_TEMPLATE_VERSION,
+            fromTemplate: templateSections,
 
             /* draft / publish */
             mounted: PB_MOUNTED,

@@ -2303,3 +2303,64 @@ input[type="password"]:focus {
 
 .design-typo:first-of-type { border-top: 0; }
 .design-typo > strong { display: block; margin-bottom: 6px; font-size: 13px; }
+
+
+/* ---------- templates and the reusable section library (milestone A) ---------- */
+
+.pb-templates {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 8px;
+}
+
+.pb-template {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    border: 1px solid var(--a-line);
+    border-radius: 7px;
+    background: rgba(255, 255, 255, .015);
+    color: var(--a-text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.pb-template:hover { border-color: var(--a-accent); }
+.pb-template > strong { font-size: 13px; }
+.pb-template > em { color: var(--a-dim); font-size: 11.5px; font-style: normal; line-height: 1.4; }
+.pb-template-meta { color: var(--a-dim); font-size: 11px; }
+
+.pb-lib { display: flex; flex-direction: column; gap: 8px; }
+
+.pb-lib-item {
+    border: 1px solid var(--a-line);
+    border-radius: 7px;
+    padding: 9px 10px;
+}
+
+.pb-lib-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 7px;
+}
+
+.pb-lib-head > strong { font-size: 13px; }
+.pb-lib-meta { color: var(--a-dim); font-size: 11px; }
+
+.pb-lib-tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.pb-lib-tools .adm-btn { font-size: 11px; padding: 4px 9px; }
+
+/* The preview renders the real section, so it gets a light surface to sit
+   on rather than the admin's dark panel. */
+.pb-lib-preview {
+    margin-top: 9px;
+    border: 1px solid var(--a-line);
+    border-radius: 6px;
+    background: #ffffff;
+    color: #222222;
+    overflow: hidden;
+}
