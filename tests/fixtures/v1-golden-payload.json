@@ -1,0 +1,65 @@
+{
+  "_comment": "A frozen Page Builder V1 payload, exactly as V1 wrote it: schemaVersion 1, no V2 fields anywhere. This is the contract V2 must not break. Do not add V2 fields to this file - its whole value is being old.",
+  "schemaVersion": 1,
+  "status": "published",
+  "updatedAt": "2026-09-20",
+  "sections": [
+    { "id": "g_hero", "type": "hero", "enabled": true,
+      "visibility": { "desktop": true, "tablet": true, "mobile": true },
+      "style": { "bg": "#102030", "color": "#ffff00", "padding": "60", "maxWidth": "900",
+                 "gap": "30", "radius": "12", "border": "2px solid #ff0000", "align": "left" },
+      "responsive": { "tablet": { "padding": "40" }, "mobile": { "padding": "20" } },
+      "elements": [
+        { "id": "g_h1", "type": "heading", "content": { "text": "Golden heading", "level": "h2" },
+          "style": { "color": "#ff0000", "fontSize": "40", "fontWeight": "400", "bg": "#00ff00",
+                     "radius": "9", "shadow": "0 0 5px #000000", "maxWidth": "300", "margin": "7" },
+          "responsive": { "tablet": { "fontSize": "30" }, "mobile": { "fontSize": "20" } } },
+        { "id": "g_h2", "type": "heading", "content": { "text": "Level three", "level": "h3" }, "style": {} },
+        { "id": "g_t1", "type": "text", "content": { "text": "Line one\nLine two" },
+          "style": { "color": "#0000ff", "fontSize": "11", "margin": "3", "align": "right" } },
+        { "id": "g_b1", "type": "button", "content": { "text": "Go", "href": "contact.html", "newTab": true },
+          "style": { "bg": "#800080", "color": "#ffffff", "fontSize": "21", "radius": "17" } },
+        { "id": "g_b2", "type": "button", "content": { "text": "Plain", "href": "#x" }, "style": {} }
+      ] },
+    { "id": "g_cards", "type": "cards", "enabled": true,
+      "style": { "gap": "24" },
+      "elements": [
+        { "id": "g_c1", "type": "card",
+          "content": { "title": "Card one", "text": "Card body", "buttonText": "More", "buttonHref": "#c" },
+          "style": { "bg": "#ffffff", "padding": "5", "radius": "3" } },
+        { "id": "g_c2", "type": "card", "content": { "title": "Card two" },
+          "style": { "bg": "#eeeeee", "radius": "10" } }
+      ] },
+    { "id": "g_cols", "type": "columns", "enabled": true,
+      "elements": [
+        { "id": "g_colwrap", "type": "columns", "style": { "gap": "40" },
+          "content": { "columns": [
+            { "elements": [ { "id": "g_n1", "type": "text", "content": { "text": "left" },
+                              "style": { "color": "#ff00ff", "fontSize": "22" } } ] },
+            { "elements": [ { "id": "g_n2", "type": "button", "content": { "text": "nb", "href": "#" },
+                              "style": { "bg": "#123456" } } ] },
+            { "elements": [ { "id": "g_n3", "type": "text", "content": { "text": "third" }, "style": {} } ] }
+          ] } }
+      ] },
+    { "id": "g_imgtext", "type": "imageText", "enabled": true,
+      "elements": [
+        { "id": "g_i1", "type": "image",
+          "content": { "src": "assets/images/logo.png", "alt": "Logo", "width": "200", "height": "80" },
+          "style": { "radius": "6", "border": "1px solid #333333" } },
+        { "id": "g_t2", "type": "text", "content": { "text": "Beside the image" }, "style": {} }
+      ] },
+    { "id": "g_banner", "type": "banner", "enabled": true,
+      "visibility": { "desktop": true, "tablet": true, "mobile": false },
+      "style": { "bg": "#003366", "color": "#ffffff" },
+      "elements": [ { "id": "g_h3", "type": "heading", "content": { "text": "Banner", "level": "h4" }, "style": {} } ] },
+    { "id": "g_text", "type": "text", "enabled": true,
+      "elements": [
+        { "id": "g_i2", "type": "image", "content": { "src": "assets/images/ssl.png", "alt": "SSL", "href": "about.html" }, "style": { "radius": "4" } },
+        { "id": "g_off", "type": "heading", "content": { "text": "hidden" }, "enabled": false },
+        { "id": "g_bare", "type": "heading", "content": { "text": "No style object" } }
+      ] },
+    { "id": "g_image", "type": "image", "enabled": true, "elements": [] },
+    { "id": "g_disabled", "type": "text", "enabled": false,
+      "elements": [ { "id": "g_never", "type": "heading", "content": { "text": "never" } } ] }
+  ]
+}

@@ -1073,7 +1073,62 @@
        No element type in v1 injects markup.
     ======================================================== */
 
-    var PB_SCHEMA = 1;
+    /* Page Builder schema version.
+
+       This is a MARKER, never a gate. The renderer must go on drawing
+       schemaVersion 1 blocks — and blocks with no version at all — for as
+       long as this code lives, because published pages out there carry them
+       and nothing rewrites those pages until someone edits them.
+
+       New writes stamp PB_SCHEMA. Old blocks keep whatever they were saved
+       with until the admin edits and saves that page, so an upgrade is never
+       forced on content nobody touched. Reading is tolerant in both
+       directions: an older block gets V2 defaults through pbUpgrade(), and a
+       NEWER block than this code understands still renders, because every
+       V2 field is optional and unknown element types are skipped rather than
+       thrown on. (A visitor on a cached V1 cms.js reading a V2 row therefore
+       loses the new elements but keeps the page.)
+
+       tests/test_pagebuilder_compat.js holds a frozen V1 payload and the
+       render it produced at 1ce70b5. If a change here alters that render,
+       that suite fails, and it is meant to. */
+    var PB_SCHEMA = 2;
+
+    /* Migration steps, oldest first. A step takes the sections array as the
+       previous version wrote it and returns the array this version wants.
+
+       A step that changes nothing returns the SAME array reference, so the
+       common path — already-current data on every repaint — costs nothing.
+       A step that does transform must not mutate its input; build a new
+       array instead, because the caller may be holding published state.
+
+       1 -> 2 is deliberately identity. Everything V2 adds is an optional
+       field with a safe default, so V1 data needs no rewriting to render
+       correctly under V2; the step exists so the chain is real and tested
+       from the start, and so later versions have one obvious place to go. */
+    var PB_MIGRATIONS = [
+        { to: 2, fn: function (sections) { return sections; } }
+    ];
+
+    /* The version a stored block claims. Absent means V1: the first release
+       stamped every block it wrote, so a block with no version predates
+       nothing and can only be V1-shaped. */
+    function pbSchemaOf(block) {
+        var v = block && block.schemaVersion;
+        return (typeof v === 'number' && v > 0) ? v : 1;
+    }
+
+    function pbUpgrade(sections, from) {
+        if (!isArr(sections)) return sections;
+        var v = (typeof from === 'number' && from > 0) ? from : 1;
+        for (var i = 0; i < PB_MIGRATIONS.length; i++) {
+            if (PB_MIGRATIONS[i].to > v) {
+                sections = PB_MIGRATIONS[i].fn(sections) || sections;
+                v = PB_MIGRATIONS[i].to;
+            }
+        }
+        return sections;
+    }
 
     /* style key -> [custom property, unit appended to bare numbers] */
     /* Custom properties live in two separate namespaces on purpose.
@@ -1408,7 +1463,10 @@
         var b = page && page.builder;
         if (!b || b.status !== 'published') return null;
         if (!isArr(b.sections) || !b.sections.length) return null;
-        return b.sections;
+        /* Deliberately NOT gated on schemaVersion: whatever a published page
+           was saved with, it still renders. The upgrade only fills in
+           defaults, and returns the same array when there is nothing to do. */
+        return pbUpgrade(b.sections, pbSchemaOf(b));
     }
 
     function renderSectionsInto(host, sections) {
@@ -1503,16 +1561,22 @@
 
     /* The admin's working copy. Falls back to a copy of what is live, so
        opening a published page in the builder starts from what visitors see. */
+    /* The admin's working copy is always upgraded to the current schema: the
+       moment someone edits a page they are authoring V2, and saving stamps
+       PB_SCHEMA. Published content is left at the version it was saved with
+       until that save happens. */
     function draftBlock(slug) {
         var d = (load().builderDrafts || {})[slug];
         if (d && isArr(d.sections)) {
             return { schemaVersion: PB_SCHEMA, status: 'draft',
-                     sections: clone(d.sections), updatedAt: str(d.updatedAt) };
+                     sections: pbUpgrade(clone(d.sections), pbSchemaOf(d)),
+                     updatedAt: str(d.updatedAt) };
         }
         var pub = builderBlock(slug);
         if (pub && isArr(pub.sections) && pub.sections.length) {
             return { schemaVersion: PB_SCHEMA, status: 'draft',
-                     sections: clone(pub.sections), updatedAt: str(pub.updatedAt) };
+                     sections: pbUpgrade(clone(pub.sections), pbSchemaOf(pub)),
+                     updatedAt: str(pub.updatedAt) };
         }
         return pbBlank();
     }
@@ -2189,6 +2253,8 @@
             paint: paintSections,
             css: builderCSS,
             published: publishedSections,
+            upgrade: pbUpgrade,
+            schemaOf: pbSchemaOf,
             safeUrl: pbUrl,
             safeCssValue: pbCssValue,
             elementStyleKeys: PB_EL_STYLE_KEYS,

@@ -673,7 +673,10 @@ const el  = (id, type, content, style, responsive) =>
                live: CMS.sections.live('about').length, dirty: CMS.sections.dirty('about') };
     });
     check('publish writes status published', r.status === 'published', r.status);
-    check('publish stamps the schema version', r.schema === 1, r.schema);
+    /* V2 bumped PB_SCHEMA to 2; new writes stamp it. Blocks already published
+       under V1 keep their 1 until someone edits that page — covered by
+       test_pagebuilder_v2.js and test_pagebuilder_compat.js. */
+    check('publish stamps the current schema version', r.schema === 2, r.schema);
     check('publish stamps a date', /^\d{4}-\d{2}-\d{2}$/.test(r.stamped || ''), r.stamped);
     check('the sections are now live', r.live === 2, r.live);
     check('the draft no longer differs from live', r.dirty === false);
