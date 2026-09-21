@@ -275,6 +275,11 @@
            An empty value means "keep whatever the HTML file ships
            with", so a page is never blank if the CMS cannot be read.
         ---------------------------------------------------------- */
+        /* Page Builder drafts. Never rendered on the public site — the
+           renderer only ever reads pages.<slug>.builder with a published
+           status. Editing here cannot change what visitors see. */
+        builderDrafts: {},
+
         pages: {
 
             /* The homepage is part of the SEO system too — its title is
@@ -1055,6 +1060,536 @@
     }
 
     /* ========================================================
+       PAGE BUILDER (v1)
+       ------------------------------------------------------
+       Renders pages.<slug>.builder.sections into a mount point
+       <div data-cms-sections="slug">. Three guards keep existing
+       pages safe: no mount point means no builder; a builder whose
+       status is not "published" is ignored; an empty sections list
+       is ignored. In every one of those cases the markup already in
+       the page is left exactly as the browser parsed it.
+
+       Content is written with textContent and controlled attributes.
+       No element type in v1 injects markup.
+    ======================================================== */
+
+    var PB_SCHEMA = 1;
+
+    /* style key -> [custom property, unit appended to bare numbers] */
+    /* Custom properties live in two separate namespaces on purpose.
+
+       Custom properties inherit. With one shared namespace a section's
+       --pb-padding reached every heading, button and card inside it, and a
+       card's --pb-bg reached the button in that card. Sections now write
+       --pbs-*, elements write --pbe-*, and each element node resets every
+       --pbe-* it might have inherited (see .pb-el in css/sections.css), so a
+       value can only ever style the node it was set on. */
+    var PB_SEC_TOKENS = {
+        bg:         ['--pbs-bg', ''],
+        bgImage:    ['--pbs-bg-image', ''],
+        color:      ['--pbs-color', ''],
+        fontSize:   ['--pbs-font-size', 'px'],
+        fontWeight: ['--pbs-font-weight', ''],
+        align:      ['--pbs-align', ''],
+        padding:    ['--pbs-padding', 'px'],
+        margin:     ['--pbs-margin', 'px'],
+        maxWidth:   ['--pbs-max-width', 'px'],
+        height:     ['--pbs-height', 'px'],
+        border:     ['--pbs-border', ''],
+        radius:     ['--pbs-radius', 'px'],
+        shadow:     ['--pbs-shadow', ''],
+        gap:        ['--pbs-gap', 'px']
+    };
+
+    var PB_EL_TOKENS = {
+        bg:         ['--pbe-bg', ''],
+        color:      ['--pbe-color', ''],
+        fontSize:   ['--pbe-font-size', 'px'],
+        fontWeight: ['--pbe-font-weight', ''],
+        align:      ['--pbe-align', ''],
+        padding:    ['--pbe-padding', 'px'],
+        margin:     ['--pbe-margin', 'px'],
+        maxWidth:   ['--pbe-max-width', 'px'],
+        height:     ['--pbe-height', 'px'],
+        border:     ['--pbe-border', ''],
+        radius:     ['--pbe-radius', 'px'],
+        shadow:     ['--pbe-shadow', ''],
+        gap:        ['--pbe-gap', 'px']
+    };
+
+    /* Which controls actually do something for each element type. The admin
+       builds its Design tab from this, so a control is never offered for an
+       element whose CSS would ignore it. */
+    var PB_EL_STYLE_KEYS = {
+        heading: ['color', 'fontSize', 'fontWeight', 'align', 'bg', 'padding',
+                  'margin', 'maxWidth', 'border', 'radius', 'shadow'],
+        text:    ['color', 'fontSize', 'fontWeight', 'align', 'bg', 'padding',
+                  'margin', 'maxWidth', 'border', 'radius', 'shadow'],
+        image:   ['align', 'margin', 'maxWidth', 'height', 'border', 'radius', 'shadow'],
+        button:  ['bg', 'color', 'fontSize', 'fontWeight', 'align', 'padding',
+                  'margin', 'border', 'radius', 'shadow'],
+        card:    ['bg', 'color', 'align', 'padding', 'margin', 'maxWidth', 'gap',
+                  'border', 'radius', 'shadow'],
+        columns: ['align', 'margin', 'maxWidth', 'gap']
+    };
+
+    /* An element's own box alignment, for the types that are laid out as a
+       flex or grid item rather than as a block of text. */
+    var PB_SELF = {
+        left:   ['flex-start', 'start'],
+        center: ['center', 'center'],
+        right:  ['flex-end', 'end']
+    };
+
+    var PB_SECTION_CLASS = {
+        hero:      'pb-hero',
+        text:      'pb-text',
+        image:     'pb-image',
+        imageText: 'pb-image-text',
+        cards:     'pb-cards',
+        columns:   'pb-cols',
+        banner:    'pb-banner'
+    };
+
+    /* Only these schemes may reach an href or src. Anything else —
+       javascript:, data:, vbscript: — is dropped. A protocol-relative
+       "//host" is dropped too: it reads like a site-relative path but leaves
+       the site, and https:// is available for that. */
+    function pbUrl(u) {
+        u = str(u).trim();
+        if (!u) return '';
+        if (/[\u0000-\u001f\u007f]/.test(u)) return '';
+        if (/^\/\//.test(u)) return '';
+        if (/^(https?:\/\/|mailto:|tel:)/i.test(u)) return u;
+        if (/^[#/]/.test(u)) return u;
+        if (/^[\w][\w./?=&%+-]*$/.test(u)) return u;
+        return '';
+    }
+
+    /* A URL that is about to be interpolated into a CSS url("...") rather
+       than handed to setAttribute. Quotes, parentheses and whitespace could
+       close the function and the rule, so they are refused outright. */
+    function pbCssUrl(u) {
+        u = pbUrl(u);
+        if (!u || /^(mailto:|tel:)/i.test(u)) return '';
+        return /["'()\\\s;{}]/.test(u) ? '' : u;
+    }
+
+    /* Style values are free text in the admin (Border, Shadow, ...) and end up
+       inside a generated <style> block. Without this a value such as
+       "1px solid red; } body { display:none } .x {" would close the rule and
+       inject CSS into every page the section is published on. */
+    function pbCssValue(v) {
+        v = str(v);
+        if (!v) return '';
+        if (/[;{}<>\\"']/.test(v)) return '';
+        if (/[\u0000-\u001f\u007f]/.test(v)) return '';
+        if (/url\s*\(|expression\s*\(|@import|javascript:/i.test(v)) return '';
+        return v;
+    }
+
+    /* Ids are interpolated into an attribute selector, so they are limited to
+       characters that cannot terminate it. Generated ids always pass; a
+       hand-edited or imported config that does not simply gets no CSS. */
+    function pbCssId(id) {
+        id = str(id);
+        return /^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : '';
+    }
+
+    function pbEl(tag, cls) {
+        var e = document.createElement(tag);
+        if (cls) e.className = cls;
+        return e;
+    }
+
+    /* ---- element renderers ----
+       Each returns a node or null. Every node that reads a --pbe-* property
+       carries the pb-el class, which resets that whole namespace, so nothing
+       inherits styling from the section or from an enclosing element.
+       pbId() marks the one node the element's generated CSS binds to, which
+       for a linked image is the <img> rather than the wrapping <a>. */
+
+    function pbId(node, el) {
+        if (node && el && el.id) node.setAttribute('data-el', String(el.id));
+        return node;
+    }
+
+    var PB_ELEMENTS = {
+
+        heading: function (el) {
+            var c = el.content || {};
+            var lvl = String(c.level || 'h2').toLowerCase();
+            if (['h1','h2','h3','h4','h5','h6'].indexOf(lvl) === -1) lvl = 'h2';
+            var n = pbEl(lvl, 'pb-el pb-heading');
+            n.textContent = str(c.text);
+            return pbId(n, el);
+        },
+
+        text: function (el) {
+            var n = pbEl('p', 'pb-el pb-textblock');
+            n.textContent = str((el.content || {}).text);
+            return pbId(n, el);
+        },
+
+        image: function (el) {
+            var c = el.content || {};
+            var src = pbUrl(c.src);
+            if (!src) return null;
+            var img = pbEl('img', 'pb-el pb-img');
+            img.setAttribute('src', src);
+            img.setAttribute('alt', str(c.alt));
+            img.setAttribute('loading', 'lazy');
+            img.setAttribute('decoding', 'async');
+            if (c.width)  img.setAttribute('width', String(parseInt(c.width, 10) || ''));
+            if (c.height) img.setAttribute('height', String(parseInt(c.height, 10) || ''));
+            pbId(img, el);                    /* the image is what gets styled */
+            var href = pbUrl(c.href);
+            if (!href) return img;
+            var a = pbEl('a', 'pb-el pb-img-link');
+            a.setAttribute('href', href);
+            if (c.newTab) { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); }
+            a.appendChild(img);
+            return a;
+        },
+
+        button: function (el) {
+            var c = el.content || {};
+            var a = pbEl('a', 'pb-el pb-btn');
+            a.textContent = str(c.text);
+            var href = pbUrl(c.href);
+            a.setAttribute('href', href || '#');
+            if (c.newTab) { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); }
+            return pbId(a, el);
+        },
+
+        card: function (el) {
+            var c = el.content || {};
+            var box = pbEl('div', 'pb-el pb-card');
+            if (pbUrl(c.image)) {
+                box.appendChild(PB_ELEMENTS.image({ content: { src: c.image, alt: c.imageAlt,
+                    width: c.imageWidth, height: c.imageHeight } }));
+            }
+            if (str(c.title)) {
+                var h = pbEl('h3', 'pb-el pb-card-title');
+                h.textContent = str(c.title);
+                box.appendChild(h);
+            }
+            if (str(c.text)) {
+                var p = pbEl('p', 'pb-el pb-card-text');
+                p.textContent = str(c.text);
+                box.appendChild(p);
+            }
+            if (str(c.buttonText)) {
+                box.appendChild(PB_ELEMENTS.button({ content: {
+                    text: c.buttonText, href: c.buttonHref, newTab: c.buttonNewTab } }));
+            }
+            return pbId(box, el);
+        },
+
+        columns: function (el, depth) {
+            var cols = (el.content || {}).columns;
+            if (!isArr(cols) || !cols.length) return null;
+            var wrap = pbEl('div', 'pb-el pb-columns');
+            for (var i = 0; i < cols.length; i++) {
+                var col = pbEl('div', 'pb-column');
+                pbRenderElements(col, (cols[i] || {}).elements, depth + 1);
+                wrap.appendChild(col);
+            }
+            return pbId(wrap, el);
+        }
+    };
+
+    function isArr(v) { return Object.prototype.toString.call(v) === '[object Array]'; }
+
+    function pbRenderElements(host, list, depth) {
+        if (!isArr(list) || depth > 3) return;        /* depth guard */
+        for (var i = 0; i < list.length; i++) {
+            var el = list[i];
+            if (!el || el.enabled === false) continue;
+            var make = PB_ELEMENTS[el.type];
+            if (!make) continue;                      /* unknown type: skip, never throw */
+            var node = make(el, depth);
+            if (!node) continue;
+            host.appendChild(node);
+        }
+    }
+
+    /* ---- CSS: one scoped block per section/element, three breakpoints ----
+
+       Generated selectors are .pb-section[data-sec=".."] and
+       .pb-el[data-el=".."] rather than the bare attribute selector. That
+       gives them specificity (0,2,0):
+         - above the .pb-el reset at (0,1,0), whatever the source order, and
+         - above the page's own descendant rules such as .info-article h2 at
+           (0,1,1), which is what used to win over a heading's colour. */
+
+    function pbDecls(style, tokens, allow) {
+        var out = '', k;
+        if (!style) return out;
+        for (k in tokens) {
+            if (!Object.prototype.hasOwnProperty.call(tokens, k)) continue;
+            if (allow && allow.indexOf(k) === -1) continue;
+            if (!Object.prototype.hasOwnProperty.call(style, k)) continue;
+            var v;
+            if (k === 'bgImage') {
+                var u = pbCssUrl(style[k]);
+                if (!u) continue;
+                v = 'url("' + u + '")';
+            } else {
+                v = pbCssValue(style[k]);
+                if (!v) continue;
+                var unit = tokens[k][1];
+                if (unit && /^-?[0-9.]+$/.test(v)) v += unit;
+            }
+            out += tokens[k][0] + ':' + v + ';';
+        }
+        /* Types laid out as a flex or grid item align themselves rather than
+           their text, so alignment is emitted as box alignment as well. */
+        if (out && tokens === PB_EL_TOKENS && (!allow || allow.indexOf('align') > -1)) {
+            var self = PB_SELF[str(style.align)];
+            if (self) out += '--pbe-self:' + self[0] + ';--pbe-justify:' + self[1] + ';';
+        }
+        return out;
+    }
+
+    function pbScopedCSS(sel, node, tokens, allow) {
+        var base = pbDecls(node.style, tokens, allow);
+        var r = node.responsive || {};
+        var tab = pbDecls(r.tablet, tokens, allow);
+        var mob = pbDecls(r.mobile, tokens, allow);
+        var css = '';
+        if (base) css += sel + '{' + base + '}';
+        if (tab)  css += '@media (max-width:1024px){' + sel + '{' + tab + '}}';
+        if (mob)  css += '@media (max-width:768px){'  + sel + '{' + mob + '}}';
+        return css;
+    }
+
+    /* Elements nest (a columns element holds elements of its own), so this
+       walks the tree rather than only the top level. */
+    function pbElementCSS(list, depth) {
+        var css = '', i, j;
+        if (!isArr(list) || depth > 3) return css;
+        for (i = 0; i < list.length; i++) {
+            var el = list[i];
+            if (!el) continue;
+            var id = pbCssId(el.id);
+            var allow = PB_EL_STYLE_KEYS[el.type];
+            if (id && allow) {
+                css += pbScopedCSS('.pb-el[data-el="' + id + '"]', el, PB_EL_TOKENS, allow);
+            }
+            var cols = (el.content || {}).columns;
+            if (isArr(cols)) {
+                for (j = 0; j < cols.length; j++) {
+                    css += pbElementCSS((cols[j] || {}).elements, depth + 1);
+                }
+            }
+        }
+        return css;
+    }
+
+    function builderCSS(sections) {
+        var css = '', i;
+        if (!isArr(sections)) return css;
+        for (i = 0; i < sections.length; i++) {
+            var sec = sections[i];
+            if (!sec) continue;
+            var id = pbCssId(sec.id);
+            if (id) {
+                css += pbScopedCSS('.pb-section[data-sec="' + id + '"]', sec, PB_SEC_TOKENS, null);
+            }
+            css += pbElementCSS(sec.elements, 0);
+        }
+        return css;
+    }
+
+    /* ---- the public entry point ---- */
+    function publishedSections(slug) {
+        var page = (load().pages || {})[slug];
+        var b = page && page.builder;
+        if (!b || b.status !== 'published') return null;
+        if (!isArr(b.sections) || !b.sections.length) return null;
+        return b.sections;
+    }
+
+    function renderSectionsInto(host, sections) {
+        var frag = document.createDocumentFragment();
+        for (var i = 0; i < sections.length; i++) {
+            var sec = sections[i];
+            if (!sec || sec.enabled === false) continue;
+            var cls = PB_SECTION_CLASS[sec.type] || 'pb-generic';
+            var node = pbEl('section', 'pb-section ' + cls);
+            if (sec.id) node.setAttribute('data-sec', String(sec.id));
+            var vis = sec.visibility || {};
+            if (vis.desktop === false) node.className += ' pb-hide-desktop';
+            if (vis.tablet  === false) node.className += ' pb-hide-tablet';
+            if (vis.mobile  === false) node.className += ' pb-hide-mobile';
+            var inner = pbEl('div', 'pb-inner');
+            pbRenderElements(inner, sec.elements, 0);
+            node.appendChild(inner);
+            frag.appendChild(node);
+        }
+        host.textContent = '';
+        host.appendChild(frag);
+    }
+
+    /* The admin preview's draft, for this window only. Set by passing an
+       override to paintSections() and remembered afterwards, so a later
+       repaint -- apply(), a remote refresh, or the storage event the admin
+       fires when it saves -- does not drop the preview back to what is
+       published. A public page never sets it. Pass null to clear. */
+    var previewOverride = null;
+
+    /* Renders every mount point on the page. Returns the number rendered.
+       `override` lets the admin preview draft sections without touching
+       what is published. */
+    function paintSections(override) {
+        if (override !== undefined) previewOverride = override;
+        var use = previewOverride;
+        var hosts = document.querySelectorAll('[data-cms-sections]');
+        var css = '', painted = 0, i;
+        for (i = 0; i < hosts.length; i++) {
+            var host = hosts[i];
+            var slug = host.getAttribute('data-cms-sections');
+            var sections = (use && use.slug === slug) ? use.sections
+                                                      : publishedSections(slug);
+            if (!sections) continue;                  /* leave the static markup alone */
+            renderSectionsInto(host, sections);
+            css += builderCSS(sections);
+            painted++;
+        }
+        var tag = document.getElementById('cmsBuilder');
+        if (!css) { if (tag) tag.textContent = ''; return painted; }
+        if (!tag) {
+            tag = document.createElement('style');
+            tag.id = 'cmsBuilder';
+            (document.head || document.documentElement).appendChild(tag);
+        }
+        tag.textContent = css;
+        return painted;
+    }
+
+    /* ========================================================
+       PAGE BUILDER -- DRAFT / PUBLISH
+         builderDrafts[slug]   the admin's working copy. Never read by the
+                               public renderer, so saving one cannot change
+                               the live site.
+         pages[slug].builder   what is live. Only written when the admin
+                               explicitly presses Publish.
+       Nothing here touches the save/publish behaviour of the other admin
+       panels: draft writes go through save() only, and the caller decides
+       whether to push anything to remote storage.
+    ======================================================== */
+
+    /* Slugs whose shipped HTML carries a <div data-cms-sections="..."> mount.
+       A page the admin creates sets builderMount on its own pages entry,
+       because the generated stub includes the mount. */
+    var PB_MOUNTED = { about: true, contact: true, 'responsible-gaming': true };
+
+    function pbToday() {
+        var d = new Date();
+        function two(n) { return (n < 10 ? '0' : '') + n; }
+        return d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate());
+    }
+
+    function pbBlank() {
+        return { schemaVersion: PB_SCHEMA, status: 'draft', sections: [], updatedAt: '' };
+    }
+
+    /* The live block for a slug, whatever its status (null when there is none). */
+    function builderBlock(slug) {
+        var page = (load().pages || {})[slug];
+        return (page && page.builder) || null;
+    }
+
+    /* The admin's working copy. Falls back to a copy of what is live, so
+       opening a published page in the builder starts from what visitors see. */
+    function draftBlock(slug) {
+        var d = (load().builderDrafts || {})[slug];
+        if (d && isArr(d.sections)) {
+            return { schemaVersion: PB_SCHEMA, status: 'draft',
+                     sections: clone(d.sections), updatedAt: str(d.updatedAt) };
+        }
+        var pub = builderBlock(slug);
+        if (pub && isArr(pub.sections) && pub.sections.length) {
+            return { schemaVersion: PB_SCHEMA, status: 'draft',
+                     sections: clone(pub.sections), updatedAt: str(pub.updatedAt) };
+        }
+        return pbBlank();
+    }
+
+    /* Save the working copy. The live page is deliberately left alone. */
+    function saveDraft(slug, sections) {
+        var st = load();
+        if (!st.builderDrafts) st.builderDrafts = {};
+        st.builderDrafts[slug] = { schemaVersion: PB_SCHEMA, status: 'draft',
+                                   sections: isArr(sections) ? clone(sections) : [],
+                                   updatedAt: pbToday() };
+        return save();
+    }
+
+    /* Copy the working copy onto the live page. This is the only call that
+       changes what a visitor can see. */
+    function publishDraft(slug) {
+        var st = load();
+        var sections = draftBlock(slug).sections;
+        if (!st.pages) st.pages = {};
+        if (!st.pages[slug]) st.pages[slug] = {};
+        st.pages[slug].builder = { schemaVersion: PB_SCHEMA, status: 'published',
+                                   sections: clone(sections), updatedAt: pbToday() };
+        if (!st.builderDrafts) st.builderDrafts = {};
+        st.builderDrafts[slug] = { schemaVersion: PB_SCHEMA, status: 'draft',
+                                   sections: clone(sections), updatedAt: pbToday() };
+        return save();
+    }
+
+    /* Take the page back to its shipped HTML. The draft is kept, so the
+       work is not lost and can be published again. */
+    function unpublishPage(slug) {
+        var page = (load().pages || {})[slug];
+        if (!page || !page.builder) return true;
+        page.builder.status = 'draft';
+        page.builder.updatedAt = pbToday();
+        return save();
+    }
+
+    /* Throw the working copy away and start again from what is live. */
+    function discardDraft(slug) {
+        var st = load();
+        if (st.builderDrafts) delete st.builderDrafts[slug];
+        return save();
+    }
+
+    function liveSections(slug) {
+        var pub = builderBlock(slug);
+        return (pub && pub.status === 'published' && isArr(pub.sections)) ? pub.sections : [];
+    }
+
+    /* True when the draft says something different from what is live. */
+    function draftDiffers(slug) {
+        return JSON.stringify(draftBlock(slug).sections) !== JSON.stringify(liveSections(slug));
+    }
+
+    function builderStatus(slug) {
+        var pub = builderBlock(slug);
+        var isLive = !!(pub && pub.status === 'published' &&
+                        isArr(pub.sections) && pub.sections.length);
+        return { live: isLive, dirty: draftDiffers(slug),
+                 sections: draftBlock(slug).sections.length,
+                 updatedAt: (pub && str(pub.updatedAt)) || '' };
+    }
+
+    /* Slugs the builder can edit: the shipped mounts plus admin-created pages. */
+    function builderPages() {
+        var pages = load().pages || {}, out = [], k;
+        for (k in pages) {
+            if (!Object.prototype.hasOwnProperty.call(pages, k)) continue;
+            if (PB_MOUNTED[k] || (pages[k] && pages[k].builderMount)) out.push(k);
+        }
+        out.sort();
+        return out;
+    }
+
+    /* ========================================================
        INFO PAGES — path addressed content
          data-cms-meta="pages.about.metaDescription"  -> <meta content>
          data-cms-text="pages.about.heading"          -> textContent
@@ -1313,6 +1848,7 @@
         renderCasino();
         paintText();
         paintPageContent();
+        paintSections();
         paintImages();
         paintMarquee();
         paintFooterSocial();
@@ -1373,8 +1909,18 @@
                 .then(function (rows) {
                     if (!rows || !rows.length || !rows[0].data) return null;
                     var remoteData = rows[0].data;
+                    /* builderDrafts is this device's unpublished working copy.
+                       It must survive the pull: the row carries at best the
+                       drafts as they were when it was last written, and every
+                       page in this browser pulls — so without this, opening
+                       the site in another tab rolled the admin's unsaved
+                       Page Builder work back to the last published state. */
+                    var localDrafts = (load() || {}).builderDrafts;
                     /* server wins — localStorage is only a cache here */
                     state = merge(merge(DEFAULTS, window.CMS_BRAND || null), remoteData);
+                    if (localDrafts && Object.keys(localDrafts).length) {
+                        state.builderDrafts = localDrafts;
+                    }
                     try {
                         window.localStorage.setItem(KEY, JSON.stringify(state));
                     } catch (e) { /* cache is optional */ }
@@ -1421,9 +1967,15 @@
             var t = token();
             if (!t) return Promise.reject(new Error('Not signed in'));
 
+            /* Drafts are working state, not published content. Sending them
+               would put unpublished copy in the public row, which every
+               visitor downloads with the anon key. */
+            var payload = clone(load());
+            delete payload.builderDrafts;
+
             var body = JSON.stringify({
                 id: RC.siteId,
-                data: load(),
+                data: payload,
                 updated_at: new Date().toISOString()
             });
 
@@ -1628,6 +2180,34 @@
         },
         exportJSON: function () { return JSON.stringify(load(), null, 2); },
         themes: Themes,
+        /* Page Builder surface for the admin. `paint` with an override
+           renders draft sections for preview without publishing them. */
+        sections: {
+            schema: PB_SCHEMA,
+            types: PB_SECTION_CLASS,
+            elementTypes: PB_ELEMENTS,
+            paint: paintSections,
+            css: builderCSS,
+            published: publishedSections,
+            safeUrl: pbUrl,
+            safeCssValue: pbCssValue,
+            elementStyleKeys: PB_EL_STYLE_KEYS,
+            sectionTokens: PB_SEC_TOKENS,
+            elementTokens: PB_EL_TOKENS,
+
+            /* draft / publish */
+            mounted: PB_MOUNTED,
+            pages: builderPages,
+            draft: draftBlock,
+            live: liveSections,
+            saveDraft: saveDraft,
+            publish: publishDraft,
+            unpublish: unpublishPage,
+            discard: discardDraft,
+            dirty: draftDiffers,
+            status: builderStatus,
+            blank: pbBlank
+        },
         preview: preview,
         remote: Remote,
         clone: clone,

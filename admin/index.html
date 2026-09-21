@@ -55,6 +55,9 @@
                 <button class="adm-nav-item" data-panel="pages">
             <i class="fas fa-file-lines"></i> Pages
           </button>
+                <button class="adm-nav-item" data-panel="builder">
+            <i class="fas fa-table-cells-large"></i> Page Builder
+          </button>
                 <button class="adm-nav-item" data-panel="sportstable">
             <i class="fas fa-table-list"></i> Sports Table
           </button>
@@ -564,6 +567,60 @@
             <div class="pagetabs" id="pageTabs"></div>
         </div>
         <div id="pageEditor"></div>
+    </section>
+
+    <!-- ---------- PAGE BUILDER ---------- -->
+    <section class="adm-panel" id="panel-builder">
+
+        <div class="card">
+            <h2>Page Builder</h2>
+            <p class="hint">
+                Build a page out of sections. Work is kept as a <strong>draft</strong> until you
+                press <strong>Publish</strong> — <em>Save draft</em> stores it in this browser only
+                and never changes the live site. A page with nothing published keeps the content
+                that ships in its HTML file, so you can always go back to it with
+                <em>Unpublish</em>.
+            </p>
+            <div class="pagetabs" id="pbTabs"></div>
+            <div class="pb-bar">
+                <span class="pb-state" id="pbState"></span>
+                <span class="pb-bar-sp"></span>
+                <button type="button" class="adm-btn ghost" id="pbSaveDraft">
+                    <i class="fas fa-floppy-disk"></i> Save draft
+                </button>
+                <button type="button" class="adm-btn" id="pbPublish">
+                    <i class="fas fa-cloud-arrow-up"></i> Publish
+                </button>
+                <button type="button" class="adm-btn ghost" id="pbDiscard">
+                    <i class="fas fa-rotate-left"></i> Discard draft
+                </button>
+                <button type="button" class="adm-btn ghost danger" id="pbUnpublish">
+                    <i class="fas fa-eye-slash"></i> Unpublish
+                </button>
+                <a class="adm-btn ghost" id="pbOpen" target="_blank" rel="noopener">
+                    <i class="fas fa-arrow-up-right-from-square"></i> Open page
+                </a>
+            </div>
+        </div>
+
+        <div class="pb-split">
+            <div class="pb-col-edit">
+                <div class="card">
+                    <h2>Sections</h2>
+                    <div class="pb-add" id="pbAdd"></div>
+                    <div class="pb-list" id="pbList"></div>
+                </div>
+            </div>
+            <div class="pb-col-prev">
+                <div class="card">
+                    <h2>Preview <span class="pill" id="pbPrevTag">Draft</span></h2>
+                    <div class="pb-devices" id="pbDevices"></div>
+                    <div class="pb-stage" id="pbStage">
+                        <iframe id="pbFrame" title="Page Builder preview"></iframe>
+                    </div>
+                </div>
+            </div>
+        </div>
     </section>
 
     <!-- ---------- SPORTS / EVENT TABLE ---------- -->
