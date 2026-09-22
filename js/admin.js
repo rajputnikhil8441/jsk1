@@ -133,6 +133,7 @@
         'nav.poker': 'Nav — Poker', 'nav.lucky7': 'Nav — Lucky 7',
         'nav.crash': 'Nav — Crash',
         'support.title': 'Support heading', 'support.link': 'Support link text',
+        'footer.about': 'Footer description',
         'footer.copyright': 'Footer copyright',
         'login.heading': 'Login heading', 'login.userPh': 'Field 1 placeholder',
         'login.passPh': 'Field 2 placeholder', 'login.submit': 'Submit button',
@@ -1197,6 +1198,382 @@
     function buildAllLists() {
         Object.keys(LIST_DEFS).forEach(buildList);
     }
+
+
+    /* ========================================================
+       GLOBAL FOOTER — navigation columns
+
+       Two levels, columns -> links, built on the same drag/enable/delete
+       pattern as the Home lists above. The Brand and Support columns are
+       not here on purpose: they are not link lists, they carry the logo,
+       social icons and the id-bound WhatsApp link, and they stay put.
+
+       The description and copyright inputs point at text['footer.about']
+       and text['footer.copyright'] -- the same values the Texts panel
+       edits. Two views of one value, not a copy.
+    ======================================================== */
+
+    var FT_LIMITS = (CMS.footer && CMS.footer.limits) ||
+                    { columns: 6, links: 12, title: 40, label: 60 };
+
+    function ftId(prefix) {
+        return prefix + '-' + Date.now().toString(36) +
+               Math.random().toString(36).slice(2, 6);
+    }
+
+    /* The live footer object, repaired in place if it is missing or the
+       wrong shape. The admin has to have something to edit even when the
+       saved config is nonsense; the PUBLIC renderer takes the opposite
+       view and shows the static fallback instead. */
+    function ftData() {
+        var st = CMS.data();
+        if (!st.footer || typeof st.footer !== 'object' || Array.isArray(st.footer)) {
+            st.footer = { version: 1, columns: [] };
+        }
+        if (!Array.isArray(st.footer.columns)) st.footer.columns = [];
+        return st.footer;
+    }
+
+    function ftBlankColumn() {
+        return { id: ftId('col'), title: 'New column', enabled: true,
+                 links: [ftBlankLink()] };
+    }
+
+    function ftBlankLink() {
+        return { id: ftId('lnk'), label: 'New link', href: './', enabled: true };
+    }
+
+    /* Every page the CMS knows about, for the picker. Reads the same
+       pages map the SEO panel uses, so a new page appears here with no
+       extra wiring. */
+    function ftPageOptions() {
+        var pages = CMS.data().pages || {};
+        var out = [{ href: './', label: 'Home (site root)' }];
+        Object.keys(pages).forEach(function (k) {
+            if (k === 'home') return;
+            var p = pages[k];
+            if (!p || !p.url) return;
+            out.push({ href: p.url, label: (p.label || k) + '  (' + p.url + ')' });
+        });
+        /* The account pages are real files but are not in the pages map,
+           because they carry no SEO record. They are still linkable. */
+        out.push({ href: 'login.html', label: 'Login  (login.html)' });
+        out.push({ href: 'register.html', label: 'Register  (register.html)' });
+        return out;
+    }
+
+    /* Live validation, using the public renderer's own rule so the panel
+       cannot say yes to something the page will then drop. */
+    function ftHrefState(v) {
+        var raw = String(v == null ? '' : v).trim();
+        if (!raw) return { ok: false, msg: 'A link needs a URL.' };
+        var safe = CMS.footer && CMS.footer.href ? CMS.footer.href(raw) : raw;
+        if (!safe) {
+            return { ok: false, msg: 'Not a usable link. Use a page on this site, ' +
+                                    'or a full https:// address.' };
+        }
+        if (/^https?:\/\//i.test(safe)) {
+            return { ok: true, external: true, msg: 'External link — opens with rel="noopener".' };
+        }
+        if (/^(mailto|tel):/i.test(safe)) {
+            return { ok: true, external: true, msg: 'Contact link.' };
+        }
+        return { ok: true, external: false, msg: '' };
+    }
+
+    function ftPaintHrefState(row, input) {
+        var st = ftHrefState(input.value);
+        var note = row.querySelector('.ft-url-note');
+        input.classList.toggle('bad', !st.ok);
+        if (note) {
+            note.textContent = st.ok ? (st.msg || '') : st.msg;
+            note.className = 'ft-url-note' + (st.ok ? '' : ' bad');
+        }
+    }
+
+    var ftDragCol = null, ftDragLink = null;
+
+    function buildFooter() {
+        var host = $('#footerCols');
+        if (!host) return;
+        var data = ftData();
+        var cols = data.columns;
+
+        $('#cntFooterCols').textContent = cols.length;
+        $('#ftMaxCols').textContent = FT_LIMITS.columns;
+        $('#ftMaxLinks').textContent = FT_LIMITS.links;
+
+        host.innerHTML = '';
+
+        cols.forEach(function (col, ci) {
+            if (!col || typeof col !== 'object') return;
+            if (!Array.isArray(col.links)) col.links = [];
+
+            var box = document.createElement('div');
+            box.className = 'ft-col';
+            box.setAttribute('data-ci', ci);
+
+            /* ---- column header ---- */
+            var head = document.createElement('div');
+            head.className = 'ft-col-head item';
+            head.draggable = true;
+            head.innerHTML =
+                '<span class="handle" title="Drag to reorder this column">' +
+                '<i class="fas fa-grip-vertical"></i></span>' +
+                '<div class="fields">' +
+                '<input type="text" class="ft-title" maxlength="' + FT_LIMITS.title + '" ' +
+                'value="' + esc(col.title || '') + '" placeholder="Column title">' +
+                '</div>' +
+                '<div class="tools">' +
+                '<input type="checkbox" class="ft-on" title="Show this column"' +
+                (col.enabled !== false ? ' checked' : '') + '>' +
+                '<button type="button" class="icon-btn del" title="Delete column">' +
+                '<i class="fas fa-trash"></i></button>' +
+                '</div>';
+
+            head.querySelector('.ft-title').addEventListener('input', function () {
+                col.title = this.value.slice(0, FT_LIMITS.title);
+                markDirty();
+            });
+            head.querySelector('.ft-on').addEventListener('change', function () {
+                col.enabled = this.checked;
+                box.classList.toggle('off', !this.checked);
+                markDirty();
+            });
+            head.querySelector('.del').addEventListener('click', function () {
+                if (!confirm('Delete the "' + (col.title || 'untitled') + '" column and its links?')) return;
+                cols.splice(ci, 1);
+                buildFooter();
+                markDirty();
+            });
+
+            /* column reorder */
+            head.addEventListener('dragstart', function (e) {
+                ftDragCol = box;
+                box.classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                try { e.dataTransfer.setData('text/plain', String(ci)); } catch (err) {}
+            });
+            head.addEventListener('dragend', function () {
+                box.classList.remove('dragging');
+                $$('.ft-col').forEach(function (n) { n.classList.remove('drag-over'); });
+            });
+            box.addEventListener('dragover', function (e) {
+                if (!ftDragCol || ftDragCol === box) return;
+                e.preventDefault();
+                box.classList.add('drag-over');
+            });
+            box.addEventListener('dragleave', function () { box.classList.remove('drag-over'); });
+            box.addEventListener('drop', function (e) {
+                if (!ftDragCol || ftDragCol === box) return;
+                e.preventDefault();
+                e.stopPropagation();
+                var from = Number(ftDragCol.getAttribute('data-ci'));
+                var to = Number(box.getAttribute('data-ci'));
+                var moved = cols.splice(from, 1)[0];
+                cols.splice(to, 0, moved);
+                ftDragCol = null;
+                buildFooter();
+                markDirty();
+            });
+
+            if (col.enabled === false) box.classList.add('off');
+            box.appendChild(head);
+
+            /* ---- links ---- */
+            var list = document.createElement('div');
+            list.className = 'ft-links list';
+
+            col.links.forEach(function (link, li) {
+                if (!link || typeof link !== 'object') return;
+                var row = document.createElement('div');
+                row.className = 'item ft-link';
+                row.draggable = true;
+                row.setAttribute('data-li', li);
+
+                var opts = ftPageOptions().map(function (o) {
+                    return '<option value="' + esc(o.href) + '">' + esc(o.label) + '</option>';
+                }).join('');
+
+                row.innerHTML =
+                    '<span class="handle" title="Drag to reorder this link">' +
+                    '<i class="fas fa-grip-vertical"></i></span>' +
+                    '<div class="fields">' +
+                    '<input type="text" class="ft-label" maxlength="' + FT_LIMITS.label + '" ' +
+                    'value="' + esc(link.label || '') + '" placeholder="Link text">' +
+                    '<input type="text" class="ft-url" value="' + esc(link.href || '') + '" ' +
+                    'placeholder="Page or https:// address">' +
+                    '<select class="ft-pick">' +
+                    '<option value="">Pick a page…</option>' + opts +
+                    '<option value="__custom">Custom URL…</option>' +
+                    '</select>' +
+                    '<div class="ft-url-note"></div>' +
+                    '</div>' +
+                    '<div class="tools">' +
+                    '<input type="checkbox" class="ft-on" title="Show this link"' +
+                    (link.enabled !== false ? ' checked' : '') + '>' +
+                    '<button type="button" class="icon-btn del" title="Delete link">' +
+                    '<i class="fas fa-trash"></i></button>' +
+                    '</div>';
+
+                var urlIn = row.querySelector('.ft-url');
+                var pick = row.querySelector('.ft-pick');
+
+                row.querySelector('.ft-label').addEventListener('input', function () {
+                    link.label = this.value.slice(0, FT_LIMITS.label);
+                    markDirty();
+                });
+                urlIn.addEventListener('input', function () {
+                    link.href = this.value;
+                    ftPaintHrefState(row, urlIn);
+                    markDirty();
+                });
+                pick.addEventListener('change', function () {
+                    var v = this.value;
+                    this.value = '';
+                    if (!v) return;
+                    if (v === '__custom') { urlIn.focus(); urlIn.select(); return; }
+                    urlIn.value = v;
+                    link.href = v;
+                    ftPaintHrefState(row, urlIn);
+                    markDirty();
+                });
+                row.querySelector('.ft-on').addEventListener('change', function () {
+                    link.enabled = this.checked;
+                    row.classList.toggle('off', !this.checked);
+                    markDirty();
+                });
+                row.querySelector('.del').addEventListener('click', function () {
+                    col.links.splice(li, 1);
+                    buildFooter();
+                    markDirty();
+                });
+
+                /* link reorder, within this column only */
+                row.addEventListener('dragstart', function (e) {
+                    ftDragLink = row;
+                    row.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.stopPropagation();
+                    try { e.dataTransfer.setData('text/plain', String(li)); } catch (err) {}
+                });
+                row.addEventListener('dragend', function () {
+                    row.classList.remove('dragging');
+                    $$('.ft-link').forEach(function (n) { n.classList.remove('drag-over'); });
+                });
+                row.addEventListener('dragover', function (e) {
+                    if (!ftDragLink || ftDragLink === row) return;
+                    if (ftDragLink.parentNode !== row.parentNode) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    row.classList.add('drag-over');
+                });
+                row.addEventListener('dragleave', function () { row.classList.remove('drag-over'); });
+                row.addEventListener('drop', function (e) {
+                    if (!ftDragLink || ftDragLink === row) return;
+                    if (ftDragLink.parentNode !== row.parentNode) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var from = Number(ftDragLink.getAttribute('data-li'));
+                    var to = Number(row.getAttribute('data-li'));
+                    var moved = col.links.splice(from, 1)[0];
+                    col.links.splice(to, 0, moved);
+                    ftDragLink = null;
+                    buildFooter();
+                    markDirty();
+                });
+
+                if (link.enabled === false) row.classList.add('off');
+                list.appendChild(row);
+                ftPaintHrefState(row, urlIn);
+            });
+
+            box.appendChild(list);
+
+            var add = document.createElement('button');
+            add.type = 'button';
+            add.className = 'adm-btn ghost ft-add-link';
+            add.innerHTML = '<i class="fas fa-plus"></i> Add link';
+            add.disabled = col.links.length >= FT_LIMITS.links;
+            if (add.disabled) add.title = 'At most ' + FT_LIMITS.links + ' links in a column.';
+            add.addEventListener('click', function () {
+                if (col.links.length >= FT_LIMITS.links) {
+                    toast('A column holds at most ' + FT_LIMITS.links + ' links.', true);
+                    return;
+                }
+                col.links.push(ftBlankLink());
+                buildFooter();
+                markDirty();
+            });
+            box.appendChild(add);
+
+            host.appendChild(box);
+        });
+
+        var addCol = $('#btnAddFooterCol');
+        if (addCol) {
+            addCol.disabled = cols.length >= FT_LIMITS.columns;
+            addCol.title = addCol.disabled
+                ? 'At most ' + FT_LIMITS.columns + ' navigation columns.' : '';
+        }
+
+        /* The two shared text values. */
+        var ab = $('#ftAbout'), cp = $('#ftCopyright');
+        if (ab) ab.value = CMS.data().text['footer.about'] || '';
+        if (cp) cp.value = CMS.data().text['footer.copyright'] || '';
+
+        ftPaintFallbackNote();
+    }
+
+    /* Says, in the panel, exactly what the public page will do with what
+       is currently entered -- including the case where it will ignore it
+       and keep the shipped footer. */
+    function ftPaintFallbackNote() {
+        var note = $('#footerFallbackNote');
+        if (!note) return;
+        var clean = CMS.footer && CMS.footer.clean
+            ? CMS.footer.clean(CMS.data().footer) : null;
+        if (!clean) {
+            note.textContent = 'Right now nothing above is usable, so every page ' +
+                               'will show the footer written into its HTML.';
+            note.className = 'hint warn';
+            return;
+        }
+        var links = clean.reduce(function (n, c) { return n + c.links.length; }, 0);
+        note.textContent = 'Right now pages will show ' + clean.length +
+                           (clean.length === 1 ? ' column' : ' columns') + ' and ' +
+                           links + (links === 1 ? ' link' : ' links') +
+                           ' from here, between the Brand and Support columns.';
+        note.className = 'hint';
+    }
+
+    (function wireFooterPanel() {
+        var add = $('#btnAddFooterCol');
+        if (add) add.addEventListener('click', function () {
+            var cols = ftData().columns;
+            if (cols.length >= FT_LIMITS.columns) {
+                toast('At most ' + FT_LIMITS.columns + ' navigation columns.', true);
+                return;
+            }
+            cols.push(ftBlankColumn());
+            buildFooter();
+            markDirty();
+        });
+
+        var ab = $('#ftAbout');
+        if (ab) ab.addEventListener('input', function () {
+            CMS.data().text['footer.about'] = this.value;
+            buildText();          /* keep the Texts panel showing the same value */
+            markDirty();
+        });
+
+        var cp = $('#ftCopyright');
+        if (cp) cp.addEventListener('input', function () {
+            CMS.data().text['footer.copyright'] = this.value;
+            buildText();
+            markDirty();
+        });
+    })();
 
     /* ========================================================
        INFO PAGES  (About / Contact / Responsible Gaming)
@@ -2869,6 +3246,7 @@
         buildText();
         buildImages();
         buildAllLists();
+        buildFooter();
         buildPages();
         buildSeo();
         buildSportsTable();

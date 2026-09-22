@@ -163,9 +163,15 @@
     </section>
 
     <footer class="site-footer">
-        <div class="footer-cols">
+        <!-- data-cms-footer: renderFooter() in js/cms.js may replace the
+             navigation columns below with the CMS ones. The two blocks
+             marked data-footer-keep are moved across untouched -- they are
+             not link lists, and they carry the ids paintFooterSocial() and
+             paintWhatsApp() bind to. With no valid CMS footer, everything
+             here stays exactly as written. -->
+        <div class="footer-cols" data-cms-footer>
 
-            <div class="footer-col footer-col-brand">
+            <div class="footer-col footer-col-brand" data-footer-keep="brand">
                 <img class="footer-logo-img" id="footerLogo" data-cms-img="footerLogo" alt="" hidden>
                 <div class="footer-brand-name" data-cms-text="branding.siteName">JSK1</div>
                 <p class="footer-brand-text" data-cms="footer.about">The official JSK1 website. Create an account, sign in and reach support any time.</p>
@@ -190,7 +196,7 @@
                 </nav>
             </div>
 
-            <div class="footer-col">
+            <div class="footer-col" data-footer-keep="support">
                 <h2 class="footer-col-title">Support</h2>
                 <nav class="footer-links" aria-label="Support">
                     <a href="contact.html">Contact us</a>

@@ -57,6 +57,9 @@
                 <button class="adm-nav-item" data-panel="home">
             <i class="fas fa-house"></i> Home Content
           </button>
+                <button class="adm-nav-item" data-panel="footer">
+            <i class="fas fa-shoe-prints"></i> Footer
+          </button>
                 <button class="adm-nav-item" data-panel="seo">
             <i class="fas fa-magnifying-glass-chart"></i> SEO
           </button>
@@ -403,6 +406,71 @@
                 <i class="fas fa-plus"></i> Add game
               </button>
         </div>
+    </section>
+
+    <!-- ---------- GLOBAL FOOTER ---------- -->
+    <section class="adm-panel" id="panel-footer">
+
+        <div class="card">
+            <h2>Footer description</h2>
+            <p class="hint">
+                The paragraph under the site name in the footer's first column.
+                This is the same value as <strong>Texts &rsaquo; Footer description</strong>
+                &mdash; editing it here edits it there.
+            </p>
+            <div class="f">
+                <label for="ftAbout">Footer description</label>
+                <textarea id="ftAbout" rows="3"></textarea>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>
+                Navigation columns <span class="pill" id="cntFooterCols">0</span>
+            </h2>
+            <p class="hint">
+                Drag a column or a link by its handle to reorder. Untick to hide
+                one without deleting it. At most <strong id="ftMaxCols">6</strong>
+                columns and <strong id="ftMaxLinks">12</strong> links per column
+                &mdash; the footer is navigation, not a link farm.
+            </p>
+            <p class="hint">
+                The <em>Brand</em> and <em>Support</em> columns are not listed here.
+                They hold the logo, site name, social icons and the WhatsApp link,
+                and stay exactly as they are.
+            </p>
+            <div id="footerCols"></div>
+            <button class="adm-btn ghost" id="btnAddFooterCol">
+                <i class="fas fa-plus"></i> Add column
+              </button>
+        </div>
+
+        <div class="card">
+            <h2>Copyright</h2>
+            <p class="hint">
+                The line at the very bottom. Same value as
+                <strong>Texts &rsaquo; Footer copyright</strong>.
+            </p>
+            <div class="f">
+                <label for="ftCopyright">Footer copyright</label>
+                <input type="text" id="ftCopyright">
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>What visitors see without JavaScript</h2>
+            <p class="hint">
+                Every page ships with a footer already written into its HTML, and
+                that is what search engines read. The columns above replace it only
+                when they are valid. If this panel is emptied, or the saved data is
+                unreadable, the shipped footer stays on the page &mdash; so the site
+                never loses its internal links. To change what ships, edit
+                <code>FOOTER_GROUPS</code> in <code>tools/build-shell.js</code> and
+                run <code>node tools/build-shell.js</code>.
+            </p>
+            <div id="footerFallbackNote" class="hint"></div>
+        </div>
+
     </section>
 
     <!-- ---------- SEO CONTROL CENTER ---------- -->

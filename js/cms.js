@@ -291,6 +291,57 @@
            local for the same reasons as the two above. */
         builderRecovery: {},
 
+        /* ----------------------------------------------------------
+           GLOBAL FOOTER — the navigation/topic columns only.
+
+           The footer's Brand and Support columns stay in
+           tools/build-shell.js: they are not link lists. Brand carries a
+           logo, a bound site name and the social icons; Support carries
+           the WhatsApp link that paintWhatsApp() rewrites by element id.
+           Modelling those here would mean modelling images, handles and
+           id-bound behaviour, for no gain.
+
+           What IS here is the part an editor actually changes: the
+           columns of links between them. The shipped values below are
+           byte-for-byte what tools/build-shell.js writes into the static
+           HTML, so a browser with no saved footer, and a Supabase row
+           without one, both render exactly what the file already shows.
+
+           STATIC FIRST. The static markup is authoritative and is what a
+           crawler reads. renderFooter() replaces those columns only when
+           this data survives cleanFooter(); anything missing, empty,
+           malformed or unsafe leaves the shipped HTML untouched.
+
+           Two levels only: columns -> links. No sub-columns. A footer is
+           navigation, not a place to grow a keyword farm.
+        ---------------------------------------------------------- */
+        footer: {
+            version: 1,
+            columns: [
+                {
+                    id: 'important',
+                    title: 'Important Links',
+                    enabled: true,
+                    links: [
+                        { id: 'imp-home',    label: 'Home',               href: './',                      enabled: true },
+                        { id: 'imp-about',   label: 'About',              href: 'about.html',              enabled: true },
+                        { id: 'imp-contact', label: 'Contact',            href: 'contact.html',            enabled: true },
+                        { id: 'imp-rg',      label: 'Responsible Gaming', href: 'responsible-gaming.html', enabled: true },
+                        { id: 'imp-privacy', label: 'Privacy Policy',     href: 'privacy-policy.html',     enabled: true }
+                    ]
+                },
+                {
+                    id: 'account',
+                    title: 'Account',
+                    enabled: true,
+                    links: [
+                        { id: 'acc-login',    label: 'Login',    href: 'login.html',    enabled: true },
+                        { id: 'acc-register', label: 'Register', href: 'register.html', enabled: true }
+                    ]
+                }
+            ]
+        },
+
         pages: {
 
             /* The homepage is part of the SEO system too — its title is
@@ -3313,6 +3364,213 @@
         ['instagram', 'fab fa-instagram', function (v) { return /^https?:/.test(v) ? v : 'https://instagram.com/' + v; }]
     ];
 
+    /* ========================================================
+       GLOBAL FOOTER — sanitise, then render over the static markup
+
+       Everything reaching here is untrusted. The Supabase row needs an
+       authenticated write, but localStorage does not, and Admin > Data >
+       Import JSON.parses an arbitrary file straight into the config. So
+       this treats its input as hostile and hands back only data it built
+       itself: new objects, strings it has capped, hrefs pbUrl approved.
+    ======================================================== */
+
+    var FOOTER_MAX_COLS = 6;      /* the grid is repeat(auto-fit, minmax(150px,1fr)) */
+    var FOOTER_MAX_LINKS = 12;    /* navigation, not a keyword farm */
+    var FOOTER_MAX_TITLE = 40;
+    var FOOTER_MAX_LABEL = 60;
+
+    /* A capped single-line string. Newlines and control characters go:
+       a column title is a label, and a label with a newline in it is
+       either an accident or someone probing. */
+    function footerStr(v, max) {
+        /* Only a real string is text, and this is deliberately stricter
+           than str(). Two things go wrong otherwise, both reachable from
+           an imported JSON file:
+
+             {"title":{"toString":"x"}}  -- String(v) looks up toString,
+             finds a string where a function belongs, and THROWS
+             "Cannot convert object to primitive value". On the public
+             page that killed the render.
+
+             {"title":{"a":1}}           -- String(v) quietly yields
+             "[object Object]", which then shipped as a column heading.
+
+           Neither is a label, so neither gets to be one. A number is
+           accepted because a title of "2026" is a reasonable thing to
+           type and arrives from JSON as a number. */
+        if (typeof v === 'number' && isFinite(v)) v = String(v);
+        if (typeof v !== 'string') return '';
+        return v.replace(/[\u0000-\u001f\u007f]+/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .slice(0, max);
+    }
+
+    /* An href for a footer link. pbUrl is the site's existing answer to
+       "is this safe in an href": it rejects control characters,
+       protocol-relative //host, and every scheme but http(s)/mailto/tel,
+       plus plain relative paths and #/ fragments. External https is
+       allowed on purpose -- a licensing authority or payment partner is a
+       legitimate footer link -- and isFooterExternal() below decides the
+       rel, so an external link never ships without noopener. */
+    function footerHref(v) {
+        /* Same reasoning as footerStr: an href of {"toString":"x"} makes
+           String() throw, and str() -- and pbUrl() through it -- would
+           carry that straight onto the public page. A URL is a string. */
+        if (typeof v !== 'string') return '';
+        var raw = v.trim();
+
+        /* './' is the site root and is what the static footer already
+           writes for Home. pbUrl says no to it -- its relative-path branch
+           requires a leading word character -- so it is allowed here, as
+           an exact match only. './/evil' and './../x' are not this string
+           and fall through to pbUrl, which refuses them. */
+        if (raw === './') return raw;
+
+        var u = pbUrl(raw);
+        if (!u) return '';
+
+        /* pbUrl lets '#' through; a footer link to nowhere is not a link. */
+        if (u === '#') return '';
+
+        /* No traversal. pbUrl's relative branch would accept
+           'about/../../etc' because it starts with a word character. That
+           is fine for an author-typed Page Builder link and pointless in
+           site navigation, so the footer is stricter than its floor. */
+        if (u.indexOf('..') > -1) return '';
+
+        return u;
+    }
+
+    function isFooterExternal(u) {
+        return /^https?:\/\//i.test(u) || /^mailto:/i.test(u) || /^tel:/i.test(u);
+    }
+
+    /* The whole footer, rebuilt from scratch, or null.
+
+       null means "leave the static HTML alone", and it is returned for
+       anything this cannot vouch for: no data, not an array, an empty
+       array, or every column dropped. That is the static-first contract
+       -- the fallback is not a second code path, it is what happens when
+       this declines to produce one. */
+    function cleanFooter(raw) {
+        if (!raw || typeof raw !== 'object' || isArr(raw)) return null;
+        if (!isArr(raw.columns)) return null;
+
+        var cols = [], i, j;
+        for (i = 0; i < raw.columns.length && cols.length < FOOTER_MAX_COLS; i++) {
+            var c = raw.columns[i];
+            /* An array is an object to typeof, and a string has .length.
+               Neither is a column. */
+            if (!c || typeof c !== 'object' || isArr(c)) continue;
+            if (c.enabled === false) continue;
+
+            var title = footerStr(c.title, FOOTER_MAX_TITLE);
+            if (!title) continue;           /* a nameless column labels no nav */
+            if (!isArr(c.links)) continue;
+
+            var links = [];
+            for (j = 0; j < c.links.length && links.length < FOOTER_MAX_LINKS; j++) {
+                var l = c.links[j];
+                if (!l || typeof l !== 'object' || isArr(l)) continue;
+                if (l.enabled === false) continue;
+                var label = footerStr(l.label, FOOTER_MAX_LABEL);
+                var href = footerHref(l.href);
+                /* Both or neither. A link with no text is unreachable to a
+                   screen reader; one with no safe href is not a link. */
+                if (!label || !href) continue;
+                links.push({ label: label, href: href, external: isFooterExternal(href) });
+            }
+
+            if (!links.length) continue;    /* an empty column is not a column */
+            cols.push({ title: title, links: links });
+        }
+
+        return cols.length ? cols : null;
+    }
+
+    /* Read the saved footer, sanitised. Exposed for the admin and tests. */
+    function footerColumns() {
+        var raw = load().footer;
+        return cleanFooter(raw);
+    }
+
+    /* Render the navigation columns over the static ones.
+
+       The host is <div class="footer-cols" data-cms-footer> and it also
+       holds the Brand and Support columns, which are NOT ours: they are
+       marked data-footer-keep in the generated markup and are moved
+       across untouched, in their original order relative to the block of
+       navigation columns. Nothing here is built with innerHTML -- every
+       title and label goes in as textContent, so markup in a CMS value is
+       shown, never parsed. */
+    function renderFooter() {
+        var host = document.querySelector('[data-cms-footer]');
+        if (!host) return;
+
+        var cols = footerColumns();
+        if (!cols) return;              /* static markup stands. */
+
+        var keep = [], k;
+        var kids = host.children;
+        for (k = 0; k < kids.length; k++) {
+            if (kids[k].hasAttribute && kids[k].hasAttribute('data-footer-keep')) {
+                keep.push(kids[k]);
+            }
+        }
+
+        var frag = document.createDocumentFragment();
+        /* Brand first, then ours, then Support -- the shipped order. The
+           kept nodes carry data-footer-keep="brand" / "support"; anything
+           else marked keep is emitted after the columns rather than
+           dropped, so a future kept block cannot vanish silently. */
+        var brand = [], tail = [];
+        for (k = 0; k < keep.length; k++) {
+            if (keep[k].getAttribute('data-footer-keep') === 'brand') brand.push(keep[k]);
+            else tail.push(keep[k]);
+        }
+        for (k = 0; k < brand.length; k++) frag.appendChild(brand[k]);
+
+        for (k = 0; k < cols.length; k++) {
+            var col = cols[k];
+
+            var box = document.createElement('div');
+            box.className = 'footer-col';
+
+            var h = document.createElement('h2');
+            h.className = 'footer-col-title';
+            h.textContent = col.title;
+            box.appendChild(h);
+
+            var nav = document.createElement('nav');
+            nav.className = 'footer-links';
+            /* The accessible name comes from the same text the heading
+               shows, so the landmark is never nameless. */
+            nav.setAttribute('aria-label', col.title);
+
+            for (var m = 0; m < col.links.length; m++) {
+                var a = document.createElement('a');
+                a.setAttribute('href', col.links[m].href);
+                if (col.links[m].external) {
+                    a.setAttribute('rel', 'noopener');
+                }
+                a.textContent = col.links[m].label;
+                nav.appendChild(a);
+            }
+
+            box.appendChild(nav);
+            frag.appendChild(box);
+        }
+
+        for (k = 0; k < tail.length; k++) frag.appendChild(tail[k]);
+
+        /* One write. The kept nodes are already in the fragment, so
+           clearing the host does not destroy them. */
+        host.textContent = '';
+        host.appendChild(frag);
+    }
+
+
     function paintFooterSocial() {
         var box = document.getElementById('footerSocial');
         if (!box) return;
@@ -3483,6 +3741,7 @@
         renderCategories();
         renderSports();
         renderCasino();
+        renderFooter();
         paintText();
         paintPageContent();
         paintSections();
@@ -3926,6 +4185,18 @@
             blank: pbBlank
         },
         preview: preview,
+        footer: {
+            columns: footerColumns,     /* saved footer, sanitised, or null */
+            clean: cleanFooter,         /* sanitise an arbitrary payload */
+            limits: {
+                columns: FOOTER_MAX_COLS,
+                links: FOOTER_MAX_LINKS,
+                title: FOOTER_MAX_TITLE,
+                label: FOOTER_MAX_LABEL
+            },
+            href: footerHref,           /* validate one href the footer's way */
+            render: renderFooter
+        },
         remote: Remote,
         clone: clone,
         merge: merge
