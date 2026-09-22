@@ -118,7 +118,7 @@
     /* Layout */
     --sidebar-w: 155px;
     --hdr-h: 52px;
-    --ticker-h: 20px;
+    --ticker-h: 23px;   /* the ticker's REAL height -- see .header-ticker */
     --nav-h: 30px;
 }
 
@@ -144,6 +144,11 @@ body {
     color: var(--text);
     font-family: var(--font);
     font-size: var(--sz-base);
+    /* Suppresses a stray wide element. This also makes the root a scroll
+       container, which is why a `position: sticky` descendant does not stick
+       to the viewport here -- .main-nav and .left-sidebar still carry sticky
+       declarations from earlier work and are inert because of this line.
+       That is the intended behaviour: nothing is pinned to the viewport. */
     overflow-x: hidden;
     min-height: 100vh;
 }
@@ -170,13 +175,17 @@ button {
    HEADER
 ========================= */
 
+/* The header sits in normal document flow and scrolls away with the page.
+   It is deliberately NOT sticky and NOT fixed: nothing should stay pinned to
+   the top of the viewport. z-index is kept so the header still paints above
+   the content that follows it; it does not position anything. */
 .site-header {
     background: var(--hdr-bg);
-    position: sticky;
-    top: 0;
     z-index: 100;
     width: 100%;
-    box-shadow: 5 5px 10px rgba(0, 0, 0, 0.25);
+    /* Was `5 5px 10px` -- a length with no unit, so the whole declaration was
+       invalid and the header had never had a shadow at all. */
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
 .header-inner {
@@ -324,10 +333,15 @@ button {
 
 /* Ticker / Marquee */
 
+/* The height is read FROM the token rather than repeated beside it. The two
+   had drifted: the token said 20px (18px on mobile) while this said 23px, so
+   .main-nav -- which sticks at calc(--hdr-h + --ticker-h) -- parked 3px
+   (5px on mobile) above the bottom of the header and overlapped it. Reading
+   the token keeps the rendered height and the arithmetic the same thing. */
 .header-ticker {
     display: flex;
     align-items: center;
-    height: 23px;
+    height: var(--ticker-h);
     background: var(--ticker-bg);
     overflow: hidden;
     border: none;
@@ -1447,6 +1461,10 @@ button {
    Four real links, styled as the footer's existing small dim text.
 ========================= */
 
+/* The single row of links the footer used to carry. No page in this
+   repository uses it any more -- the rules are kept only so that a page
+   someone downloaded from the admin before the shell existed still has a
+   styled footer. Delete them once no such page is in circulation. */
 .footer-nav {
     display: flex;
     align-items: center;
@@ -1457,7 +1475,8 @@ button {
     order: 1;
 }
 
-.footer-nav a {
+.footer-nav a,
+.footer-links a {
     font-size: 11px;
     font-weight: 600;
     color: var(--text-dim);
@@ -1465,7 +1484,78 @@ button {
     padding: 2px 0;
 }
 
-.footer-nav a:hover {
+.footer-nav a:hover,
+.footer-links a:hover {
     color: var(--text);
     text-decoration: underline;
+}
+
+
+/* ---- Footer columns (global shell) ----
+   Same tokens, same type scale and same muted link colour the footer
+   already used; this only gives the links somewhere to sit. auto-fit
+   means the columns wrap on their own rather than at a breakpoint the
+   content has to be told about. */
+
+.footer-cols {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 14px 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 6px 0 12px;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.footer-col {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.footer-col-title {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--text);
+}
+
+.footer-links {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.footer-col-brand .footer-brand-name {
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--hdr-bg);
+    line-height: 1.1;
+}
+
+.footer-col-brand .footer-brand-text {
+    font-size: 10.5px;
+    line-height: 1.5;
+    color: var(--text-dim);
+    margin: 0;
+    max-width: 30ch;
+}
+
+.footer-col-brand .footer-logo-img {
+    height: 30px;
+    width: auto;
+    align-self: flex-start;
+}
+
+/* Left-aligned inside a column rather than centred across the bar. */
+.footer-col .footer-social {
+    justify-content: flex-start;
+    margin-top: 2px;
+}
+
+.footer-col .footer-safe {
+    margin-top: 2px;
 }

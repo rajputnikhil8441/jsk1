@@ -70,6 +70,7 @@
 <body>
 
     <!-- HEADER (same markup as index.html) -->
+    <!-- SHELL:HEADER -->
     <header class="site-header">
         <div class="header-inner">
 
@@ -99,7 +100,7 @@
 
                 <!-- Pages dropdown -->
                 <div class="pagemenu">
-                    <button type="button" class="pagemenu-btn" aria-label="Menu"><span class="caret">&#9662;</span></button>
+                    <button type="button" class="pagemenu-btn" aria-label="Menu" aria-expanded="false" aria-haspopup="true"><span class="caret">&#9662;</span></button>
                     <ul class="pagemenu-list">
                         <li><a href="./">Home</a></li>
                         <li><a href="about.html">About Us</a></li>
@@ -124,14 +125,16 @@
             </div>
         </div>
     </header>
+    <!-- /SHELL:HEADER -->
 
+    <!-- SHELL:NAV -->
     <!-- NAVIGATION — desktop (hidden under 768px, exactly like the homepage) -->
     <nav class="main-nav info-nav-bar" aria-label="Main">
         <div class="nav-inner">
             <ul class="nav-list">
                 <li><a href="./" class="nav-link"><i class="fas fa-home"></i> <span>HOME</span></a></li>
                 <li><a href="about.html" class="nav-link">ABOUT</a></li>
-                <li><a href="contact.html" class="nav-link active">CONTACT</a></li>
+                <li><a href="contact.html" class="nav-link active" aria-current="page">CONTACT</a></li>
                 <li><a href="responsible-gaming.html" class="nav-link">RESPONSIBLE GAMING</a></li>
                 <li><a href="login.html" class="nav-link">LOGIN</a></li>
                 <li><a href="register.html" class="nav-link">REGISTER</a></li>
@@ -140,16 +143,17 @@
     </nav>
 
     <!-- NAVIGATION — mobile strip (the homepage's category bar) -->
-    <div class="mob-category-nav info-cat-nav" aria-label="Main (mobile)">
+    <nav class="mob-category-nav info-cat-nav" aria-label="Main (mobile)">
         <div class="mob-category-inner">
             <a href="./" class="mob-cat-item">HOME</a>
             <a href="about.html" class="mob-cat-item">ABOUT</a>
-            <a href="contact.html" class="mob-cat-item active">CONTACT</a>
+            <a href="contact.html" class="mob-cat-item active" aria-current="page">CONTACT</a>
             <a href="responsible-gaming.html" class="mob-cat-item">RESPONSIBLE GAMING</a>
             <a href="login.html" class="mob-cat-item">LOGIN</a>
             <a href="register.html" class="mob-cat-item">REGISTER</a>
         </div>
-    </div>
+    </nav>
+    <!-- /SHELL:NAV -->
 
     <!-- CONTENT -->
     <main class="info-main">
@@ -186,6 +190,7 @@
         </article>
     </main>
 
+    <!-- SHELL:FOOTER -->
     <!-- SUPPORT -->
     <section class="support-section">
         <div class="support-text">
@@ -197,30 +202,52 @@
         </a>
     </section>
 
-    <!-- FOOTER (same markup as index.html) -->
     <footer class="site-footer">
-        <div class="footer-inner">
+        <div class="footer-cols">
 
-            <div class="footer-safe">
-                <div class="safe-badge">
+            <div class="footer-col footer-col-brand">
+                <img class="footer-logo-img" id="footerLogo" data-cms-img="footerLogo" alt="" hidden>
+                <div class="footer-brand-name" data-cms-text="branding.siteName">JSK1</div>
+                <p class="footer-brand-text" data-cms="footer.about">The official JSK1 website. Create an account, sign in and reach support any time.</p>
+                <div class="footer-social" id="footerSocial"></div>
+            </div>
+
+            <div class="footer-col">
+                <h2 class="footer-col-title">Important Links</h2>
+                <nav class="footer-links" aria-label="Important Links">
+                    <a href="./">Home</a>
+                    <a href="about.html">About</a>
+                    <a href="contact.html">Contact</a>
+                    <a href="responsible-gaming.html">Responsible Gaming</a>
+                    <a href="privacy-policy.html">Privacy Policy</a>
+                </nav>
+            </div>
+            <div class="footer-col">
+                <h2 class="footer-col-title">Account</h2>
+                <nav class="footer-links" aria-label="Account">
+                    <a href="login.html">Login</a>
+                    <a href="register.html">Register</a>
+                </nav>
+            </div>
+
+            <div class="footer-col">
+                <h2 class="footer-col-title">Support</h2>
+                <nav class="footer-links" aria-label="Support">
+                    <a href="contact.html">Contact us</a>
+                    <a href="#" id="footerWaLink" data-cms="support.link">WhatsApp Support</a>
+                </nav>
+                <div class="footer-safe">
                     <img loading="lazy" class="ssl-img" src="assets/images/ssl.png" alt="100% Safe">
                 </div>
             </div>
 
-            <img class="footer-logo-img" id="footerLogo" data-cms-img="footerLogo" alt="" hidden>
+        </div>
 
-            <nav class="footer-nav" aria-label="Footer">
-                <a href="./">Home</a>
-                <a href="about.html">About</a>
-                <a href="contact.html">Contact</a>
-                <a href="responsible-gaming.html">Responsible Gaming</a>
-            </nav>
+        <div class="footer-inner">
 
             <div class="footer-copy" data-cms="footer.copyright">
                 &copy; Copyright 2026 JSK1. All Rights Reserved.
             </div>
-
-            <div class="footer-social" id="footerSocial"></div>
 
             <div class="footer-badges">
                 <img loading="lazy" class="footer-icon-img" src="assets/icons/18plus.png" alt="18+">
@@ -235,6 +262,7 @@
     <a href="#" id="whatsappFloat" class="whatsapp-float" title="WhatsApp Support">
         <img src="assets/icons/whatsapp.png" data-cms-img="whatsappIcon" alt="WhatsApp">
     </a>
+    <!-- /SHELL:FOOTER -->
 
     <!-- js/main.js is deliberately NOT loaded here: it installs a
          site-wide login gate that swallows every click, which would
