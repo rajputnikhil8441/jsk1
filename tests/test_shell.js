@@ -1,4 +1,5 @@
-/* GLOBAL SITE SHELL — sticky header, shared navigation, global footer.
+/* GLOBAL SITE SHELL — shared header, navigation and footer. The header
+   scrolls away with the page: it is neither sticky nor fixed.
 
    THE CLAIM. Every public content page carries the same header, the same
    navigation and the same footer; the header actually stays on screen
@@ -134,6 +135,32 @@ const shot = p => p.evaluate(() => {
   }
 
   /* ================================================================
+     1b. THE STYLESHEET ITSELF DOES NOT PIN THE HEADER
+     The computed-style and scroll checks below would both catch a
+     sticky header, but only once a browser is running. This reads the
+     .site-header rule straight out of the source so that reintroducing
+     `position: sticky` or `position: fixed` there fails immediately.
+     ================================================================ */
+  console.log('\n===== THE HEADER RULE DOES NOT PIN THE HEADER =====');
+  {
+    const css = fs.readFileSync(path.join(ROOT, 'css', 'style.css'), 'utf8');
+    const blocks = [...css.matchAll(/(^|\n)(\.site-header)\s*\{([^}]*)\}/g)].map(m => m[3]);
+    check('the .site-header rule was found in css/style.css', blocks.length >= 1, blocks.length);
+    for (const body of blocks) {
+      const pos = (body.match(/(^|;|\n)\s*position\s*:\s*([a-z-]+)/) || [])[2] || 'none';
+      check('.site-header declares no sticky or fixed position (found: ' + pos + ')',
+        pos !== 'sticky' && pos !== 'fixed', body.trim().slice(0, 160));
+    }
+    /* And no media query quietly pins it at one width. */
+    for (const f of ['style.css', 'responsive.css']) {
+      const src = fs.readFileSync(path.join(ROOT, 'css', f), 'utf8');
+      const pinned = [...src.matchAll(/\.site-header[^{}]*\{([^}]*)\}/g)]
+        .map(m => m[1]).filter(bd => /position\s*:\s*(sticky|fixed)/.test(bd));
+      check('css/' + f + ' never pins .site-header at any width', pinned.length === 0, pinned);
+    }
+  }
+
+  /* ================================================================
      2. THE SHELL IS IN THE HTML, NOT ASSEMBLED AFTERWARDS
      ================================================================ */
   console.log('\n===== A CRAWLER THAT RUNS NO JAVASCRIPT STILL SEES THE NAVIGATION =====');
@@ -155,7 +182,11 @@ const shot = p => p.evaluate(() => {
   }
 
   /* ================================================================
-     3. ONE HEADER, ONE FOOTER, AND THE HEADER STICKS
+     3. ONE HEADER, ONE FOOTER, AND THE HEADER SCROLLS AWAY
+     The header belongs to the document, not to the viewport. These
+     assertions fail if it is ever made position: sticky or
+     position: fixed again -- by the computed style, and independently
+     by where it actually is after the page is scrolled.
      ================================================================ */
   for (const [w, h, label] of [[1280, 900, 'desktop'], [900, 900, 'tablet'],
                                [390, 844, 'mobile 390'], [375, 812, 'mobile 375'],
@@ -166,8 +197,10 @@ const shot = p => p.evaluate(() => {
       const s = await shot(r.p);
       check(label + ' ' + f + ': exactly one header and one footer',
         s.headers === 1 && s.footers === 1, { h: s.headers, f: s.footers });
-      check(label + ' ' + f + ': the header is sticky at the top',
-        s.hPos === 'sticky' && s.hTop === '0px', { pos: s.hPos, top: s.hTop });
+      check(label + ' ' + f + ': the header is in normal document flow',
+        s.hPos === 'static' || s.hPos === 'relative', s.hPos);
+      check(label + ' ' + f + ': the header is neither sticky nor fixed',
+        s.hPos !== 'sticky' && s.hPos !== 'fixed', s.hPos);
       check(label + ' ' + f + ': the footer is a normal document footer, not fixed',
         s.fPos === 'static' || s.fPos === 'relative', s.fPos);
       check(label + ' ' + f + ': no horizontal overflow',
@@ -175,31 +208,49 @@ const shot = p => p.evaluate(() => {
       check(label + ' ' + f + ': still exactly one H1', s.h1s === 1, s.h1s);
       check(label + ' ' + f + ': no page errors', r.errs.length === 0, r.errs);
 
-      /* Sticky is a claim about scrolling, so it is tested by scrolling. */
+      /* Where the header ends up is the real claim, so it is tested by
+         scrolling. A sticky or fixed header would sit at top 0 here; one
+         in normal flow has moved up by exactly the scroll distance. */
       if (s.docH > s.vh + 300) {
-        const stuck = await r.p.evaluate(async () => {
+        const moved = await r.p.evaluate(async () => {
+          const hd = document.querySelector('header.site-header');
+          const nav = document.querySelector('nav.main-nav');
+          const before = Math.round(hd.getBoundingClientRect().top);
           const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
           const want = Math.min(400, max);
           window.scrollTo({ top: want, behavior: 'instant' });
           await new Promise(res => setTimeout(res, 200));
-          const hd = document.querySelector('header.site-header');
-          const nav = document.querySelector('nav.main-nav');
           const hb = hd.getBoundingClientRect();
           const nb = nav ? nav.getBoundingClientRect() : null;
-          const under = document.elementFromPoint(Math.round(hb.left + hb.width / 2),
-                                                  Math.round(hb.top + hb.height / 2));
-          return { top: Math.round(hb.top), bottom: Math.round(hb.bottom),
-                   navTop: nb ? Math.round(nb.top) : null,
-                   onTop: !!(under && under.closest('header.site-header')),
-                   want: Math.round(want), y: Math.round(window.scrollY) };
+          /* Whatever is painted 5px below the top of the viewport. If the
+             header (or the nav) were pinned there, this would find it. */
+          const atTop = document.elementFromPoint(Math.round(window.innerWidth / 2), 5);
+          window.scrollTo({ top: 0, behavior: 'instant' });
+          await new Promise(res => setTimeout(res, 200));
+          const back = Math.round(hd.getBoundingClientRect().top);
+          return {
+            before, back,
+            top: Math.round(hb.top), bottom: Math.round(hb.bottom),
+            navTop: nb ? Math.round(nb.top) : null,
+            navBottom: nb ? Math.round(nb.bottom) : null,
+            pinnedHeader: !!(atTop && atTop.closest('header.site-header')),
+            pinnedNav: !!(atTop && atTop.closest('nav.main-nav')),
+            want: Math.round(want), y: Math.round(want)
+          };
         });
-        check(label + ' ' + f + ': the header stays put while the page scrolls',
-          stuck.y >= 250 && stuck.y >= stuck.want - 2 && stuck.top === 0, stuck);
-        check(label + ' ' + f + ': and nothing is drawn over it',
-          stuck.onTop === true, stuck);
-        if (stuck.navTop !== null) {
-          check(label + ' ' + f + ': the nav sits exactly under the header, not across it',
-            stuck.navTop === stuck.bottom, stuck);
+        check(label + ' ' + f + ': the header starts at the top of the document',
+          moved.before === 0, moved);
+        check(label + ' ' + f + ': it scrolls off-screen with the page',
+          moved.bottom <= 0, moved);
+        check(label + ' ' + f + ': it moves up by exactly the scroll distance',
+          moved.top === -moved.want, moved);
+        check(label + ' ' + f + ': nothing is pinned to the top of the viewport',
+          moved.pinnedHeader === false && moved.pinnedNav === false, moved);
+        check(label + ' ' + f + ': and it is visible again back at the top',
+          moved.back === 0, moved);
+        if (moved.navTop !== null) {
+          check(label + ' ' + f + ': the nav scrolls away with it, still flush beneath',
+            moved.navTop === moved.bottom && moved.navBottom <= 0, moved);
         }
       }
       await r.ctx.close();

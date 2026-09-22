@@ -9,10 +9,7 @@
 html,
 body {
     max-width: 100%;
-    /* See the note beside body{} in css/style.css: `hidden` here would make
-       the root a scroll container and stop the sticky header sticking. */
     overflow-x: hidden;
-    overflow-x: clip;
 }
 
 .matches-table,

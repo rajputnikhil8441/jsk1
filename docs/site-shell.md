@@ -72,25 +72,39 @@ outside the shell.
 
 ---
 
-## 3. The sticky header
+## 3. The header scrolls away
 
-`position: sticky; top: 0` on `header.site-header`. No JavaScript is involved,
-so there is no scroll listener, no class toggling on scroll and no layout
-thrash — and therefore no JS-caused layout shift.
+The header is in **normal document flow**. It is deliberately neither
+`position: sticky` nor `position: fixed`: it sits at the top of the page,
+scrolls off with everything else, and is there again when you scroll back.
+Nothing is pinned to the top of the viewport.
 
-**One thing had to change for it to work at all.** `html, body` carried
-`overflow-x: hidden`. When one axis of `overflow` is `hidden`, the other
-computes to `auto`, which makes the element a scroll container — and a sticky
-child sticks to *that* container, not the viewport. The header had never
-actually stuck: measured before the fix it sat at `top: -325px` after a 400px
-scroll. Both stylesheets now declare
+No JavaScript is involved — no scroll listener, no class toggling on scroll,
+no layout thrash and no JS-caused layout shift.
 
-```css
-overflow-x: hidden;   /* older browsers */
-overflow-x: clip;     /* wins where supported; creates no scroll container */
-```
+`.site-header` keeps its `z-index: 100` so it paints above the content that
+follows it; `z-index` positions nothing.
 
-Two adjacent bugs surfaced while verifying this and were fixed with it:
+### The overflow coupling, and why it is left alone
+
+`html, body` carry `overflow-x: hidden`. When one axis of `overflow` is
+`hidden`, the other computes to `auto`, which makes the element a scroll
+container — and a `position: sticky` descendant then sticks to *that*
+container rather than the viewport, which in practice means it does not stick
+at all.
+
+`.main-nav` and `.left-sidebar` still carry `position: sticky` declarations
+from earlier work. They are **inert** because of that `overflow-x: hidden`,
+and that is the behaviour we want: nothing pinned to the viewport. The rules
+are left in place rather than deleted, because removing them is a change to
+navigation and sidebar CSS that nobody asked for.
+
+The consequence worth knowing: **switching `overflow-x` to `clip` would
+silently pin the nav bar to the top of the viewport.** `tests/test_shell.js`
+asserts that the nav scrolls away flush beneath the header, so that change
+fails the suite rather than shipping.
+
+### Two bugs fixed along the way
 
 * `--ticker-h` claimed 20px (desktop) / 18px (mobile) while `.header-ticker`
   rendered at a hardcoded 23px, so the nav bar overlapped the header by 3–5px.
@@ -99,9 +113,26 @@ Two adjacent bugs surfaced while verifying this and were fixed with it:
 * `box-shadow: 5 5px 10px ...` — the unitless `5` made the whole declaration
   invalid, so the header shadow had never rendered. It is now `0 2px 8px`.
 
-The mobile category strip is intentionally **not** sticky: 67px of header plus
-33px of strip is too much fixed chrome on a phone, and the header's dropdown
-already reaches every page.
+### How this is kept true
+
+`tests/test_shell.js` guards it three ways, so a regression fails rather than
+ships:
+
+1. It reads the `.site-header` rule out of `css/style.css` and fails if
+   `position: sticky` or `position: fixed` appears — in the base rule or in
+   any media query, in either stylesheet.
+2. It checks the computed `position` in a real browser at five widths.
+3. It scrolls the page and asserts the header moved up by exactly the scroll
+   distance, is off-screen, that nothing is painted at the top of the
+   viewport, and that it is back at `top: 0` afterwards.
+
+All three were mutation-tested: restoring `position: sticky` fails 62
+assertions, `position: fixed` fails 102, and restoring `overflow-x: clip`
+fails 10 (the nav pinning at `top: 75`).
+
+Nothing else is pinned either — the mobile category strip scrolls away with
+the rest of the page, and the header's dropdown reaches every page from
+wherever you are.
 
 ---
 
@@ -255,7 +286,7 @@ conformance — no conformance audit has been run.
 ## 11. Tests
 
 `tests/test_shell.js` covers the generator (idempotency, `--check`, marker
-integrity, refusal of unsafe hrefs), the served markup, sticky behaviour
+integrity, refusal of unsafe hrefs), the served markup, scroll behaviour
 verified by actually scrolling at 1280 / 900 / 768 / 390 / 375, navigation
 destinations and active state, the footer's exact link set, accessibility,
 the exclusion of login/register/admin, builder sections sitting between header

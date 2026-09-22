@@ -144,15 +144,12 @@ body {
     color: var(--text);
     font-family: var(--font);
     font-size: var(--sz-base);
-    /* clip, not hidden. `overflow-x: hidden` makes the OTHER axis compute to
-       `auto`, which turns the root into a scroll container -- and a sticky
-       descendant sticks to its scroll container, not to the viewport. That
-       is why .site-header has carried `position: sticky` since the site was
-       built and has never once stuck. `clip` does the same job for a stray
-       wide element without creating that container. The `hidden` line stays
-       first so a browser too old for `clip` keeps today's behaviour. */
+    /* Suppresses a stray wide element. This also makes the root a scroll
+       container, which is why a `position: sticky` descendant does not stick
+       to the viewport here -- .main-nav and .left-sidebar still carry sticky
+       declarations from earlier work and are inert because of this line.
+       That is the intended behaviour: nothing is pinned to the viewport. */
     overflow-x: hidden;
-    overflow-x: clip;
     min-height: 100vh;
 }
 
@@ -178,16 +175,16 @@ button {
    HEADER
 ========================= */
 
+/* The header sits in normal document flow and scrolls away with the page.
+   It is deliberately NOT sticky and NOT fixed: nothing should stay pinned to
+   the top of the viewport. z-index is kept so the header still paints above
+   the content that follows it; it does not position anything. */
 .site-header {
     background: var(--hdr-bg);
-    position: sticky;
-    top: 0;
     z-index: 100;
     width: 100%;
     /* Was `5 5px 10px` -- a length with no unit, so the whole declaration was
-       invalid and the header has never had a shadow. Now that it stays on
-       screen over scrolling content, the separation it was meant to give is
-       worth having. */
+       invalid and the header had never had a shadow at all. */
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
