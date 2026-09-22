@@ -142,18 +142,173 @@ A normal document footer — `position: static`. It is never `fixed`, so it can
 never overlay content. Four columns, collapsing with
 `grid-template-columns: repeat(auto-fit, minmax(150px, 1fr))`:
 
-* **Brand** — logo, site name, a short description (`footer.about`), social links
-* **Important Links** — Home, About, Contact, Responsible Gaming, Privacy Policy
-* **Account** — Login, Register
-* **Support** — Contact us, WhatsApp support
+| Column | Owned by | Editable where |
+|---|---|---|
+| **Brand** | `tools/build-shell.js` | its text via `branding.siteName`, `footer.about`, `footerLogo`, social handles |
+| **Navigation columns** | **the CMS** (`footer.columns`) | Admin → Footer |
+| **Support** | `tools/build-shell.js` | link text via `support.link` |
+| Copyright row | `tools/build-shell.js` | `footer.copyright` |
 
-Every link points at a page that exists in this repository. There is no
-keyword-link block, no doorway links and no invented pages.
+Brand and Support are deliberately **not** CMS-managed. They are not link
+lists: Brand carries a logo, a bound site name and the social icons, Support
+carries the WhatsApp link that `paintWhatsApp()` rewrites by element id.
+Modelling those would mean modelling images, handles and id-bound behaviour in
+the same schema, for no gain. They are marked `data-footer-keep="brand"` and
+`data-footer-keep="support"` and are moved across untouched on every render.
 
-**There is deliberately no "Legal / Terms" column.** Terms & Conditions and
-Disclaimer pages do not exist in this repository, and the footer does not link
-to pages that are not there. If those pages are ever written, add them to
-`FOOTER_GROUPS` in `tools/build-shell.js` and re-run the tool.
+Every link in the shipped footer points at a page that exists in this
+repository. There is deliberately **no "Legal / Terms" column** — Terms &
+Conditions and Disclaimer pages do not exist here, and the footer does not
+link to pages that are not there.
+
+---
+
+## 4b. The Global Footer Manager
+
+The navigation columns between Brand and Support are CMS data, editable in
+Admin → Footer, and the change reaches every public page.
+
+### The data
+
+One new top-level key in the same CMS JSON that already carries everything
+else — **no new Supabase table, no schema change, no RLS or auth change.** It
+travels in the existing `site_brand` row.
+
+```js
+footer: {
+    version: 1,
+    columns: [
+        {
+            id: 'important',            // stable identity across reorders
+            title: 'Important Links',
+            enabled: true,
+            links: [
+                { id: 'imp-home', label: 'Home', href: './', enabled: true }
+            ]
+        }
+    ]
+}
+```
+
+Two levels, columns → links. No sub-columns: a footer is navigation, not a
+place to grow a keyword farm.
+
+`footer.about` and `footer.copyright` stay where they already were, in `text`.
+They were always editable in Admin → Texts; the Footer panel shows the *same*
+values rather than a copy, and `footer.about` finally has a friendly label
+("Footer description") instead of showing its raw key.
+
+### Static first
+
+This is the whole design, and it is the reason the generator still writes a
+complete footer into every page.
+
+1. `tools/build-shell.js` emits the full `FOOTER_GROUPS` markup. That is what
+   ships in the HTML and what a crawler reads.
+2. The container is marked `<div class="footer-cols" data-cms-footer>`.
+3. `renderFooter()` in `js/cms.js` replaces the navigation columns **only** when
+   the saved data survives `cleanFooter()`.
+4. `cleanFooter()` returns `null` for anything it cannot vouch for, and
+   `renderFooter()` returns early on `null`. **The fallback is not a second
+   code path — it is what happens when the sanitiser declines to produce one.**
+
+`DEFAULTS.footer` ships the same two columns the generator writes, so an
+untouched install and a Supabase row without a `footer` key both render exactly
+what the file already shows. Every pre-existing test passed unchanged.
+
+`cleanFooter()` returns `null` for: no data, a non-object, an array, a string,
+a number, `columns` missing/null/not-an-array, an empty `columns`, and the case
+where every column is dropped. A *partly* bad footer keeps only the good parts:
+a column whose links all fail is dropped, and a link with no usable label or
+href is dropped, but its siblings survive.
+
+### Sanitisation
+
+Everything reaching `cleanFooter()` is treated as hostile. The Supabase row
+needs an authenticated write, but `localStorage` does not, and Admin → Data →
+Import `JSON.parse`s an arbitrary file straight into the config. So the
+sanitiser hands back only objects it built itself.
+
+| Rule | Value | Enforced in |
+|---|---|---|
+| Columns | 6 | `cleanFooter()` **and** the admin |
+| Links per column | 12 | `cleanFooter()` **and** the admin |
+| Column title | 40 chars | `cleanFooter()` **and** `maxlength` |
+| Link label | 60 chars | `cleanFooter()` **and** `maxlength` |
+
+The caps that matter are the ones in `cleanFooter()`. The admin's are a
+courtesy — an import bypasses the admin entirely, and re-enabling a disabled
+Add button is a two-second job in devtools, so both handlers refuse past the
+cap as well.
+
+`footerStr()` accepts **only a real string** (or a finite number). That is
+stricter than the codebase's `str()` for two reasons, both found by the tests:
+
+* `{"title":{"toString":"x"}}` makes `String(v)` throw *Cannot convert object
+  to primitive value* — which killed the whole render on the public page.
+* `{"title":{"a":1}}` quietly yields `"[object Object]"`, which then shipped as
+  a column heading.
+
+Neither is a label, so neither gets to be one. `footerHref()` guards the same
+way before it reaches `str()` or `pbUrl()`.
+
+### URLs
+
+Every href goes through `footerHref()`, which is built on the existing
+`pbUrl()` and is **stricter** than it:
+
+* `pbUrl()` rejects control characters, protocol-relative `//host`, and every
+  scheme but `http(s):`/`mailto:`/`tel:`, plus plain relative paths and `#`/`/`.
+* `footerHref()` additionally rejects a bare `#` (a link to nowhere) and any
+  href containing `..` (`pbUrl()` would accept `about/../../etc` because it
+  starts with a word character — fine for an author-typed Page Builder link,
+  pointless in site navigation).
+* `footerHref()` additionally *allows* the exact string `./`, which is what the
+  static footer already writes for Home and which `pbUrl()` refuses because its
+  relative-path branch needs a leading word character. Exact match only —
+  `.//evil` and `./../x` fall through to `pbUrl()`, which refuses them.
+
+External `https:` is allowed on purpose: a licensing authority or a payment
+partner is a legitimate footer link. Every external, `mailto:` and `tel:` link
+is marked `external` by the sanitiser and rendered with `rel="noopener"`.
+
+### Rendering
+
+Nothing is built with `innerHTML`. Titles and labels go in as `textContent`,
+so markup in a CMS value is *shown*, never parsed. Each column's `<nav>` takes
+its `aria-label` from the same text its `<h2>` displays, so the landmark is
+never nameless. Column titles stay `<h2>`, so the heading outline does not
+change and the page still has exactly one `<h1>`.
+
+One DOM write per render: the kept nodes are moved into a fragment first, so
+clearing the host cannot destroy them.
+
+### The admin panel
+
+Admin → Footer, built on the same `bindDrag`/enable/delete pattern the Home
+lists already use — a column is a card, its links are indented rows.
+
+* add / delete / reorder columns; rename titles; enable/disable
+* add / delete / reorder links; edit label and URL; enable/disable
+* a page picker built from `CMS.data().pages` (so a new page appears with no
+  extra wiring) plus the account pages and a custom-URL option
+* live URL validation using `CMS.footer.href` — the panel cannot say yes to
+  something the page will then drop — which also tells you when a link will
+  carry `rel="noopener"`
+* the shared description and copyright fields, writing through to `text`
+* a note that states plainly what the public page will do with what is
+  currently entered, including *"nothing above is usable, so every page will
+  show the footer written into its HTML"*
+* `markDirty()`, so the existing unsaved-changes flag and Save/Publish work
+  unchanged
+
+### SEO
+
+Footer links stay crawlable in the static fallback — that is the point of the
+static-first design. No structured data is generated from footer links. No
+footer link is added to the sitemap. Nothing is hidden or keyword-stuffed, and
+the 6 × 12 ceiling makes a mass-generated keyword footer structurally
+impossible.
 
 ---
 
@@ -188,17 +343,25 @@ half-written. All of this is exercised in `tests/test_shell.js`.
 
 ## 6. CMS involvement
 
-The shell's **structure and links are code**, not CMS data. There is no new
-Supabase table, no new API, no RLS or auth change and no new admin subsystem.
+There is no new Supabase table, no new API, and no RLS or auth change. The
+footer's columns travel in the existing `site_brand` row alongside everything
+else.
 
-This was a deliberate decision. A CMS-editable footer link model would create a
-second navigation system competing with the static markup that crawlers
-actually read, and would need its own URL validation, its own ordering UI and
-its own failure modes — a lot of surface for a four-column footer that changes
-when a page is added.
+**The header and its navigation are code.** `PRIMARY` and `ACCOUNT` in
+`tools/build-shell.js` are the only source for the header dropdown and the
+info-page nav bars, and they are not CMS-editable. A header has a fixed number
+of slots before it overflows, and the generator's `localHref()` guard means a
+nav link to a page that does not exist cannot even be committed.
 
-What the CMS *does* supply inside the shell is text and images it already
-supplied before: `branding.siteName`, `footer.about`, `footer.copyright`,
+**The footer's navigation columns are CMS data** — see section 4b. The concern
+that a CMS footer would compete with the static markup a crawler reads is
+answered by the static-first contract rather than by keeping the footer in
+code: the shipped markup remains authoritative and the CMS only replaces it
+when its data is valid. The two stay in step because `DEFAULTS.footer` ships
+byte-for-byte what the generator writes.
+
+Beyond that, what the CMS supplies inside the shell is text and images it
+already supplied before: `branding.siteName`, `footer.about`, `footer.copyright`,
 `support.link`, `marquee.text`, the logos and the social links. All of it goes
 through the existing sanitisers — text through `textContent`, URLs through the
 existing URL rules — and none of it is ever written as raw HTML.
@@ -291,5 +454,16 @@ verified by actually scrolling at 1280 / 900 / 768 / 390 / 375, navigation
 destinations and active state, the footer's exact link set, accessibility,
 the exclusion of login/register/admin, builder sections sitting between header
 and footer, and CMS text safety.
+
+`tests/test_footer.js` covers the Global Footer Manager: the crawlable static
+fallback in the files, the shipped default rendering byte-for-byte what the
+file shows, a valid CMS footer reaching every page, Brand and Support surviving
+every render, 21 missing/empty/malformed payloads each leaving the fallback
+untouched, partial validity, accepted and refused URL forms, hostile labels and
+titles rendering as text, control-character stripping, seven prototype-pollution
+payloads delivered as JSON text, the caps, enable/disable, order, accessibility,
+five viewport widths, the generator's idempotence, a generated page, the admin
+panel end to end (add/delete/reorder/rename/picker/live validation/caps/dirty
+state), save-and-reload reaching a public page, and the SEO invariants.
 
 Run everything with `cd tests && node run-all.js`.

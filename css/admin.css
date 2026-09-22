@@ -2768,3 +2768,95 @@ body.pb-dragging #pbList iframe {
 .pb-ico:focus-visible {
     outline-offset: -1px;
 }
+
+
+/* =========================
+   GLOBAL FOOTER PANEL
+   A column is a card-in-a-card: the header row reuses .item exactly as
+   the Home lists do, and the links are .item rows indented under it.
+   Two levels, and the nesting is shown by the indent rather than by any
+   new component.
+========================= */
+
+.ft-col {
+    border: 1px solid var(--a-line);
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 10px;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.ft-col.drag-over {
+    border-color: var(--a-accent);
+}
+
+.ft-col.dragging {
+    opacity: 0.4;
+}
+
+/* A hidden column or link still shows its content -- it is dimmed, not
+   removed, so an editor can see what they turned off. */
+.ft-col.off,
+.item.ft-link.off {
+    opacity: 0.55;
+}
+
+.ft-col-head {
+    margin-bottom: 8px;
+}
+
+.ft-col-head .ft-title {
+    font-weight: 700;
+}
+
+.ft-links {
+    margin: 0 0 8px;
+    padding-left: 18px;
+    border-left: 2px solid var(--a-line);
+}
+
+.item.ft-link .fields {
+    grid-template-columns: minmax(110px, 1fr) minmax(140px, 1.4fr) minmax(120px, 0.9fr);
+}
+
+.item.ft-link select {
+    padding: 6px 8px;
+    font-size: 12px;
+}
+
+/* The note sits under the three fields, across all of them, so a long
+   message does not squeeze the inputs. */
+.ft-url-note {
+    grid-column: 1 / -1;
+    font-size: 11px;
+    color: var(--a-dim);
+    min-height: 0;
+}
+
+.ft-url-note.bad {
+    color: var(--a-danger);
+}
+
+.item.ft-link input.ft-url.bad {
+    border-color: var(--a-danger);
+}
+
+.ft-add-link {
+    margin-left: 18px;
+}
+
+.hint.warn {
+    color: var(--a-danger);
+}
+
+@media (max-width: 768px) {
+    .ft-links {
+        padding-left: 10px;
+    }
+    .ft-add-link {
+        margin-left: 10px;
+    }
+    .item.ft-link .fields {
+        grid-template-columns: 1fr;
+    }
+}

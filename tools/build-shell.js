@@ -75,7 +75,18 @@ const ACCOUNT = [
 ];
 
 /* ------------------------------------------------------------------
-   FOOTER COLUMNS — every href is a file in this repository.
+   FOOTER COLUMNS — the STATIC FALLBACK, and every href is a file in
+   this repository.
+
+   These are what ships in the HTML and what a crawler reads. The CMS can
+   replace them at runtime (DEFAULTS.footer in js/cms.js ships the same
+   two columns byte-for-byte, so an untouched install renders exactly
+   this), but only when its data survives cleanFooter(). Missing, empty,
+   malformed or unsafe data leaves what is written here on the page.
+
+   That is why this stays: not as a duplicate, but as the floor. A
+   runtime-only footer would hand a JavaScript-free crawler a page with
+   no internal links, which is what tools/build-shell.js exists to avoid.
 
    There is no "Terms & Conditions" or "Disclaimer" column because those
    pages do not exist. A column of links to nothing is worse than a
@@ -240,9 +251,15 @@ ${I(8)}</a>
 ${I(4)}</section>
 
 ${I(4)}<footer class="site-footer">
-${I(8)}<div class="footer-cols">
+${I(8)}<!-- data-cms-footer: renderFooter() in js/cms.js may replace the
+${I(8)}     navigation columns below with the CMS ones. The two blocks
+${I(8)}     marked data-footer-keep are moved across untouched -- they are
+${I(8)}     not link lists, and they carry the ids paintFooterSocial() and
+${I(8)}     paintWhatsApp() bind to. With no valid CMS footer, everything
+${I(8)}     here stays exactly as written. -->
+${I(8)}<div class="footer-cols" data-cms-footer>
 
-${I(12)}<div class="footer-col footer-col-brand">
+${I(12)}<div class="footer-col footer-col-brand" data-footer-keep="brand">
 ${I(16)}<img class="footer-logo-img" id="footerLogo" data-cms-img="footerLogo" alt="" hidden>
 ${I(16)}<div class="footer-brand-name" data-cms-text="branding.siteName">JSK1</div>
 ${I(16)}<p class="footer-brand-text" data-cms="footer.about">The official JSK1 website. Create an account, sign in and reach support any time.</p>
@@ -251,7 +268,7 @@ ${I(12)}</div>
 
 ${groups}
 
-${I(12)}<div class="footer-col">
+${I(12)}<div class="footer-col" data-footer-keep="support">
 ${I(16)}<h2 class="footer-col-title">Support</h2>
 ${I(16)}<nav class="footer-links" aria-label="Support">
 ${I(20)}<a href="contact.html">Contact us</a>
