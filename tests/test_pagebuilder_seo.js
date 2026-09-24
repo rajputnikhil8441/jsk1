@@ -616,7 +616,14 @@ const openSec = async (p, i) => {
     check('about.html is listed once',
       (xml.match(/https:\/\/jsk-1\.com\/about\.html/g) || []).length === 1, xml);
     check('login and register stay out', !/login\.html|register\.html/.test(xml), xml);
-    check('admin stays out', !/\/admin/.test(xml), xml);
+    /* The generated file now carries an explanatory comment that mentions
+       /admin/ in prose ("... and /admin/ are absent by construction"), so
+       the original substring test would fire on the sentence saying the
+       thing it is checking for. The intent -- no admin URL is published --
+       is unchanged and is now asserted against the URLs themselves, which
+       is what a crawler actually reads. */
+    const sitemapLocs = (xml.match(/<loc>([^<]*)<\/loc>/g) || []).map(t => t.replace(/<\/?loc>/g, ''));
+    check('admin stays out', sitemapLocs.length > 0 && !sitemapLocs.some(u => /\/admin/.test(u)), sitemapLocs);
     const locs = (xml.match(/<loc>([^<]+)<\/loc>/g) || []);
     check('there are no duplicate URLs',
       new Set(locs).size === locs.length, locs);

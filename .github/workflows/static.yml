@@ -33,6 +33,15 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup Pages
         uses: actions/configure-pages@v5
+      # sitemap.xml and robots.txt are GENERATED, not hand-edited. The
+      # generator reads the CMS record with the same public, read-only anon
+      # key the site already ships in js/cms-config.js, so this step adds no
+      # secret and needs no extra permission -- the job still only has
+      # `contents: read` and cannot write to the repository. If the record
+      # cannot be reached it falls back to tools/seo-config.json and says so
+      # in the log, rather than deploying a sitemap that describes nothing.
+      - name: Generate sitemap.xml and robots.txt
+        run: node tools/build-seo-files.js
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

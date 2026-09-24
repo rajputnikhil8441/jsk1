@@ -2026,19 +2026,67 @@ window.PBAdmin = function (host) {
         return null;
     }
 
+    /* ---------- uploaded CMS media in the picker ----------
+       The two tabs answer two different questions and are kept apart all
+       the way down: a repository asset is a path under assets/ validated
+       by CMS.sections.assetPath, an uploaded image is a URL in this site's
+       own bucket validated by CMS.sections.mediaPath. Neither validator
+       will ever accept the other's input, and nothing in this file widens
+       either of them. What the picker HANDS BACK is the same shape in both
+       cases -- a `path` the image field can store -- because everything
+       downstream, cms.js included, re-validates it anyway. */
+    function pbMediaItems() {
+        if (!window.CMSMedia) return [];
+        try { return window.CMSMedia.list(); } catch (e) { return []; }
+    }
+
+    function pbMediaByUrl(url) {
+        var u = CMS.sections.mediaPath ? CMS.sections.mediaPath(url) : '';
+        if (!u) return null;
+        var items = pbMediaItems();
+        for (var i = 0; i < items.length; i++) if (items[i].url === u) return items[i];
+        return null;
+    }
+
+    /* Either kind, whichever one this reference is. */
+    function pbPickedByRef(ref) {
+        var a = pbAssetByPath(ref);
+        if (a) return a;
+        var m = pbMediaByUrl(ref);
+        if (!m) return null;
+        return { path: m.url, name: m.name, group: 'Uploaded',
+                 w: m.w, h: m.h, bytes: m.bytes, alt: m.alt, uploaded: true };
+    }
+
+    /* The admin lives one folder down, so a repository path needs the step
+       up; an uploaded image is already an absolute URL and must not get
+       one. */
+    function pbThumbSrc(ref) {
+        return /^https:\/\//i.test(ref) ? ref : '../' + ref;
+    }
+
+    function pbAssetTabs() {
+        return Array.prototype.slice.call(document.querySelectorAll('#pbAssetTabs .pagetab'));
+    }
+
     function pbKb(n) { return n ? Math.max(1, Math.round(n / 1024)) + ' KB' : ''; }
 
     /* The picker is modal and resolves through a callback: it either hands
        back a chosen asset or it hands back nothing, and "nothing" must
        leave whatever was there alone. */
-    var pbAssetState = { open: false, current: '', selected: '', onPick: null, wired: false };
+    var pbAssetState = { open: false, current: '', selected: '', onPick: null,
+                         wired: false, tab: 'repo', busy: false, note: '' };
 
     function pbAssetOpen(currentPath, onPick) {
         var modal = $('#pbAssetModal');
         if (!modal) return;
         pbAssetWire();
         pbAssetState.open = true;
-        pbAssetState.current = CMS.sections.assetPath(currentPath) || '';
+        pbAssetState.current = CMS.sections.imageRef(currentPath) || '';
+        /* Open on the tab the current image actually came from. */
+        pbAssetState.tab = (pbAssetState.current && CMS.sections.mediaPath(pbAssetState.current))
+            ? 'media' : 'repo';
+        pbAssetState.note = '';
         /* Reopening keeps the image the element is already using selected,
            so the picker opens on what the author last chose. */
         pbAssetState.selected = pbAssetState.current;
@@ -2070,6 +2118,29 @@ window.PBAdmin = function (host) {
                 ? 'Selected: ' + pbAssetState.selected
                 : (pbAssetState.current ? 'Currently using: ' + pbAssetState.current : '');
         }
+
+        pbAssetTabs().forEach(function (t) {
+            var on = t.getAttribute('data-assettab') === pbAssetState.tab;
+            t.classList.toggle('active', on);
+            t.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+
+        var hint = $('#pbAssetHint');
+        var upRow = $('#pbAssetUpload');
+        if (pbAssetState.tab === 'media') {
+            if (hint) {
+                hint.innerHTML = 'Pictures uploaded in <strong>Media Library</strong>. They live in ' +
+                    'this site&rsquo;s own storage, not in the repository.';
+            }
+            if (upRow) upRow.hidden = false;
+            pbAssetPaintMedia(grid);
+            return;
+        }
+        if (hint) {
+            hint.textContent = 'Images already published with this site. Nothing is uploaded — ' +
+                'choosing one stores its path, not the picture.';
+        }
+        if (upRow) upRow.hidden = true;
 
         if (pbAssets === null) {
             grid.innerHTML = '<p class="pb-asset-empty">Loading images\u2026</p>';
@@ -2130,8 +2201,105 @@ window.PBAdmin = function (host) {
         }
     }
 
+    function pbAssetPaintMedia(grid) {
+        var note = document.createElement('p');
+        note.className = 'pb-asset-empty';
+
+        if (!window.CMSMedia || !window.CMSMedia.enabled()) {
+            note.innerHTML = 'Uploads are not switched on for this site yet. A developer has to ' +
+                'create the storage bucket &mdash; see <code>docs/media-library.md</code>. ' +
+                'The <strong>Site images</strong> tab still works.';
+            grid.appendChild(note);
+            return;
+        }
+
+        var items = pbMediaItems();
+        var q = String(($('#pbAssetSearch') || {}).value || '').trim().toLowerCase();
+        var shown = 0;
+
+        items.forEach(function (m) {
+            if (q && (m.name + ' ' + m.key).toLowerCase().indexOf(q) === -1) return;
+            shown += 1;
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'pb-asset' + (m.url === pbAssetState.selected ? ' selected' : '');
+            b.setAttribute('data-asset', m.url);
+            if (m.url === pbAssetState.selected) b.setAttribute('aria-pressed', 'true');
+
+            var thumb = document.createElement('span');
+            thumb.className = 'pb-asset-thumb';
+            var img = document.createElement('img');
+            img.src = m.url;
+            img.alt = '';
+            img.loading = 'lazy';
+            img.decoding = 'async';
+            thumb.appendChild(img);
+            b.appendChild(thumb);
+
+            var name = document.createElement('span');
+            name.className = 'pb-asset-name';
+            name.textContent = m.name;
+            b.appendChild(name);
+
+            var meta = document.createElement('span');
+            meta.className = 'pb-asset-meta';
+            meta.textContent = (m.w ? m.w + '×' + m.h : 'size unknown') +
+                               (m.bytes ? ' · ' + pbKb(m.bytes) : '');
+            b.appendChild(meta);
+
+            b.addEventListener('click', function () {
+                pbAssetState.selected = m.url;
+                pbAssetPaint();
+            });
+            b.addEventListener('dblclick', function () { pbAssetConfirm(); });
+            grid.appendChild(b);
+        });
+
+        if (!shown) {
+            note.innerHTML = items.length
+                ? 'No uploaded image matches that search.'
+                : 'Nothing uploaded yet. Use <strong>Upload image</strong> above, or the ' +
+                  '<strong>Media Library</strong> panel.';
+            grid.appendChild(note);
+        }
+    }
+
+    function pbAssetUploadNote(msg, kind) {
+        var n = $('#pbAssetUploadNote');
+        if (n) n.innerHTML = msg ? '<span class="chk-' + (kind || 'ok') + '">' + msg + '</span>' : '';
+    }
+
+    /* Uploading from inside the picker is the same call the Media Library
+       panel makes, so there is exactly one place that decides what may be
+       uploaded. On success the new picture is selected, because that is
+       obviously what the author was trying to do. */
+    function pbAssetUploadFile(file) {
+        if (!file || pbAssetState.busy || !window.CMSMedia) return;
+        pbAssetState.busy = true;
+        var btn = $('#pbAssetUploadBtn');
+        if (btn) btn.disabled = true;
+        pbAssetUploadNote('Checking ' + esc(file.name || '') + '…', 'warn');
+        window.CMSMedia.upload(file, function (phase) {
+            pbAssetUploadNote((phase === 'uploading' ? 'Uploading ' : 'Checking ') +
+                              esc(file.name || '') + '…', 'warn');
+        }).then(function (entry) {
+            pbAssetState.busy = false;
+            if (btn) btn.disabled = false;
+            pbAssetState.selected = entry.url;
+            pbAssetUploadNote('Uploaded. Press <strong>Use this image</strong>.', 'ok');
+            pbAssetPaint();
+            /* The bytes are in the bucket; the row that remembers them has
+               to reach the server too, or another device will never see it. */
+            commit();
+        }).catch(function (err) {
+            pbAssetState.busy = false;
+            if (btn) btn.disabled = false;
+            pbAssetUploadNote(esc(err.message), 'bad');
+        });
+    }
+
     function pbAssetConfirm() {
-        var a = pbAssetByPath(pbAssetState.selected);
+        var a = pbPickedByRef(pbAssetState.selected);
         var cb = pbAssetState.onPick;
         if (!a || !cb) { pbAssetClose(); return; }
         pbAssetClose();
@@ -2156,6 +2324,26 @@ window.PBAdmin = function (host) {
         if (use) use.addEventListener('click', pbAssetConfirm);
         var search = $('#pbAssetSearch');
         if (search) search.addEventListener('input', pbAssetPaint);
+
+        pbAssetTabs().forEach(function (t) {
+            t.addEventListener('click', function () {
+                pbAssetState.tab = t.getAttribute('data-assettab') === 'media' ? 'media' : 'repo';
+                pbAssetUploadNote('');
+                pbAssetPaint();
+                if (pbAssetState.tab === 'repo') pbLoadAssets().then(function () {
+                    if (pbAssetState.open) pbAssetPaint();
+                });
+            });
+        });
+
+        var upBtn = $('#pbAssetUploadBtn'), upFile = $('#pbAssetUploadFile');
+        if (upBtn && upFile) {
+            upBtn.addEventListener('click', function () { upFile.click(); });
+            upFile.addEventListener('change', function () {
+                pbAssetUploadFile(upFile.files && upFile.files[0]);
+                upFile.value = '';
+            });
+        }
     }
 
     /* The field: the existing text input, with a button beside it and a
@@ -2184,9 +2372,9 @@ window.PBAdmin = function (host) {
         path.className = 'pb-imgpick-path';
 
         function sync() {
-            var v = CMS.sections.assetPath(bag[key]);
+            var v = CMS.sections.imageRef(bag[key]);
             if (v) {
-                thumb.src = '../' + v;
+                thumb.src = pbThumbSrc(v);
                 thumb.hidden = false;
                 path.textContent = '';
             } else {

@@ -344,6 +344,7 @@
            elsewhere. Rebuilt on the way in rather than on every keystroke
            over there. */
         if (name === 'design') buildDesign();
+        if (name === 'media') { mediaShown = MEDIA_PAGE; buildMedia(); }
         /* Leaving the builder pulls the list the pointer was aiming at out
            from under a drag in flight. It ends here, and ends the way every
            cancelled drag does: without changing the draft. */
@@ -1060,6 +1061,217 @@
         bar.style.background = pct > 85 ? '#ff5a5a' : (pct > 60 ? '#ffb020' : '#2f9bff');
         txt.textContent = mb.toFixed(2) + ' MB of roughly 5 MB used by this brand.';
     }
+
+    /* ========================================================
+       MEDIA LIBRARY  (uploaded CMS media)
+       --------------------------------------------------------
+       The Image manager above replaces a FIXED SLOT -- the logo, the
+       favicon -- and keeps the picture in the record as a data URL. That
+       is right for a handful of brand images and wrong for content: a
+       data URL cannot be crawled, cannot be cached, and eats the 5 MB
+       the whole brand has to fit in.
+
+       This is the other thing: an open-ended library of pictures that
+       live in the site's own storage bucket, addressed by a real URL,
+       usable in any Page Builder image field. Everything about what may
+       be uploaded is decided in js/admin-media.js; this is only the
+       screen.
+    ======================================================== */
+    var MEDIA_PAGE = 24;
+    var mediaShown = MEDIA_PAGE;
+    var mediaBusy = false;
+
+    function mediaFmtBytes(n) {
+        if (!n) return '';
+        return n < 1048576 ? Math.max(1, Math.round(n / 1024)) + ' KB'
+                           : (Math.round(n / 1048576 * 10) / 10) + ' MB';
+    }
+
+    function mediaStatus(msg, kind) {
+        var host = $('#mediaStatus');
+        if (!host) return;
+        if (!msg) { host.innerHTML = ''; return; }
+        host.innerHTML = '<span class="chk-' + (kind || 'ok') + '">' + msg + '</span>';
+    }
+
+    function buildMedia() {
+        var grid = $('#mediaGrid');
+        if (!grid || !window.CMSMedia) return;
+
+        var on = window.CMSMedia.enabled();
+        var off = $('#mediaOffHint');
+        if (off) off.hidden = on;
+        var upBtn = $('#mediaUploadBtn');
+        if (upBtn) upBtn.disabled = !on || mediaBusy;
+        var limits = $('#mediaLimits');
+        if (limits) {
+            limits.textContent = 'PNG, JPEG, WebP or GIF · up to ' +
+                (Math.round(window.CMSMedia.maxBytes() / 1048576 * 10) / 10) + ' MB each';
+        }
+
+        var all = window.CMSMedia.list();
+        var q = String(($('#mediaSearch') || {}).value || '').trim().toLowerCase();
+        var items = q ? all.filter(function (m) {
+            return (m.name + ' ' + m.key).toLowerCase().indexOf(q) > -1;
+        }) : all;
+
+        $('#mediaCount').textContent = String(all.length);
+        grid.innerHTML = '';
+
+        if (!items.length) {
+            grid.innerHTML = '<p class="pb-asset-empty">' +
+                (all.length ? 'No image matches that search.'
+                            : 'Nothing uploaded yet. Press <strong>Upload image</strong> to add one.') +
+                '</p>';
+            $('#mediaPager').hidden = true;
+            return;
+        }
+
+        /* Only what is on screen is built, and every thumbnail is lazy and
+           carries its real dimensions -- so a library of hundreds does not
+           make this panel slow, and nothing reflows as pictures arrive. */
+        items.slice(0, mediaShown).forEach(function (m) {
+            grid.appendChild(mediaCard(m));
+        });
+        var pager = $('#mediaPager');
+        pager.hidden = items.length <= mediaShown;
+        $('#mediaMore').textContent = 'Show more (' + (items.length - mediaShown) + ' left)';
+    }
+
+    function mediaCard(m) {
+        var card = document.createElement('div');
+        card.className = 'mediacard';
+        card.setAttribute('data-media', m.url);
+
+        var thumb = document.createElement('div');
+        thumb.className = 'mediacard-thumb';
+        var img = document.createElement('img');
+        img.src = m.url;
+        img.alt = '';
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        if (m.w && m.h) { img.width = m.w; img.height = m.h; }
+        thumb.appendChild(img);
+        card.appendChild(thumb);
+
+        var name = document.createElement('div');
+        name.className = 'mediacard-name';
+        name.textContent = m.name;
+        name.title = m.name;
+        card.appendChild(name);
+
+        var meta = document.createElement('div');
+        meta.className = 'mediacard-meta';
+        meta.textContent = (m.w ? m.w + '×' + m.h : 'size unknown') +
+                           (m.bytes ? ' · ' + mediaFmtBytes(m.bytes) : '');
+        card.appendChild(meta);
+
+        var altWrap = document.createElement('label');
+        altWrap.className = 'mediacard-alt';
+        altWrap.innerHTML = '<span>Alt text</span>';
+        var alt = document.createElement('input');
+        alt.type = 'text';
+        alt.value = m.alt || '';
+        alt.placeholder = 'What is in this picture?';
+        alt.addEventListener('input', function () {
+            window.CMSMedia.setAlt(m.url, alt.value);
+            markDirty();
+        });
+        altWrap.appendChild(alt);
+        card.appendChild(altWrap);
+
+        var row = document.createElement('div');
+        row.className = 'row';
+        var del = document.createElement('button');
+        del.className = 'adm-btn ghost';
+        del.setAttribute('data-act', 'media-delete');
+        del.innerHTML = '<i class="fas fa-trash"></i> Delete';
+        del.addEventListener('click', function () { mediaDelete(m, del); });
+        row.appendChild(del);
+        card.appendChild(row);
+
+        return card;
+    }
+
+    function mediaDelete(m, btn) {
+        if (!confirm('Delete "' + m.name + '"? Any page still using it will show a broken image.')) return;
+        btn.disabled = true;
+        mediaStatus('Deleting ' + esc(m.name) + '…', 'warn');
+        window.CMSMedia.remove(m.url).then(function () {
+            mediaStatus('Deleted ' + esc(m.name) + '.', 'ok');
+            buildMedia();
+            commit();
+        }).catch(function (err) {
+            btn.disabled = false;
+            mediaStatus('Could not delete ' + esc(m.name) + ': ' + esc(err.message), 'bad');
+        });
+    }
+
+    /* One file at a time on purpose: a browser will happily open six
+       sockets, and a half-finished batch with no way to say which file
+       failed is not a better experience than a slower honest one. */
+    function mediaUpload(files) {
+        if (!files || !files.length || mediaBusy) return;
+        mediaBusy = true;
+        buildMedia();
+
+        var queue = Array.prototype.slice.call(files, 0, 20);
+        var okCount = 0, problems = [];
+
+        function next() {
+            if (!queue.length) return Promise.resolve();
+            var f = queue.shift();
+            return window.CMSMedia.upload(f, function (phase, name) {
+                mediaStatus(
+                    (phase === 'checking' ? 'Checking ' : phase === 'uploading' ? 'Uploading ' : 'Uploaded ') +
+                    esc(name || '') + '… (' + (okCount + problems.length + 1) + ' of ' +
+                    (okCount + problems.length + 1 + queue.length) + ')',
+                    'warn');
+            }).then(function () {
+                okCount += 1;
+                buildMedia();
+            }).catch(function (err) {
+                problems.push(esc(f.name || 'file') + ' — ' + esc(err.message));
+            }).then(next);
+        }
+
+        next().then(function () {
+            mediaBusy = false;
+            buildMedia();
+            if (okCount) {
+                /* The bytes are already in the bucket; the library row is in
+                   the record and has to be published or the next device --
+                   and the next reload on a different machine -- will not
+                   know the picture exists. */
+                commit();
+            }
+            if (!problems.length) {
+                mediaStatus('Uploaded ' + okCount + ' image' + (okCount === 1 ? '' : 's') + '.', 'ok');
+            } else {
+                mediaStatus((okCount ? 'Uploaded ' + okCount + '. ' : '') +
+                    problems.length + ' refused:<ul><li>' + problems.join('</li><li>') + '</li></ul>',
+                    okCount ? 'warn' : 'bad');
+            }
+        });
+    }
+
+    (function wireMedia() {
+        var file = $('#mediaFile');
+        if (!file) return;
+        $('#mediaUploadBtn').addEventListener('click', function () { file.click(); });
+        file.addEventListener('change', function () {
+            mediaUpload(file.files);
+            file.value = '';
+        });
+        $('#mediaSearch').addEventListener('input', function () {
+            mediaShown = MEDIA_PAGE;
+            buildMedia();
+        });
+        $('#mediaMore').addEventListener('click', function () {
+            mediaShown += MEDIA_PAGE;
+            buildMedia();
+        });
+    })();
 
     /* ========================================================
        HOME CONTENT LISTS
@@ -1973,7 +2185,7 @@
         b.type = 'button';
         b.className = 'adm-btn ghost';
         b.setAttribute('data-act', which + '-pick');
-        b.innerHTML = '<i class="fas fa-image"></i> Choose from site images';
+        b.innerHTML = '<i class="fas fa-image"></i> Choose an image';
         b.addEventListener('click', function () {
             /* The picker hands back the manifest entry, not a string -- the
                same shape the builder's own image field receives. Its path
@@ -1981,7 +2193,13 @@
                stored, so what lands in the field is provably one of ours
                rather than whatever the callback happened to carry. */
             Builder.pickAsset(input.value, function (asset) {
-                var path = CMS.sections.assetPath((asset && asset.path) || '');
+                /* Either kind of image is right for a share card, and an
+                   uploaded one is the better answer: a share image has to be
+                   a URL Facebook and X can fetch, which is exactly what an
+                   upload gives you and exactly what the data URLs in the
+                   Image manager never could. Still validated, just against
+                   both doors rather than one. */
+                var path = CMS.sections.imageRef((asset && asset.path) || '');
                 if (!path) return;
                 input.value = path;
                 page[which].image = path;
@@ -2344,17 +2562,16 @@
         });
     }
 
+    /* ---------- sitemap.xml / robots.txt ----------
+       Both files are built by js/seo-files.js, the SAME module
+       tools/build-seo-files.js runs during the deploy. The admin is
+       therefore not previewing an approximation of what will be published:
+       it is running the publisher. If the two ever disagreed, the preview
+       would be a lie, and a preview that lies about a crawler-facing file
+       is worse than no preview. */
     function buildSitemapXml() {
-        var base = sstr(seoGet('seo.baseUrl', '')).replace(/\/+$/, '');
-        var rows = indexablePages().filter(function (p) { return p.inSitemap; });
-        var out = '<?xml version="1.0" encoding="UTF-8"?>\n' +
-                  '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
-        rows.forEach(function (p) {
-            out += '  <url>\n    <loc>' + base + '/' + p.url + '</loc>\n';
-            if (p.updatedAt) out += '    <lastmod>' + p.updatedAt + '</lastmod>\n';
-            out += '  </url>\n';
-        });
-        return out + '</urlset>\n';
+        return (window.SEOFiles && window.SEOFiles.sitemap(CMS.data())) ||
+               '<!-- No valid base URL is set in Global SEO, so no sitemap can be built. -->\n';
     }
 
     function buildSeoSitemap() {
@@ -2377,13 +2594,8 @@
     }
 
     function buildRobotsTxt() {
-        var base = sstr(seoGet('seo.baseUrl', '')).replace(/\/+$/, '');
-        var extra = sstr(seoGet('seo.robotsExtra', ''));
-        var out = '# robots.txt for ' + base + '/\n\nUser-agent: *\nAllow: /\n\n' +
-                  '# The admin panel is not a search landing page.\nDisallow: /admin/\n';
-        if (extra) out += '\n' + extra + '\n';
-        out += '\nSitemap: ' + base + '/sitemap.xml\n';
-        return out;
+        return (window.SEOFiles && window.SEOFiles.robots(CMS.data())) ||
+               '# No valid base URL is set in Global SEO, so no robots.txt can be built.\n';
     }
 
     function buildSeoRobots() {
@@ -2392,6 +2604,149 @@
         ta.oninput = function () { seoSet('seo.robotsExtra', ta.value); markDirty(); $('#seoRobotsOut').textContent = buildRobotsTxt(); };
         $('#seoRobotsOut').textContent = buildRobotsTxt();
     }
+
+    /* ========================================================
+       WHAT IS ACTUALLY LIVE
+       --------------------------------------------------------
+       The admin can tell an author what the next deploy will publish,
+       because it runs the generator. What it cannot know is whether that
+       deploy has happened. So it asks the website: it fetches the real
+       sitemap.xml and robots.txt from this origin and compares them with
+       what the settings now say.
+
+       The comparison is on MEANING, not bytes. The generated files carry a
+       provenance comment that legitimately differs between a deploy that
+       read the database and one that fell back to the committed config,
+       and an author being told "3 changes pending" because of a comment
+       would learn to ignore the warning entirely.
+
+       Nothing here writes anything. A failure is reported as a failure --
+       a fetch that 404s or times out never reads as "up to date".
+    ======================================================== */
+    var seoLiveBusy = {};
+
+    function seoLocs(xml) {
+        var out = [], re = /<loc>([^<]*)<\/loc>/gi, m;
+        while ((m = re.exec(xml))) out.push(m[1].trim());
+        return out;
+    }
+
+    function seoLastmods(xml) {
+        var out = {}, re = /<url>([\s\S]*?)<\/url>/gi, m;
+        while ((m = re.exec(xml))) {
+            var loc = /<loc>([^<]*)<\/loc>/i.exec(m[1]);
+            var mod = /<lastmod>([^<]*)<\/lastmod>/i.exec(m[1]);
+            if (loc) out[loc[1].trim()] = mod ? mod[1].trim() : '';
+        }
+        return out;
+    }
+
+    /* Directive lines only: comments and blank lines are presentation. */
+    function seoDirectives(txt) {
+        return String(txt).split(/\r?\n/).map(function (l) { return l.trim(); })
+            .filter(function (l) { return l && l.charAt(0) !== '#'; });
+    }
+
+    function seoProvenance(txt) {
+        var m = /source:\s*([^\n\r]*)/i.exec(String(txt));
+        return m ? m[1].trim() : '';
+    }
+
+    function seoDiffList(title, items) {
+        if (!items.length) return '';
+        return '<p class="hint"><strong>' + title + '</strong></p><ul class="seochecks">' +
+            items.map(function (i) { return '<li class="chk-warn"><span>' + esc(i) + '</span></li>'; }).join('') +
+            '</ul>';
+    }
+
+    function seoCheckLive(kind) {
+        var host = $('#seoPubState-' + kind);
+        if (!host || seoLiveBusy[kind]) return;
+        seoLiveBusy[kind] = true;
+        host.innerHTML = '<p class="hint">Reading the live file…</p>';
+
+        var file = kind === 'robots' ? 'robots.txt' : 'sitemap.xml';
+        /* Same origin, cache defeated: a cached copy would report a deploy
+           that has not reached this browser as one that has. */
+        fetch('../' + file + '?_=' + Date.now(), { cache: 'no-store' })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status + ' fetching /' + file);
+                return r.text();
+            })
+            .then(function (live) {
+                seoLiveBusy[kind] = false;
+                host.innerHTML = kind === 'robots' ? seoRobotsReport(live) : seoSitemapReport(live);
+            })
+            .catch(function (err) {
+                seoLiveBusy[kind] = false;
+                host.innerHTML =
+                    '<ul class="seochecks"><li class="chk-bad"><span>' +
+                    'Could not read the live <code>' + esc(file) + '</code>: ' + esc(err.message) +
+                    '. Until that is fixed there is no way to tell whether the published file is ' +
+                    'up to date — do not assume it is.</span></li></ul>';
+            });
+    }
+
+    function seoStamp(live) {
+        var src = seoProvenance(live);
+        if (!src) return '<li class="chk-warn"><span>The live file carries no provenance line, so it ' +
+                         'predates generated publishing. The next deploy will replace it.</span></li>';
+        return '<li class="chk-ok"><span>The live file was built from <code>' + esc(src) + '</code>.</span></li>';
+    }
+
+    function seoSitemapReport(live) {
+        var want = buildSitemapXml();
+        var liveLocs = seoLocs(live), wantLocs = seoLocs(want);
+        var liveMods = seoLastmods(live), wantMods = seoLastmods(want);
+
+        var added = wantLocs.filter(function (u) { return liveLocs.indexOf(u) === -1; });
+        var gone  = liveLocs.filter(function (u) { return wantLocs.indexOf(u) === -1; });
+        var moved = wantLocs.filter(function (u) {
+            return liveLocs.indexOf(u) > -1 && liveMods[u] !== wantMods[u];
+        }).map(function (u) { return u + '  (' + (liveMods[u] || 'no date') + ' → ' + (wantMods[u] || 'no date') + ')'; });
+
+        var n = added.length + gone.length + moved.length;
+        var head = '<ul class="seochecks">' + seoStamp(live) +
+            '<li class="chk-ok"><span>The live sitemap lists ' + liveLocs.length + ' URL(s).</span></li>' +
+            (n ? '<li class="chk-warn"><span><strong>' + n + ' change(s) are waiting for the next deployment.</strong> ' +
+                 'They are saved in the CMS; the published file will not show them until someone runs the deploy.' +
+                 '</span></li>'
+               : '<li class="chk-ok"><span><strong>The published sitemap matches these settings.</strong> ' +
+                 'Nothing is waiting for a deployment.</span></li>') +
+            '</ul>';
+
+        return head +
+            seoDiffList('Will be added:', added) +
+            seoDiffList('Will be removed:', gone) +
+            seoDiffList('Last-modified date will change:', moved);
+    }
+
+    function seoRobotsReport(live) {
+        var want = buildRobotsTxt();
+        var liveD = seoDirectives(live), wantD = seoDirectives(want);
+        var added = wantD.filter(function (l) { return liveD.indexOf(l) === -1; });
+        var gone  = liveD.filter(function (l) { return wantD.indexOf(l) === -1; });
+        var n = added.length + gone.length;
+
+        var head = '<ul class="seochecks">' + seoStamp(live) +
+            '<li class="chk-ok"><span>The live file has ' + liveD.length + ' directive(s).</span></li>' +
+            (/^\s*Disallow:\s*\/admin\/\s*$/mi.test(live)
+                ? '<li class="chk-ok"><span><code>Disallow: /admin/</code> is live.</span></li>'
+                : '<li class="chk-bad"><span><code>Disallow: /admin/</code> is NOT in the published file.</span></li>') +
+            (n ? '<li class="chk-warn"><span><strong>' + n + ' change(s) are waiting for the next deployment.</strong>' +
+                 '</span></li>'
+               : '<li class="chk-ok"><span><strong>The published robots.txt matches these settings.</strong></span></li>') +
+            '</ul>';
+
+        return head +
+            seoDiffList('Will be added:', added) +
+            seoDiffList('Will be removed:', gone);
+    }
+
+    document.addEventListener('click', function (e) {
+        var b = e.target.closest && e.target.closest('[data-seocheck]');
+        if (b) seoCheckLive(b.getAttribute('data-seocheck'));
+    });
 
     /* Same rule the painter uses: an image a crawler must fetch cannot be a
        data URL. Kept in one place so the admin never shows something the page
@@ -2448,6 +2803,173 @@
        search engines do not publish one, and a number invites
        optimising for the number instead of the reader.
     ======================================================== */
+    /* ========================================================
+       WHAT A PAGE'S CONTENT ACTUALLY IS
+       --------------------------------------------------------
+       Two kinds of page body live side by side in this CMS:
+
+         REPOSITORY BODY   pages.<slug>.body -- the HTML that ships in the
+                           .html file and is edited as text in Pages.
+         BUILDER CONTENT   pages.<slug>.builder -- the sections the Page
+                           Builder owns, rendered into the page's mount.
+
+       The dashboard used to read the body field and nothing else, so every
+       builder-managed page reported "the page body is empty" and zero words
+       while the live page was full of content.
+
+       This asks the RENDERER instead. CMS.sections.renderInto() is the very
+       function the public page calls, so what is measured here is the markup
+       a visitor is actually served -- not a second interpretation of the
+       section data that could drift away from it over time.
+
+       Only PUBLISHED sections count. A draft is not on the web; reporting it
+       as content would tell an author their SEO is fixed when nothing has
+       shipped. The draft is still WORTH MENTIONING, which is why the state
+       is carried out of here rather than thrown away.
+    ======================================================== */
+
+    /* Rendering a section array is cheap but not free -- and an <img> the
+       renderer creates starts a fetch whether or not it is ever inserted.
+       The dashboard rebuilds on every keystroke in a SEO field, so the
+       result is memoised against the exact sections it came from: identical
+       content renders once, edited content renders again. */
+    var contentMemo = {};
+
+    function renderPublishedHtml(key, sections) {
+        var sig = JSON.stringify(sections);
+        /* One entry PER PAGE, replaced when that page's content changes.
+           Keyed by slug rather than by signature so the cache cannot grow
+           with every edit -- and so building the dashboard, which renders
+           every builder page in turn, does not evict the entry it is about
+           to need again on the next keystroke. */
+        var hit = contentMemo[key];
+        if (hit && hit.sig === sig) return hit.html;
+        var host = document.createElement('div');
+        try { CMS.sections.renderInto(host, sections); }
+        catch (e) { host.textContent = ''; }
+        contentMemo[key] = { sig: sig, html: host.innerHTML };
+        return contentMemo[key].html;
+    }
+
+    /* A live DOM to run the checks against. Built from a string in an inert
+       document, so nothing here loads, runs or navigates. */
+    function contentDoc(html) {
+        try {
+            return new DOMParser().parseFromString('<body>' + html + '</body>', 'text/html');
+        } catch (e) { return null; }
+    }
+
+    function pageContent(key, p) {
+        var out = {
+            owns: p.body !== undefined && sstr(p.url) !== '',
+            source: 'body',          /* 'body' | 'builder' */
+            html: sstr(p.body),
+            published: false,        /* is builder content live for this page */
+            draftPending: false,     /* a draft says something else */
+            draftOnly: false         /* a draft exists but nothing is published */
+        };
+        if (!CMS.sections || typeof CMS.sections.published !== 'function' ||
+            typeof CMS.sections.renderInto !== 'function') return out;
+
+        var pub = null, st = null;
+        try { pub = CMS.sections.published(key); } catch (e) { pub = null; }
+        try { st = CMS.sections.status ? CMS.sections.status(key) : null; } catch (e) { st = null; }
+
+        if (!pub) {
+            /* No published builder block: the shipped body is still exactly
+               what a visitor sees, so it is still what gets analysed. */
+            if (st && st.dirty && st.sections) out.draftOnly = true;
+            return out;
+        }
+
+        /* A published builder page owns content even if its CMS entry
+           never carried a body field -- but a page with no URL (the
+           homepage) is still not one the dashboard analyses. */
+        if (sstr(p.url) !== '') out.owns = true;
+        out.source = 'builder';
+        out.published = true;
+        out.draftPending = !!(st && st.dirty);
+        out.html = renderPublishedHtml(key, pub);
+        return out;
+    }
+
+    /* The checks themselves. One implementation for both kinds of content --
+       the whole point is that a builder page and a hand-written page are
+       held to the same standard and told so in the same words. */
+    function contentChecks(content, pages, ok, warn, bad, p) {
+        var builder = content.source === 'builder';
+        var what = builder ? 'published page content' : 'page body';
+        var doc = contentDoc(content.html);
+        var body = doc && doc.body;
+
+        if (builder) {
+            if (content.draftPending)
+                warn('This page has unpublished Page Builder changes. Everything below describes ' +
+                     'what is PUBLISHED — press Publish in the Page Builder to make the draft live.');
+            else
+                ok('Page Builder content is published; this is what search engines see.');
+        } else if (content.draftOnly) {
+            warn('A Page Builder draft exists for this page but has never been published, so the ' +
+                 'checks below describe the page body that is still live.');
+        }
+
+        /* ---- H1 ---- */
+        var h1s = body ? body.querySelectorAll('h1').length : 0;
+        if (h1s > 0)
+            bad('The ' + what + ' contains ' + h1s + ' <h1> heading(s). The page already has one H1 ' +
+                'above the content — use H2 inside the content.');
+        if (!sstr(p.heading)) bad('No H1 set for this page.');
+        else ok('One H1 is set.');
+
+        /* ---- is there anything at all ---- */
+        var text = body ? String(body.textContent || '').replace(/\s+/g, ' ').trim() : '';
+        if (!text && !(body && body.querySelector('img'))) {
+            bad(builder ? 'The published Page Builder content is empty.' : 'The page body is empty.');
+            return;
+        }
+
+        var words = text ? text.split(/\s+/).length : 0;
+        if (words < 150) warn(cap(what) + ' is about ' + words + ' words. Short pages rarely satisfy a search visitor.');
+        else ok(cap(what) + ' is about ' + words + ' words.');
+
+        /* ---- heading order ---- */
+        var heads = body ? body.querySelectorAll('h2,h3,h4,h5,h6') : [];
+        var prev = 1, skipped = false, i;
+        for (i = 0; i < heads.length; i++) {
+            var lvl = parseInt(String(heads[i].tagName).slice(1), 10);
+            if (lvl > prev + 1) skipped = true;
+            prev = lvl;
+        }
+        if (skipped) warn('A heading level is skipped (for example an H2 followed by an H4).');
+
+        /* ---- images and alt text ----
+           An image with alt="" is a DECORATIVE image when a person wrote the
+           markup by hand, and that is a real and correct thing to write. In
+           the Page Builder the alt is a form field, so an empty one means
+           nobody filled it in. Same check, two honest readings of it. */
+        var imgs = body ? body.querySelectorAll('img') : [];
+        var noAlt = 0;
+        for (i = 0; i < imgs.length; i++) {
+            var has = imgs[i].hasAttribute('alt');
+            var val = has ? String(imgs[i].getAttribute('alt')).trim() : '';
+            if (!has || (builder && !val)) noAlt += 1;
+        }
+        if (noAlt) warn(noAlt + ' image(s) in the ' + what + ' have no alt text.');
+
+        /* ---- internal links ---- */
+        var links = body ? body.querySelectorAll('a[href]') : [];
+        var flagged = {};
+        for (i = 0; i < links.length; i++) {
+            var href = String(links[i].getAttribute('href') || '').trim();
+            if (!/^[a-z0-9-]+\.html$/i.test(href)) continue;
+            if (flagged[href]) continue;
+            var known = Object.keys(pages).some(function (k) { return pages[k].url === href; });
+            if (!known) { flagged[href] = 1; warn('Links to <code>' + esc(href) + '</code>, which is not a page the CMS knows about.'); }
+        }
+    }
+
+    function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
     function validatePage(key) {
         var pages = CMS.data().pages || {};
         var p = pages[key];
@@ -2487,36 +3009,10 @@
         if (canon && /^https?:\/\//i.test(canon) && base && canon.indexOf(base) !== 0)
             warn('Canonical points at a different domain than the base URL.');
 
-        /* body checks, only where a page owns a body */
-        if (p.body !== undefined && sstr(p.url) !== '' ) {
-            var body = sstr(p.body);
-            var h1s = (body.match(/<h1[\s>]/gi) || []).length;
-            if (h1s > 0) bad('The body contains ' + h1s + ' <h1> tag(s). The page already has one H1 above the body — use H2 inside the content.');
-            if (!sstr(p.heading)) bad('No H1 set for this page.');
-            else ok('One H1 is set.');
-
-            if (!body) bad('The page body is empty.');
-            else {
-                var words = body.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
-                if (words < 150) warn('Body is about ' + words + ' words. Short pages rarely satisfy a search visitor.');
-                else ok('Body is about ' + words + ' words.');
-
-                var levels = (body.match(/<h([2-6])[\s>]/gi) || []).map(function (t) { return parseInt(t.replace(/\D/g, ''), 10); });
-                var prev = 1, skipped = false;
-                levels.forEach(function (l) { if (l > prev + 1) skipped = true; prev = l; });
-                if (skipped) warn('A heading level is skipped (for example an H2 followed by an H4).');
-
-                var imgs = body.match(/<img[^>]*>/gi) || [];
-                var noAlt = imgs.filter(function (t) { return !/alt\s*=/.test(t); }).length;
-                if (noAlt) warn(noAlt + ' image(s) in the body have no alt text.');
-
-                var links = body.match(/href="([a-z0-9-]+\.html)"/gi) || [];
-                links.forEach(function (l) {
-                    var f = l.replace(/href="|"/g, '');
-                    var known = Object.keys(pages).some(function (k) { return pages[k].url === f; });
-                    if (!known) warn('Links to <code>' + esc(f) + '</code>, which is not a page the CMS knows about.');
-                });
-            }
+        /* ---------- what this page's content ACTUALLY is ---------- */
+        var content = pageContent(key, p);
+        if (content.owns) {
+            contentChecks(content, pages, ok, warn, bad, p);
         }
 
         var ogImg = (p.og && sstr(p.og.image)) || sstr(seoGet('seo.defaultOgImage', ''));
@@ -2553,9 +3049,21 @@
             var pill = bad ? '<span class="pill warn">' + bad + ' to fix</span>'
                      : warn ? '<span class="pill">' + warn + ' to review</span>'
                             : '<span class="pill ok">clear</span>';
-            html += '<div class="seorow"><div class="seorow-head">' +
+            /* Where the content being judged came from, said out loud: an
+               author looking at a builder page needs to know the checks
+               describe what is PUBLISHED, not the draft they last saved. */
+            var c = pageContent(k, p);
+            var src = !c.published
+                ? (c.draftOnly
+                    ? '<span class="pill warn" data-src="draft-only">Builder draft — not published</span>'
+                    : '<span class="pill" data-src="body">Page body</span>')
+                : (c.draftPending
+                    ? '<span class="pill warn" data-src="builder-dirty">Page Builder — published, draft pending</span>'
+                    : '<span class="pill ok" data-src="builder">Page Builder — published</span>');
+
+            html += '<div class="seorow" data-seorow="' + esc(k) + '"><div class="seorow-head">' +
                     '<strong>' + esc(p.label || k) + '</strong> ' +
-                    '<code>/' + esc(p.url || '') + '</code> ' + pill +
+                    '<code>/' + esc(p.url || '') + '</code> ' + src + ' ' + pill +
                     '<button class="adm-btn ghost snip" data-editpage="' + esc(k) + '">Edit</button></div>' +
                     checksHtml(checks) + '</div>';
         });
