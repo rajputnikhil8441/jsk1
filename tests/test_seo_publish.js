@@ -151,9 +151,30 @@ const RECORD = {
       !/ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}/.test(
         ['js/cms.js', 'js/admin.js', 'js/admin-media.js', 'js/seo-files.js', 'js/cms-config.js']
           .map(f => fs.readFileSync(path.join(ROOT, f), 'utf8')).join('\n')));
-    check('no service-role key appears in front-end code',
-      !/service_role/.test(['js/cms.js', 'js/cms-config.js', 'js/admin.js', 'js/admin-media.js']
-        .map(f => fs.readFileSync(path.join(ROOT, f), 'utf8')).join('\n')));
+    /* Looks for a service-role KEY, not for the words "service_role".
+
+       The original substring test was a proxy, and the proxy broke as soon
+       as js/cms.js grew a guard that REFUSES a service-role key -- code
+       that has to name the thing it is blocking. Same intent, asserted
+       against the two shapes such a key can actually take: an sb_secret_
+       string, or a JWT literal whose payload decodes to that role. This
+       catches a real key however it is spelled, and does not fire on prose
+       or on the guard itself. */
+    const frontEnd = ['js/cms.js', 'js/cms-config.js', 'js/admin.js', 'js/admin-media.js', 'js/seo-files.js']
+      .map(f => fs.readFileSync(path.join(ROOT, f), 'utf8')).join('\n');
+
+    const jwtLiterals = frontEnd.match(/eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]+/g) || [];
+    const privileged = jwtLiterals.filter(t => {
+      try { return /"role"\s*:\s*"(service_role|supabase_admin)"/.test(
+        Buffer.from(t.split('.')[1], 'base64').toString('utf8')); } catch (e) { return false; }
+    });
+    check('no service-role JWT is hard-coded in front-end code', privileged.length === 0,
+      privileged.map(t => t.slice(0, 24) + '…'));
+    check('no sb_secret_ key is hard-coded in front-end code',
+      !/sb_secret_[A-Za-z0-9_-]{8,}/.test(frontEnd));
+    check('and the only key the config ships is a publishable one',
+      /anonKey:\s*'sb_publishable_[A-Za-z0-9_-]+'/.test(
+        fs.readFileSync(path.join(ROOT, 'js', 'cms-config.js'), 'utf8')));
 
     /* the committed files are what the generator produces */
     const committed = fs.readFileSync(path.join(ROOT, 'sitemap.xml'), 'utf8');

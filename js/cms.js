@@ -4008,7 +4008,45 @@
        instantly and still works offline.
     ======================================================== */
     var RC = window.CMS_REMOTE || {};
-    var REMOTE_ON = !!(RC.enabled && RC.url && RC.anonKey);
+
+    /* ----- which KIND of key is configured -----
+       Supabase issues two formats now:
+
+         eyJ...                 the legacy anon key. A JWT. The gateway
+                                accepts it in `apikey` and in
+                                `Authorization: Bearer`, and every
+                                deployment of this CMS so far sends both.
+         sb_publishable_...     the current publishable key. NOT a JWT.
+                                The gateway reads it from `apikey` and
+                                mints the anon token itself.
+
+       Supabase's migration notes are explicit that a publishable key does
+       not belong in `Authorization: Bearer` -- anything that tries to
+       parse it as a JWT rejects the request. So the header is sent only
+       for a key that really is one. A legacy key takes exactly the path it
+       always did, byte for byte, which is what keeps an older white-label
+       deployment working without touching its config. */
+    function opaqueKey(k) { return /^sb_/.test(String(k || '')); }
+
+    /* An sb_secret_... or service_role key here would hand every visitor
+       full database access, because this file is downloaded by every
+       visitor. There is no safe way to continue, so this does not
+       continue: remote storage stays off and the page falls back to the
+       cached brand, which is a bad afternoon rather than a breach. */
+    var SECRET_KEY_CONFIGURED = /^sb_secret_/.test(String(RC.anonKey || '')) ||
+                                /"role"\s*:\s*"service_role"/.test(
+                                    (function (k) {
+                                        try { return atob(String(k).split('.')[1] || ''); }
+                                        catch (e) { return ''; }
+                                    })(RC.anonKey));
+
+    if (SECRET_KEY_CONFIGURED) {
+        console.error('[CMS] js/cms-config.js holds a SECRET key. That file is public. ' +
+                      'Remote storage is disabled. Replace it with the publishable key ' +
+                      '(sb_publishable_...) and rotate the secret immediately.');
+    }
+
+    var REMOTE_ON = !!(RC.enabled && RC.url && RC.anonKey) && !SECRET_KEY_CONFIGURED;
     var TOKEN_KEY = 'cmsAdminToken';
 
     function rurl(path) {
@@ -4016,11 +4054,12 @@
     }
 
     function baseHeaders() {
-        return {
+        var h = {
             'apikey': RC.anonKey,
-            'Authorization': 'Bearer ' + RC.anonKey,
             'Content-Type': 'application/json'
         };
+        if (!opaqueKey(RC.anonKey)) h['Authorization'] = 'Bearer ' + RC.anonKey;
+        return h;
     }
 
     function token() {

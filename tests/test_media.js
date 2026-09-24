@@ -25,7 +25,7 @@ const B64 = {
   webp: 'UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAwA0JaQAA3AA/vuUAAA='
 };
 
-const STORAGE = 'https://bgkghmjwaglddmdgslox.supabase.co/storage/v1/object/public/cms-media/';
+const STORAGE = 'https://wspanesckdedctpfbqah.supabase.co/storage/v1/object/public/cms-media/';
 
 async function admin(b, opts) {
   opts = opts || {};

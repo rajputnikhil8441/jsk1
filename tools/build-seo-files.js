@@ -74,10 +74,15 @@ function fetchRow(cfg) {
         } catch (e) { return resolve({ data: null, why: 'the configured URL is not valid' }); }
         if (u.protocol !== 'https:') return resolve({ data: null, why: 'the configured URL is not https' });
 
-        const req = https.request(u, {
-            method: 'GET',
-            headers: { apikey: cfg.anonKey, Authorization: 'Bearer ' + cfg.anonKey, Accept: 'application/json' }
-        }, res => {
+        /* Same rule as js/cms.js: a legacy anon key is a JWT and goes in
+           both headers, a publishable key (sb_publishable_...) is not a JWT
+           and goes in `apikey` alone. Kept in step with baseHeaders() there
+           -- two callers of the same API must not disagree about how it is
+           authenticated. */
+        const headers = { apikey: cfg.anonKey, Accept: 'application/json' };
+        if (!/^sb_/.test(String(cfg.anonKey))) headers.Authorization = 'Bearer ' + cfg.anonKey;
+
+        const req = https.request(u, { method: 'GET', headers: headers }, res => {
             let body = '';
             res.setEncoding('utf8');
             res.on('data', c => { body += c; if (body.length > 8e6) req.destroy(); });

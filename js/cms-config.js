@@ -8,17 +8,28 @@
    Sign in at /admin with the email and password you created
    under Authentication > Users.
 
-   The anonKey below is safe in public code: your row level
+   The key below is safe in public code: your row level
    security policies only let it READ the brand. Writing needs
    a signed in admin.
+
+   The field is still called anonKey for compatibility, but it
+   now holds one of Supabase's PUBLISHABLE keys
+   (sb_publishable_...). Those are not JWTs, so they travel in
+   the `apikey` header only -- js/cms.js handles both formats and
+   a deployment still using a legacy eyJ... anon key behaves
+   exactly as it did.
+
+   NEVER put an sb_secret_... or service_role key here. This file
+   ships to every visitor's browser. cms.js refuses to start with
+   one rather than leak it.
    ============================================================ */
 window.CMS_REMOTE = {
 
     enabled: true,
 
-    url: 'https://bgkghmjwaglddmdgslox.supabase.co',
+    url: 'https://wspanesckdedctpfbqah.supabase.co',
 
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJna2dobWp3YWdsZGRtZGdzbG94Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4Mjk3MDgsImV4cCI6MjEwMjQwNTcwOH0.El2i8CIc0w6AmN1UP_dmEzjD66KfNyQubaAFVpBUkW0',
+    anonKey: 'sb_publishable_JjCWJkpnwZgg0v3Gw6fcVg_-3Ts-GWV',
 
     table: 'site_brand',
 
