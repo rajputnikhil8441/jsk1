@@ -731,15 +731,41 @@ const el  = (id, type, content, style, responsive) =>
     check('and it can be published again',
       (await p.evaluate(() => { CMS.sections.publish('about'); return CMS.sections.live('about').length; })) === 2);
 
-    check('an empty published block renders nothing rather than an empty page',
+    /* CHANGED BEHAVIOUR, deliberately. Publishing an empty section list
+       used to be indistinguishable from having no builder at all, so the
+       shipped copy came back. On a builder-managed page that made an
+       empty canvas impossible: clearing every section and publishing
+       silently restored the old content. A published block now means the
+       builder owns the body, empty or not. */
+    check('an empty published block is an empty canvas, not an absent builder',
       await p.evaluate(() => {
         CMS.sections.saveDraft('about', []);
         CMS.sections.publish('about');
-        return CMS.sections.published('about') === null;
+        const live = CMS.sections.published('about');
+        return Array.isArray(live) && live.length === 0 &&
+               CMS.sections.bodyManaged('about') === true;
       }));
     await go();
-    check('and the shipped content comes back',
-      (await p.evaluate(() => document.querySelectorAll('.info-body h2').length)) >= 3);
+    check('and the shipped copy stays hidden rather than coming back',
+      await p.evaluate(() => {
+        const body = document.querySelector('[data-cms-html="pages.about.body"]');
+        return !!body && body.hidden === true &&
+               document.querySelectorAll('.pb-section').length === 0;
+      }));
+    check('but the copy is still in the document, only hidden',
+      await p.evaluate(() => {
+        const body = document.querySelector('[data-cms-html="pages.about.body"]');
+        return body.querySelectorAll('h2').length >= 3;
+      }));
+    check('and the page keeps its own h1 above the canvas',
+      (await p.evaluate(() => document.querySelectorAll('h1').length)) === 1);
+    check('unpublishing brings the shipped copy back',
+      await p.evaluate(async () => {
+        CMS.sections.unpublish('about');
+        CMS.apply();
+        const body = document.querySelector('[data-cms-html="pages.about.body"]');
+        return body.hidden === false && body.querySelectorAll('h2').length >= 3;
+      }));
 
     /* Still an exact list, not a loosened one: the builder is allowed three
        top-level keys and no more. builderDrafts is this device's working

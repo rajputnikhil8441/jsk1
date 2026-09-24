@@ -1109,6 +1109,7 @@ window.PBAdmin = function (host) {
 
         pbPaintState();
         pbPaintSaveState();
+        pbPaintMigrate();
         pbPaintRecovery();
         pbPaintTemplates();
         pbPaintAdd();
@@ -1164,6 +1165,92 @@ window.PBAdmin = function (host) {
        The tabs said it, but only by being the highlighted one, and the
        tab strip scrolls. The answer is written out in full instead, from
        the same pages entry every other panel reads. */
+    /* ----------------------------------------------------------
+       MOVE THE SHIPPED PAGE COPY INTO THE BUILDER
+
+       An informational page's copy lives in pages.<slug>.body and renders
+       above the mount. This offers to bring it across as sections, once,
+       so the builder becomes the source of truth for that page.
+
+       It is offered ONLY when there is something to move and nothing to
+       lose: the page has body copy and no builder block at all. Once a
+       builder exists -- draft or published -- the offer is gone, because
+       running it then would overwrite work.
+
+       It says plainly what the conversion costs before it runs, and it
+       does not delete pages.<slug>.body. Unpublishing brings the original
+       copy straight back.
+    ---------------------------------------------------------- */
+    function pbCanMigrate() {
+        if (!pbSlug) return false;
+        /* draft() always hands back a block and live() always an array --
+           neither is ever null -- so the question is whether either holds
+           anything, not whether it exists. Testing the objects themselves
+           made this always false, and the offer never appeared. */
+        var draft = CMS.sections.draft(pbSlug);
+        if (draft && draft.sections && draft.sections.length) return false;
+        if (CMS.sections.live(pbSlug).length) return false;
+        /* And nothing published, not even an empty canvas: that is a
+           deliberate state and must not be overwritten by an offer. */
+        var page = CMS.data().pages[pbSlug] || {};
+        if (page.builder) return false;
+        /* Finally, there has to be copy worth moving. */
+        return CMS.sections.fromPageBody(pbSlug).length > 0;
+    }
+
+    function pbPaintMigrate() {
+        var host = $('#pbMigrate');
+        if (!host) return;
+        if (!pbCanMigrate()) { host.hidden = true; host.innerHTML = ''; return; }
+
+        var preview = CMS.sections.fromPageBody(pbSlug);
+        var n = (preview[0] && preview[0].elements || []).length;
+
+        host.hidden = false;
+        host.innerHTML = '';
+
+        var msg = document.createElement('p');
+        msg.className = 'pb-migrate-msg';
+        msg.textContent = 'This page still shows the copy it shipped with. ' +
+            'Move it into the builder as ' + n +
+            (n === 1 ? ' element' : ' elements') +
+            ' and the builder takes over the page body.';
+        host.appendChild(msg);
+
+        var warn = document.createElement('p');
+        warn.className = 'pb-migrate-warn';
+        warn.textContent = 'Headings and paragraphs come across as text. ' +
+            'Links inside a paragraph do not — they become plain words, ' +
+            'and you can add them back as buttons or link elements. ' +
+            'The original copy is kept and returns if you unpublish.';
+        host.appendChild(warn);
+
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'adm-btn ghost';
+        btn.id = 'pbMigrateBtn';
+        btn.innerHTML = '<i class="fas fa-down-left-and-up-right-to-center"></i> ' +
+                        'Move page copy into the builder';
+        btn.addEventListener('click', function () {
+            if (!pbCanMigrate()) return;
+            var sections = CMS.sections.fromPageBody(pbSlug);
+            if (!sections.length) { toast('There was no copy to move.', true); return; }
+            /* Snapshotted first, like every other action that replaces the
+               draft wholesale. */
+            pbSnapshot('migrate');
+            pbDraft.length = 0;
+            sections.forEach(function (x) { pbDraft.push(x); });
+            pbOpen = null;
+            pbPersist();
+            buildBuilder();
+            /* A DRAFT. Nothing on the live page changes until Publish, the
+               same as every other edit in this panel. */
+            toast('Page copy moved into the builder as a draft. ' +
+                  'Review it, then Publish.');
+        });
+        host.appendChild(btn);
+    }
+
     var pbWhereSig = null;
 
     function pbPaintWhere(page) {
