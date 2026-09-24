@@ -2577,11 +2577,100 @@
     }
 
     /* ---- the public entry point ---- */
+    /* ----------------------------------------------------------
+       ONE-TIME MIGRATION: the shipped page copy -> builder sections
+
+       An informational page's visible copy lives in pages.<slug>.body as
+       a block of HTML. The builder's heading and text elements are
+       textContent-only by design -- that is what keeps a published page
+       free of injected markup -- so this reads the copy as a DOM and maps
+       what the element model can actually represent:
+
+           <h1>..<h6>  ->  heading element at that level
+           anything else with text  ->  text element
+
+       INLINE MARKUP DOES NOT SURVIVE. A <a href> inside a paragraph
+       becomes its own text, because a text element renders textContent.
+       That is a real loss and the admin says so before it runs; it is not
+       hidden behind a silent conversion.
+
+       Nothing is written here and nothing is deleted: this returns a
+       section array and leaves pages.<slug>.body exactly as it was, so
+       unpublishing brings the original copy straight back.
+    ---------------------------------------------------------- */
+    function pbSectionsFromBody(slug) {
+        var page = (load().pages || {})[slug];
+        var html = page && typeof page.body === 'string' ? page.body : '';
+        if (!html.trim()) return [];
+
+        var doc;
+        try {
+            doc = new DOMParser().parseFromString('<body>' + html + '</body>', 'text/html');
+        } catch (e) { return []; }
+        if (!doc || !doc.body) return [];
+
+        var els = [], kids = doc.body.childNodes, i;
+        for (i = 0; i < kids.length; i++) {
+            var node = kids[i];
+            var text = str(node.textContent);
+            if (!text) continue;
+
+            var tag = node.nodeType === 1 ? String(node.tagName).toLowerCase() : '';
+            if (/^h[1-6]$/.test(tag)) {
+                /* An h1 here would be the page's SECOND h1 -- the page
+                   already ships one above the mount -- so it comes across
+                   as the h2 it should have been. */
+                var lvl = tag === 'h1' ? 'h2' : tag;
+                els.push({ id: pbNewId('el'), type: 'heading',
+                           content: { text: text, level: lvl },
+                           style: {}, responsive: {} });
+            } else {
+                els.push({ id: pbNewId('el'), type: 'text',
+                           content: { text: text },
+                           style: {}, responsive: {} });
+            }
+        }
+        if (!els.length) return [];
+
+        return [{ id: pbNewId('sec'), type: 'text', enabled: true,
+                  visibility: { desktop: true, tablet: true, mobile: true },
+                  style: {}, responsive: {}, elements: els }];
+    }
+
+    /* Is this page's BODY owned by the builder?
+
+       True as soon as a published builder block exists for the slug --
+       including one holding no sections at all. That is the whole point of
+       the empty canvas: clearing every section in /admin and publishing has
+       to leave an empty page, not quietly restore the copy that shipped in
+       the HTML.
+
+       False when there is no builder block, or only a draft. Those pages
+       render exactly as they always have, which is why every page that has
+       never been opened in the builder is untouched by this. */
+    function bodyIsBuilderManaged(slug) {
+        var page = (load().pages || {})[slug];
+        var b = page && page.builder;
+        return !!(b && b.status === 'published' && isArr(b.sections));
+    }
+
+    /* The shipped body copy for a slug: the <div data-cms-html="pages.X.body">
+       that sits above the mount. Found by its binding rather than by a new
+       attribute, so no page had to change for this. */
+    function legacyBodyNode(slug) {
+        var want = 'pages.' + slug + '.body';
+        var nodes = document.querySelectorAll('[data-cms-html]');
+        for (var i = 0; i < nodes.length; i++) {
+            if (nodes[i].getAttribute('data-cms-html') === want) return nodes[i];
+        }
+        return null;
+    }
+
     function publishedSections(slug) {
         var page = (load().pages || {})[slug];
         var b = page && page.builder;
         if (!b || b.status !== 'published') return null;
-        if (!isArr(b.sections) || !b.sections.length) return null;
+        if (!isArr(b.sections) || !b.sections.length) return [];
         /* Deliberately NOT gated on schemaVersion: whatever a published page
            was saved with, it still renders. The upgrade only fills in
            defaults, and returns the same array when there is nothing to do. */
@@ -2629,6 +2718,23 @@
             var slug = host.getAttribute('data-cms-sections');
             var sections = (use && use.slug === slug) ? use.sections
                                                       : publishedSections(slug);
+
+            /* The builder owns the body now, so the copy that shipped in the
+               HTML must not render underneath it. It stays in the file as the
+               fallback a crawler without JavaScript reads, and as what comes
+               back the moment this page is unpublished -- it is hidden, never
+               removed, and the CMS value behind it is never touched.
+
+               This runs BEFORE the `continue` below on purpose: unpublishing
+               makes publishedSections() return null, and that is exactly when
+               the copy has to come back. Deciding it after the early exit
+               would leave the page permanently blank. */
+            var legacy = legacyBodyNode(slug);
+            if (legacy) {
+                legacy.hidden = (use && use.slug === slug) ? true
+                                                           : bodyIsBuilderManaged(slug);
+            }
+
             if (!sections) continue;                  /* leave the static markup alone */
             renderSectionsInto(host, sections);
             css += builderCSS(sections);
@@ -2660,7 +2766,14 @@
     /* Slugs whose shipped HTML carries a <div data-cms-sections="..."> mount.
        A page the admin creates sets builderMount on its own pages entry,
        because the generated stub includes the mount. */
-    var PB_MOUNTED = { about: true, contact: true, 'responsible-gaming': true };
+    /* The informational pages whose shipped HTML carries a
+       <div data-cms-sections="..."> mount. All four are builder-managed:
+       the builder owns the body between the page's h1 and the global
+       footer. index.html, login.html, register.html and 404.html are NOT
+       here and must never be -- the homepage is hand-designed, the two
+       account pages are functional, and 404 carries no mount. */
+    var PB_MOUNTED = { about: true, contact: true,
+                       'responsible-gaming': true, 'privacy-policy': true };
 
     function pbToday() {
         var d = new Date();
@@ -4170,6 +4283,10 @@
             templates: templateList,
             templateVersion: PB_TEMPLATE_VERSION,
             fromTemplate: templateSections,
+
+            /* the body-migration path (milestone: builder-managed pages) */
+            fromPageBody: pbSectionsFromBody,
+            bodyManaged: bodyIsBuilderManaged,
 
             /* draft / publish */
             mounted: PB_MOUNTED,

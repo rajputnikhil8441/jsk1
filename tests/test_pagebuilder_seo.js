@@ -700,12 +700,21 @@ const openSec = async (p, i) => {
       /Responsible/i.test(h.title) && h.canon === 'https://jsk-1.com/responsible-gaming.html', h);
     await r.ctx.close();
 
-    /* (O) an EMPTY builder is the same as no builder */
+    /* (O) an EMPTY published builder is an EMPTY CANVAS.
+
+       This used to assert the opposite -- that an empty builder left the
+       shipped copy alone -- which made it impossible to clear a page from
+       /admin. The page keeps its h1, breadcrumb and every piece of head
+       metadata; only the body is empty, because that is what was
+       published. */
     r = await page(b, withBuilder('about', []));
     h = await head(r.p);
-    check('an empty published builder renders nothing', h.sections === 0);
-    check('and leaves the shipped content alone',
-      h.h1s.length === 1 && /JSK1 is an online gaming site/.test(h.bodyText));
+    check('an empty published builder renders no sections', h.sections === 0);
+    check('and the shipped copy does not come back',
+      !/JSK1 is an online gaming site/.test(h.bodyText), h.bodyText.slice(0, 120));
+    check('but the page keeps its single H1', h.h1s.length === 1, h.h1s);
+    check('and its head is untouched',
+      /About/i.test(h.title) && h.canon === 'https://jsk-1.com/about.html', h);
     await r.ctx.close();
 
     /* (T) a template page */
