@@ -54,6 +54,9 @@
                 <button class="adm-nav-item" data-panel="images">
             <i class="fas fa-image"></i> Images
           </button>
+                <button class="adm-nav-item" data-panel="media">
+            <i class="fas fa-photo-film"></i> Media Library
+          </button>
                 <button class="adm-nav-item" data-panel="home">
             <i class="fas fa-house"></i> Home Content
           </button>
@@ -354,6 +357,9 @@
             <h2>Image manager</h2>
             <p class="hint">
                 Upload replaces the file used by the site — no path editing. Images are downscaled to 800px max and stored as data URLs.
+                These are the <strong>fixed slots</strong>: logo, favicon, backgrounds. For pictures that go
+                <em>on</em> a page, use <strong>Media Library</strong> instead — those get real URLs a search
+                engine can fetch and do not count against the 5&nbsp;MB this record has to fit in.
             </p>
             <div class="grid2" id="allImages"></div>
         </div>
@@ -363,6 +369,45 @@
                 <div id="storageBar"></div>
             </div>
             <p class="hint" id="storageText">—</p>
+        </div>
+    </section>
+
+    <!-- ---------- MEDIA LIBRARY ---------- -->
+    <section class="adm-panel" id="panel-media">
+        <div class="card">
+            <h2>Media library</h2>
+            <p class="hint">
+                Pictures you upload here live in this website&rsquo;s own storage and can be used
+                straight away in the Page Builder &mdash; you do not need a developer to add them.
+                They are <strong>not</strong> the same as the images that ship with the site: those
+                are files in the repository and are listed separately in the Page Builder&rsquo;s
+                image picker.
+            </p>
+            <p class="hint" id="mediaOffHint" hidden>
+                <i class="fas fa-circle-exclamation"></i>
+                <strong>Uploads are not switched on for this site yet.</strong>
+                A developer needs to create the storage bucket and set
+                <code>enabled: true</code> in <code>js/cms-config.js</code>.
+                The instructions are in that file and in <code>docs/media-library.md</code>.
+            </p>
+            <div class="row">
+                <button class="adm-btn" id="mediaUploadBtn">
+                    <i class="fas fa-upload"></i> Upload image
+                </button>
+                <span class="hint" id="mediaLimits"></span>
+                <input type="file" id="mediaFile" hidden multiple
+                       accept="image/png,image/jpeg,image/webp,image/gif" />
+            </div>
+            <div class="mediastatus" id="mediaStatus" role="status" aria-live="polite"></div>
+        </div>
+        <div class="card">
+            <h2>Uploaded images <span class="pill" id="mediaCount">0</span></h2>
+            <input type="search" class="filter" id="mediaSearch"
+                   placeholder="Search by file name&hellip;" autocomplete="off" />
+            <div class="pb-asset-grid" id="mediaGrid"></div>
+            <div class="row" id="mediaPager" hidden>
+                <button class="adm-btn ghost" id="mediaMore">Show more</button>
+            </div>
         </div>
     </section>
 
@@ -599,6 +644,31 @@
                 </div>
                 <pre class="codebox" id="seoSitemapOut"></pre>
             </div>
+            <div class="card seopub" id="seoPub-sitemap">
+                <h2>Publishing <code>sitemap.xml</code></h2>
+                <p class="hint">
+                    You do not copy this file anywhere. <strong>Save</strong> publishes the
+                    settings above to the CMS, and the next deployment rebuilds
+                    <code>sitemap.xml</code> from them automatically &mdash; the same generator you
+                    are looking at the output of.
+                </p>
+                <p class="hint">
+                    <strong>What still needs a developer:</strong> starting that deployment.
+                    Someone with access to the repository opens
+                    <em>Actions &rsaquo; Deploy static content to Pages &rsaquo; Run workflow</em>,
+                    or pushes any commit. Nothing in this browser can start it, because doing
+                    so would mean putting a repository write token into a public web page.
+                </p>
+                <div class="snipbar">
+                    <button class="adm-btn ghost snip" data-seocheck="sitemap">
+                        <i class="fas fa-rotate"></i> Check what is live now
+                    </button>
+                </div>
+                <div class="seopub-state" id="seoPubState-sitemap" role="status" aria-live="polite">
+                    <p class="hint">Press <strong>Check what is live now</strong> to compare the settings
+                    above with the file currently on the website.</p>
+                </div>
+            </div>
         </div>
 
         <!-- Robots -->
@@ -606,9 +676,9 @@
             <div class="card">
                 <h2>robots.txt</h2>
                 <p class="hint">
-                    Also a real file in the repository. Edit the rules here, then copy or
-                    download the result and replace <code>robots.txt</code>. The admin cannot
-                    write it for you, and it would be dishonest to pretend otherwise.
+                    Edit the rules here. The deployment rebuilds the real file from them, so
+                    the admin does not need to write it and does not pretend to. Copy or
+                    download it if you want to replace the file by hand instead.
                 </p>
                 <label class="f">
                     <span>Extra rules <small style="opacity:.6">one per line, e.g. <code>Disallow: /private/</code></small></span>
@@ -619,6 +689,31 @@
                     <button class="adm-btn ghost snip" id="btnDownloadRobots"><i class="fas fa-download"></i> Download</button>
                 </div>
                 <pre class="codebox" id="seoRobotsOut"></pre>
+            </div>
+            <div class="card seopub" id="seoPub-robots">
+                <h2>Publishing <code>robots.txt</code></h2>
+                <p class="hint">
+                    You do not copy this file anywhere. <strong>Save</strong> publishes the
+                    settings above to the CMS, and the next deployment rebuilds
+                    <code>robots.txt</code> from them automatically &mdash; the same generator you
+                    are looking at the output of.
+                </p>
+                <p class="hint">
+                    <strong>What still needs a developer:</strong> starting that deployment.
+                    Someone with access to the repository opens
+                    <em>Actions &rsaquo; Deploy static content to Pages &rsaquo; Run workflow</em>,
+                    or pushes any commit. Nothing in this browser can start it, because doing
+                    so would mean putting a repository write token into a public web page.
+                </p>
+                <div class="snipbar">
+                    <button class="adm-btn ghost snip" data-seocheck="robots">
+                        <i class="fas fa-rotate"></i> Check what is live now
+                    </button>
+                </div>
+                <div class="seopub-state" id="seoPubState-robots" role="status" aria-live="polite">
+                    <p class="hint">Press <strong>Check what is live now</strong> to compare the settings
+                    above with the file currently on the website.</p>
+                </div>
             </div>
         </div>
 
@@ -915,10 +1010,22 @@
                 </button>
             </header>
             <div class="modal-body">
+                <div class="pagetabs" id="pbAssetTabs" role="tablist">
+                    <button type="button" class="pagetab active" data-assettab="repo">Site images</button>
+                    <button type="button" class="pagetab" data-assettab="media">Uploaded images</button>
+                </div>
                 <p class="hint" id="pbAssetHint">
                     Images already published with this site. Nothing is uploaded &mdash; choosing
                     one stores its path, not the picture.
                 </p>
+                <div class="row" id="pbAssetUpload" hidden>
+                    <button type="button" class="adm-btn ghost" id="pbAssetUploadBtn">
+                        <i class="fas fa-upload"></i> Upload image
+                    </button>
+                    <span class="mediastatus" id="pbAssetUploadNote"></span>
+                    <input type="file" id="pbAssetUploadFile" hidden
+                           accept="image/png,image/jpeg,image/webp,image/gif" />
+                </div>
                 <input type="search" class="filter" id="pbAssetSearch"
                        placeholder="Search by name or folder&hellip;" autocomplete="off" />
                 <div class="pb-asset-grid" id="pbAssetGrid"></div>
@@ -1007,9 +1114,11 @@
     <!-- CMS engine (shared with the site) -->
     <script src="../js/cms-config.js"></script>
     <script src="../js/brand.js"></script>
+    <script src="../js/seo-files.js"></script>
     <script src="../js/cms.js"></script>
     <!-- Defines window.PBAdmin and runs nothing at load time; admin.js
          instantiates it, so this must come first. -->
+    <script src="../js/admin-media.js"></script>
     <script src="../js/admin-builder.js"></script>
     <script src="../js/admin.js"></script>
 </body>

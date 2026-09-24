@@ -495,8 +495,22 @@ a page may already name an image the picker does not list and that has to
 remain editable — it is guarded by `pbUrl()` as it always was, and the
 field says when a value is not one of this site's images.
 
-**Nothing is uploaded and nothing is encoded.** No Supabase Storage, no
-base64, no external fetching. The CMS JSON grows by one path per image.
+The picker has **two tabs**, because a site has two kinds of image:
+
+| Tab | What it lists | Where the file lives | Who can add one |
+|---|---|---|---|
+| **Site images** | `assets/asset-manifest.json` | committed in this repository | a developer, by committing a file |
+| **Uploaded images** | the CMS media library | the site's Supabase Storage bucket | any signed-in admin, from `/admin` |
+
+They are validated by two separate functions that share no code path —
+`CMS.sections.assetPath()` for a repository path and
+`CMS.sections.mediaPath()` for an uploaded URL — so neither can ever accept
+the other's input, and widening one cannot widen the other. What gets stored
+in the element is a path in the first case and an absolute URL in the second;
+nothing is base64-encoded and no external host is ever accepted.
+
+See **[docs/media-library.md](media-library.md)** for uploading, and for what
+has to be configured once before the Uploaded tab does anything.
 
 ### Preview
 
@@ -537,6 +551,66 @@ the page, or the responsive overrides, and it never publishes. Tested.
   Every SVG currently in the repository has one.
 
 ---
+
+## The SEO dashboard and builder content
+
+`/admin > SEO > Dashboard` checks every page: title length, meta description,
+duplicate titles, canonical, share image — and the page's **content**.
+
+For a page whose body is written as HTML, "content" is the `body` field, as
+it always was. For a page the builder owns, reading that field would report
+an empty body and zero words while the live page was full of copy. So the
+dashboard asks the renderer instead:
+
+```js
+var pub  = CMS.sections.published(slug);   // published sections, or null
+var host = document.createElement('div');
+CMS.sections.renderInto(host, pub);        // the SAME call the page makes
+analyse(host.innerHTML);
+```
+
+`renderInto` is the function the public page calls. The markup the dashboard
+measures is therefore **byte-identical** to the markup a visitor is served —
+there is one interpretation of a section array, not two that could drift.
+A test asserts exactly that equality.
+
+### Published, not draft
+
+Only **published** sections are analysed. A draft is not on the web, and
+reporting it as content would tell an author their SEO is fixed when nothing
+has shipped.
+
+Each row on the dashboard says which it is looking at:
+
+| Badge | Meaning |
+|---|---|
+| **Page body** | no builder block; the shipped HTML is what is live |
+| **Builder draft — not published** | a draft exists, but the shipped HTML is still what visitors see, and that is what was analysed |
+| **Page Builder — published** | the published sections were analysed |
+| **Page Builder — published, draft pending** | the published sections were analysed, and there are unpublished changes |
+
+The last case also adds a check in the list, so it is visible without reading
+the badge.
+
+### The checks themselves
+
+One implementation serves both kinds of content, because a builder page and a
+hand-written page should be held to the same standard and told so in the same
+words: H1 count, word count, skipped heading levels, images without alt text,
+and links to pages the CMS does not know about.
+
+One rule differs, deliberately. An `<img alt="">` in hand-written HTML is a
+**decorative** image, which is a real and correct thing to write. In the
+builder the alt is a form field, so an empty one means nobody filled it in.
+Same check, two honest readings of the thing being checked.
+
+### Cost
+
+Rendering a section array creates `<img>` elements, and an `<img>` starts
+fetching the moment its `src` is set — inserted or not. The dashboard rebuilds
+on every keystroke in an SEO field, so the rendered markup is memoised against
+the exact sections it came from: identical content renders once, edited content
+renders again.
 
 ## Editing safety and responsive editing (milestone C)
 

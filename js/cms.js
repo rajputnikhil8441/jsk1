@@ -616,6 +616,24 @@
             greyBg: '#d5d5d5'
         },
 
+        /* ---- Uploaded CMS media (milestone: media library) ----
+           REPOSITORY ASSETS and UPLOADED CMS MEDIA are deliberately two
+           different things in this CMS:
+
+             REPOSITORY ASSETS   files committed under assets/, listed by
+                                 assets/asset-manifest.json. A developer
+                                 puts them there; they ship with the site
+                                 and cannot be changed from the admin.
+             UPLOADED CMS MEDIA  files an admin uploads at runtime into the
+                                 configured Supabase Storage bucket. They
+                                 live outside the repository and are named
+                                 by THIS code, never by the uploader.
+
+           Only the metadata lives here -- never the bytes. An entry is a
+           pointer plus what the library needs to show a row without
+           fetching the file. */
+        media: { items: [] },
+
         settings: {
             preset: 'playzone',
             activeTheme: 'playzone',
@@ -2054,6 +2072,115 @@
             out.push(entry);
         }
         out.sort(function (a, b) { return a.path < b.path ? -1 : a.path > b.path ? 1 : 0; });
+        return out;
+    }
+
+    /* ==========================================================
+       UPLOADED CMS MEDIA
+       ----------------------------------------------------------
+       pbAsset() above answers "is this one of the files committed in this
+       repository?" and is left exactly as it was. Uploaded media is not in
+       the repository, so it cannot pass that question and must not be made
+       to: relaxing pbAsset would relax it for repository paths too.
+
+       So this is a SECOND, equally narrow question asked only of uploaded
+       media: is this a file in THIS site's own storage bucket, named the
+       way this code names them?
+
+       It is not "any https URL" and it is not "any Supabase URL". It is an
+       exact string prefix built from the configured project plus a path
+       shape that only mediaName() below can produce. Anything a person
+       could type -- an external host, a query string, a traversal segment,
+       an .svg, a double slash -- fails.
+       ========================================================== */
+
+    /* Where uploaded media is publicly served from, or '' when uploads are
+       not configured for this deployment. Read lazily so a white-label
+       build only has to set js/cms-config.js. */
+    function mediaBucket() {
+        var m = window.CMS_MEDIA || {};
+        var r = window.CMS_REMOTE || {};
+        if (!m.enabled || !r.enabled || !r.url) return '';
+        var b = str(m.bucket);
+        if (!/^[a-z0-9][a-z0-9-]{0,40}$/.test(b)) return '';
+        return b;
+    }
+
+    function mediaBase() {
+        var b = mediaBucket();
+        if (!b) return '';
+        var url = str((window.CMS_REMOTE || {}).url).replace(/\/+$/, '');
+        if (!/^https:\/\/[A-Za-z0-9.-]+$/.test(url)) return '';
+        return url + '/storage/v1/object/public/' + b + '/';
+    }
+
+    /* The only object-key shape this CMS ever writes, and therefore the
+       only one it will ever read back. */
+    var MEDIA_KEY_RE = /^media\/[a-z0-9][a-z0-9-]{0,80}\.(png|jpe?g|webp|gif)$/;
+    var MEDIA_MAX_URL = 400;
+
+    function pbMedia(raw) {
+        var v = str(raw);
+        if (!v || v.length > MEDIA_MAX_URL) return '';
+        var base = mediaBase();
+        if (!base) return '';
+        /* STARTS WITH, not contains: a URL that merely mentions the bucket
+           somewhere -- in a query string, behind another host -- is a
+           different URL. The key test below independently refuses those
+           too, because slicing at the wrong offset cannot produce a valid
+           key; the two together are why this is safe, and neither is the
+           whole reason on its own. */
+        if (v.lastIndexOf(base, 0) !== 0) return '';
+        var key = v.slice(base.length);
+        if (!MEDIA_KEY_RE.test(key)) return '';
+        /* The three lines below are unreachable today: MEDIA_KEY_RE already
+           refuses a traversal segment, a double slash and every character
+           pbUrl would object to. No test can tell them apart from their
+           absence -- deleting them breaks nothing, which is exactly why it
+           is written down here rather than discovered later. They stay
+           because MEDIA_KEY_RE is one regex, and the day someone loosens it
+           to allow a folder or a longer name, these are what still say no.
+           pbUrl in particular is the ONE place this project decides what a
+           URL may be, and uploaded media must not become the exception. */
+        if (key.indexOf('..') > -1 || key.indexOf('//') > -1) return '';
+        return pbUrl(v) === v ? v : '';
+    }
+
+    /* Every place an image may come from, in one call: a committed
+       repository asset OR an uploaded media file, and nothing else. This
+       is what the picker and the media fields are held to. */
+    function pbImageRef(raw) {
+        return pbAsset(raw) || pbMedia(raw);
+    }
+
+    /* Metadata rebuilt from whatever the record holds -- same treatment,
+       and the same reasoning, as pbAssetList() gives the manifest. The row
+       is public, so an entry in it is data from the network. */
+    function mediaList(raw) {
+        var items = (raw && isArr(raw.items)) ? raw.items : (isArr(raw) ? raw : []);
+        var out = [], seen = {}, i;
+        for (i = 0; i < items.length && i < 2000; i++) {
+            var it = items[i];
+            if (!it || typeof it !== 'object') continue;
+            var url = pbMedia(it.url);
+            if (!url) continue;
+            if (Object.prototype.hasOwnProperty.call(seen, url)) continue;
+            seen[url] = 1;
+            var e = {
+                url: url,
+                key: url.slice(mediaBase().length),
+                name: str(it.name).slice(0, 120) || url,
+                alt: str(it.alt).slice(0, 200),
+                uploadedAt: /^\d{4}-\d\d-\d\dT[\d:.]+Z?$/.test(str(it.uploadedAt)) ? str(it.uploadedAt) : ''
+            };
+            var w = parseInt(it.w, 10), h = parseInt(it.h, 10);
+            if (w > 0 && h > 0 && w < 100000 && h < 100000) { e.w = w; e.h = h; }
+            var bytes = parseInt(it.bytes, 10);
+            if (bytes > 0 && bytes < 1e9) e.bytes = bytes;
+            out.push(e);
+        }
+        /* Newest first: a library is browsed from what was just added. */
+        out.sort(function (a, b) { return a.uploadedAt < b.uploadedAt ? 1 : a.uploadedAt > b.uploadedAt ? -1 : 0; });
         return out;
     }
 
@@ -3881,7 +4008,45 @@
        instantly and still works offline.
     ======================================================== */
     var RC = window.CMS_REMOTE || {};
-    var REMOTE_ON = !!(RC.enabled && RC.url && RC.anonKey);
+
+    /* ----- which KIND of key is configured -----
+       Supabase issues two formats now:
+
+         eyJ...                 the legacy anon key. A JWT. The gateway
+                                accepts it in `apikey` and in
+                                `Authorization: Bearer`, and every
+                                deployment of this CMS so far sends both.
+         sb_publishable_...     the current publishable key. NOT a JWT.
+                                The gateway reads it from `apikey` and
+                                mints the anon token itself.
+
+       Supabase's migration notes are explicit that a publishable key does
+       not belong in `Authorization: Bearer` -- anything that tries to
+       parse it as a JWT rejects the request. So the header is sent only
+       for a key that really is one. A legacy key takes exactly the path it
+       always did, byte for byte, which is what keeps an older white-label
+       deployment working without touching its config. */
+    function opaqueKey(k) { return /^sb_/.test(String(k || '')); }
+
+    /* An sb_secret_... or service_role key here would hand every visitor
+       full database access, because this file is downloaded by every
+       visitor. There is no safe way to continue, so this does not
+       continue: remote storage stays off and the page falls back to the
+       cached brand, which is a bad afternoon rather than a breach. */
+    var SECRET_KEY_CONFIGURED = /^sb_secret_/.test(String(RC.anonKey || '')) ||
+                                /"role"\s*:\s*"service_role"/.test(
+                                    (function (k) {
+                                        try { return atob(String(k).split('.')[1] || ''); }
+                                        catch (e) { return ''; }
+                                    })(RC.anonKey));
+
+    if (SECRET_KEY_CONFIGURED) {
+        console.error('[CMS] js/cms-config.js holds a SECRET key. That file is public. ' +
+                      'Remote storage is disabled. Replace it with the publishable key ' +
+                      '(sb_publishable_...) and rotate the secret immediately.');
+    }
+
+    var REMOTE_ON = !!(RC.enabled && RC.url && RC.anonKey) && !SECRET_KEY_CONFIGURED;
     var TOKEN_KEY = 'cmsAdminToken';
 
     function rurl(path) {
@@ -3889,11 +4054,12 @@
     }
 
     function baseHeaders() {
-        return {
+        var h = {
             'apikey': RC.anonKey,
-            'Authorization': 'Bearer ' + RC.anonKey,
             'Content-Type': 'application/json'
         };
+        if (!opaqueKey(RC.anonKey)) h['Authorization'] = 'Bearer ' + RC.anonKey;
+        return h;
     }
 
     function token() {
@@ -4026,6 +4192,64 @@
                     });
                 }
                 save();   /* refresh the local cache too */
+                return true;
+            });
+        },
+
+        /* ------------------------------------------------------
+           UPLOADED CMS MEDIA
+           Storage writes are authenticated with the ADMIN's own
+           session token, exactly as publish() is. The anon key
+           never carries write rights, here or anywhere else, and
+           no other credential exists in this codebase to leak.
+           ------------------------------------------------------ */
+        mediaEnabled: function () { return REMOTE_ON && !!mediaBucket(); },
+
+        /* `key` is generated by the caller and re-validated here against
+           the one shape this CMS writes, so a bug upstream still cannot
+           put an object anywhere else in the bucket. */
+        uploadMedia: function (key, blob, mime) {
+            if (!Remote.mediaEnabled()) return Promise.reject(new Error('Media uploads are not configured'));
+            var t = token();
+            if (!t) return Promise.reject(new Error('Not signed in'));
+            if (!MEDIA_KEY_RE.test(String(key))) return Promise.reject(new Error('Refusing to write that object name'));
+            return fetch(rurl('/storage/v1/object/' + mediaBucket() + '/' + key), {
+                method: 'POST',
+                headers: {
+                    'apikey': RC.anonKey,
+                    'Authorization': 'Bearer ' + t,
+                    'Content-Type': String(mime),
+                    'x-upsert': 'false',
+                    'Cache-Control': '31536000'
+                },
+                body: blob
+            }).then(function (r) {
+                if (r.status === 401 || r.status === 403) {
+                    throw new Error('Not allowed to upload — check the bucket policy, then sign in again');
+                }
+                if (!r.ok) {
+                    return r.text().then(function (txt) {
+                        throw new Error('HTTP ' + r.status + ' ' + txt.slice(0, 200));
+                    });
+                }
+                return mediaBase() + key;
+            });
+        },
+
+        removeMedia: function (key) {
+            if (!Remote.mediaEnabled()) return Promise.reject(new Error('Media uploads are not configured'));
+            var t = token();
+            if (!t) return Promise.reject(new Error('Not signed in'));
+            if (!MEDIA_KEY_RE.test(String(key))) return Promise.reject(new Error('Refusing to delete that object name'));
+            return fetch(rurl('/storage/v1/object/' + mediaBucket() + '/' + key), {
+                method: 'DELETE',
+                headers: { 'apikey': RC.anonKey, 'Authorization': 'Bearer ' + t }
+            }).then(function (r) {
+                if (!r.ok && r.status !== 404) {
+                    return r.text().then(function (txt) {
+                        throw new Error('HTTP ' + r.status + ' ' + txt.slice(0, 200));
+                    });
+                }
                 return true;
             });
         }
@@ -4251,6 +4475,10 @@
             assetPath: pbAsset,
             assetList: pbAssetList,
             assetRoots: PB_ASSET_ROOTS,
+            mediaPath: pbMedia,
+            mediaList: mediaList,
+            mediaBase: mediaBase,
+            imageRef: pbImageRef,
 
             sanitize: pbCleanSections,
             reid: pbReidSections,
