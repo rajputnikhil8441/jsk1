@@ -26,6 +26,25 @@
                    slightly different sitemaps is the bug a
                    white-label platform cannot afford.
 
+   A NOINDEX ENVIRONMENT IS DIFFERENT, DELIBERATELY
+
+   A staging host is a review copy. It must never appear in a
+   search result, and it must never claim to be the brand's real
+   site. So for an environment declared noindex, layer 4 does not
+   run at all:
+
+     - NO sitemap.xml. A sitemap exists to invite a crawl.
+     - robots.txt is a fixed block-everything file with no
+       Sitemap: line. It is not generated from the brand's SEO
+       config, because there is nothing brand-specific about
+       "none of this".
+     - every page already carries noindex,nofollow, rewritten and
+       counted by brandkit.
+
+   Belt and braces on purpose. robots.txt stops a crawl; the meta
+   tag is what removes a URL that was reached another way. The
+   repository already reasons this way about /admin.
+
    Layer 1 copies js/brand.js and layer 3 overwrites it. That
    looks redundant and is not: for as long as JSK1 is served
    from the repository root, the shared copy is one brand's data
@@ -76,7 +95,8 @@ function registeredBrands(sharedRoot) {
    half-assembled site behind. */
 function planSite(opts) {
     const sharedRoot = opts.sharedRoot;
-    const plan = kit.planBrand({ brandsDir: opts.brandsDir, templatesDir: opts.templatesDir, id: opts.id });
+    const plan = kit.planBrand({ brandsDir: opts.brandsDir, templatesDir: opts.templatesDir,
+                                 id: opts.id, env: opts.env });
 
     const shared = [];
     for (const d of SHARED_DIRS) {
@@ -120,16 +140,45 @@ function planSite(opts) {
        built and reviewed before its domain is wired up -- but it is said
        out loud, because an unregistered host falls to the DEFAULT brand and
        would read the default brand's row. */
+    /* The HOST is what gets looked up, not the brand id: a staging build is
+       served on a different hostname and it is that hostname a visitor's
+       browser resolves. */
     const registered = registeredBrands(sharedRoot);
     const warnings = [];
-    if (registered && registered.indexOf(plan.brand.id) === -1) {
-        warnings.push('"' + plan.brand.id + '" is not in CMS_BRANDS in js/cms-config.js. ' +
+    if (registered && registered.indexOf(plan.brand.domain) === -1) {
+        warnings.push('"' + plan.brand.domain + '" is not in CMS_BRANDS in js/cms-config.js. ' +
             'A visitor on that hostname would resolve to the default brand, not this one. ' +
             'Registered: ' + (registered.length ? registered.join(', ') : '(none)') + '.');
     }
 
-    return { plan, shared, overlay, overlayDir, generated, warnings,
-             seo: ['sitemap.xml', 'robots.txt'], sharedRoot };
+    /* No sitemap for a review host. See the note at the top. */
+    const seo = plan.brand.noindex ? ['robots.txt'] : ['sitemap.xml', 'robots.txt'];
+
+    return { plan, shared, overlay, overlayDir, generated, warnings, seo, sharedRoot };
+}
+
+/* A review host's robots.txt. Fixed rather than generated: there is nothing
+   brand-specific about "none of this", and generating it from the brand's
+   SEO config would mean a config change could quietly make staging
+   crawlable. No Sitemap: line, because nothing should invite a crawl. */
+function stagingRobots(brand) {
+    return '# GENERATED FILE - do not edit by hand.\n' +
+        '# Written by tools/build-site.js for the "' + brand.env + '" environment.\n' +
+        '#\n' +
+        '# STAGING / REVIEW HOST. This is a copy of ' + brand.name + ' served on\n' +
+        '# ' + brand.domain + ' so it can be reviewed before its production domain\n' +
+        '# is ever connected. It must never appear in a search result.\n' +
+        '#\n' +
+        '# Every page also carries <meta name="robots" content="noindex,nofollow">.\n' +
+        '# Both are here on purpose: the Disallow below stops a crawl, and the meta\n' +
+        '# tag is what removes a URL that was reached some other way -- a Disallow\n' +
+        '# alone cannot keep a linked URL out of the index.\n' +
+        '#\n' +
+        '# There is deliberately no Sitemap: line and no sitemap.xml. A sitemap\n' +
+        '# exists to invite a crawl, and nothing here should be crawled.\n' +
+        '\n' +
+        'User-agent: *\n' +
+        'Disallow: /\n';
 }
 
 function copyFile(from, to) {
@@ -152,11 +201,17 @@ function assemble(site, outRoot, opts) {
         fs.writeFileSync(to, f.contents, 'utf8');
     }
 
-    /* Layer 4. The brand's hostname, so the siteId comes from the
-       production resolver rather than from a second lookup here. */
+    /* Layer 4. */
+    if (site.plan.brand.noindex) {
+        fs.writeFileSync(path.join(dest, 'robots.txt'), stagingRobots(site.plan.brand), 'utf8');
+        return { dir: dest, seoLog: 'Staging: robots.txt blocks everything, no sitemap.xml written.\n' };
+    }
+
+    /* The serving HOSTNAME, so the siteId comes from the production
+       resolver rather than from a second lookup here. */
     const seoCfg = path.join(site.plan.brand.dir, 'seo-config.json');
     const args = [path.join(site.sharedRoot, 'tools', 'build-seo-files.js'),
-        '--brand', site.plan.brand.id, '--out', dest, '--config', seoCfg];
+        '--brand', site.plan.brand.domain, '--out', dest, '--config', seoCfg];
     let seoLog = '';
     try {
         seoLog = execFileSync(process.execPath, args, { cwd: site.sharedRoot, encoding: 'utf8' });
@@ -194,13 +249,40 @@ function verify(site, dest) {
     }
 
     const smap = path.join(dest, 'sitemap.xml');
-    if (!fs.existsSync(smap)) problems.push('missing: sitemap.xml');
-    else if (fs.readFileSync(smap, 'utf8').indexOf('https://' + site.plan.brand.domain) === -1) {
-        problems.push('sitemap.xml does not point at ' + site.plan.brand.domain);
+    const brand = site.plan.brand;
+
+    if (brand.noindex) {
+        /* A review host. Each of these is a way it could leak into an index
+           or claim to be the brand's real site. */
+        if (fs.existsSync(smap)) problems.push('a noindex environment must not publish a sitemap.xml');
+        const rob = fs.existsSync(path.join(dest, 'robots.txt'))
+            ? fs.readFileSync(path.join(dest, 'robots.txt'), 'utf8') : '';
+        if (!/^Disallow: \/$/m.test(rob)) problems.push('robots.txt does not block everything');
+        if (/^Sitemap:/m.test(rob)) problems.push('robots.txt declares a sitemap on a noindex host');
+
+        const pages = actual.filter(f => /^[a-z0-9-]+\.html$/.test(f));
+        if (!pages.length) problems.push('no pages to check for noindex');
+        for (const p of pages) {
+            const html = fs.readFileSync(path.join(dest, p), 'utf8');
+            if (!/<meta name="robots" content="noindex,nofollow"\s*\/?>/.test(html)) {
+                problems.push(p + ' is not noindex,nofollow');
+            }
+            /* The reserved production domain must appear nowhere: a canonical,
+               og:url or JSON-LD url pointing at it would hand a review copy's
+               signals to a domain that is not even connected. */
+            if (html.indexOf(brand.canonicalDomain) > -1) {
+                problems.push(p + ' mentions the reserved production domain ' + brand.canonicalDomain);
+            }
+        }
+    } else {
+        if (!fs.existsSync(smap)) problems.push('missing: sitemap.xml');
+        else if (fs.readFileSync(smap, 'utf8').indexOf('https://' + brand.domain) === -1) {
+            problems.push('sitemap.xml does not point at ' + brand.domain);
+        }
     }
 
     return { problems, files: actual, expected };
 }
 
-module.exports = { planSite, assemble, verify, walk, registeredBrands,
+module.exports = { planSite, assemble, verify, walk, registeredBrands, stagingRobots,
                    SHARED_DIRS, BRAND_OWNED, NOT_PUBLISHED };

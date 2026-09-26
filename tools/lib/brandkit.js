@@ -46,6 +46,33 @@
                  apply to an override, so it is a starting point
                  rather than an exit from the system.
 
+   ENVIRONMENTS: ONE BRAND, MORE THAN ONE HOSTNAME
+
+   A brand's IDENTITY and the HOSTNAME it is served on are not the
+   same thing, and conflating them is a migration problem waiting
+   to happen. Playzone9 is one brand; playzone9.app is the domain
+   it will launch on; playzones9.com is where it is reviewed
+   first. Renaming the brand to its staging host would mean
+   renaming it back later -- its directory, its id, its Supabase
+   row and every test that names it -- to change nothing about the
+   brand itself.
+
+   So brand.json keeps `domain` as the brand's CANONICAL domain
+   and declares environments separately:
+
+       "domain": "playzone9.app",
+       "environments": {
+         "staging": { "host": "playzones9.com",
+                      "siteId": "...", "noindex": true }
+       }
+
+   Building with no environment builds the canonical domain.
+   Building with one swaps the host -- so every canonical, og:url,
+   JSON-LD url and sitemap entry follows automatically, because
+   they all render from {{brand.domain}} -- and, when the
+   environment says noindex, rewrites every page's robots meta.
+   The brand id, the directory and the identity do not move.
+
    WHAT THIS IS NOT
 
    This is a BUILD-TIME tool reading files committed to this
@@ -76,6 +103,13 @@ class BrandError extends Error {
 const ID_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/;
 const SLOT_NAME_RE = /^[a-z0-9][a-z0-9-]{0,48}$/;
 const PAGE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,60}\.html$/;
+const ENV_NAME_RE = /^[a-z][a-z0-9-]{0,20}$/;
+
+/* The environment a build with no --env produces: the brand on its own
+   canonical domain, indexable. That is what production means, and it is
+   never declared in brand.json -- so a brand that has never heard of
+   environments behaves exactly as it did before they existed. */
+const CANONICAL_ENV = 'production';
 
 function assertId(id) {
     if (typeof id !== 'string' || !id) throw new BrandError('A brand id is required.');
@@ -118,7 +152,7 @@ const REQUIRED = ['id', 'name', 'domain', 'siteId'];
    Fails on the FIRST problem with a message that says which
    brand, which field, and what was expected -- a generator that
    half-runs on a broken config is worse than one that stops. */
-function loadBrand(brandsDir, id) {
+function loadBrand(brandsDir, id, envName) {
     assertId(id);
     const dir = safeJoin(brandsDir, id, 'Brand directory');
     if (!fs.existsSync(dir)) {
@@ -174,17 +208,90 @@ function loadBrand(brandsDir, id) {
         }
     }
 
+    const env = resolveEnv(cfg, id, envName);
+
     return {
-        id: id,
+        id: id,                       /* the brand's identity. Never an environment. */
         dir: dir,
         name: cfg.name,
-        domain: cfg.domain,
-        siteId: cfg.siteId,
-        output: typeof cfg.output === 'string' && cfg.output ? assertId(cfg.output) : id,
+        /* The host THIS build is for. Equal to canonicalDomain in production. */
+        domain: env.host,
+        canonicalDomain: cfg.domain,  /* the domain the brand will launch on */
+        env: env.name,
+        noindex: env.noindex,
+        siteId: env.siteId,
+        bucket: env.bucket,
+        output: env.output,
+        environments: Object.keys(cfg.environments || {}).sort(),
         pages: pages,
         allowScripts: allowScripts,
         slots: readSlots(dir, id, allowScripts),
         overrides: readOverrides(dir, id)
+    };
+}
+
+/* Which host, which Supabase row, and whether indexing is allowed, for the
+   environment being built. Every refusal here is a way a review copy could
+   turn into production by accident. */
+function resolveEnv(cfg, id, envName) {
+    const envs = cfg.environments;
+    if (envs !== undefined && (!envs || typeof envs !== 'object' || Array.isArray(envs))) {
+        throw new BrandError('Brand "' + id + '": "environments" must be a JSON object.');
+    }
+    const known = Object.keys(envs || {}).sort();
+    for (const k of known) {
+        if (!ENV_NAME_RE.test(k) || k === CANONICAL_ENV) {
+            throw new BrandError('Brand "' + id + '": "' + k + '" is not a valid environment name. ' +
+                'Use lowercase letters, digits and hyphens, and not "' + CANONICAL_ENV +
+                '" -- that one is the brand\'s own domain and is never declared.');
+        }
+    }
+
+    const name = envName || CANONICAL_ENV;
+    if (name === CANONICAL_ENV) {
+        return { name: name, host: cfg.domain, siteId: cfg.siteId,
+                 bucket: typeof cfg.mediaBucket === 'string' ? cfg.mediaBucket : '',
+                 output: typeof cfg.output === 'string' && cfg.output ? assertId(cfg.output) : id,
+                 noindex: false };
+    }
+    if (!Object.prototype.hasOwnProperty.call(envs || {}, name)) {
+        throw new BrandError('Brand "' + id + '" has no environment "' + name + '". Declared: ' +
+            (known.length ? known.join(', ') : '(none)') + '. Build with no --env for the ' +
+            'canonical domain ' + cfg.domain + '.');
+    }
+    const e = envs[name];
+    if (!e || typeof e !== 'object' || Array.isArray(e)) {
+        throw new BrandError('Brand "' + id + '": environment "' + name + '" must be a JSON object.');
+    }
+    if (typeof e.host !== 'string' || !e.host.trim()) {
+        throw new BrandError('Brand "' + id + '": environment "' + name +
+            '" is missing required field "host" (the hostname it is served on).');
+    }
+    assertId(e.host);
+    if (e.host === cfg.domain) {
+        throw new BrandError('Brand "' + id + '": environment "' + name + '" uses host "' + e.host +
+            '", which is the brand\'s canonical domain. An environment exists to be a DIFFERENT ' +
+            'host; pointing one at the canonical domain is how a review copy gets served as ' +
+            'production.');
+    }
+    if (e.siteId !== undefined && (typeof e.siteId !== 'string' || !e.siteId.trim())) {
+        throw new BrandError('Brand "' + id + '": environment "' + name +
+            '": "siteId" must be a non-empty string when present.');
+    }
+    if (e.siteId !== undefined && e.siteId === cfg.siteId) {
+        throw new BrandError('Brand "' + id + '": environment "' + name + '" declares siteId "' +
+            e.siteId + '", the same row as the canonical environment. A review copy sharing the ' +
+            'production row would publish over production. Give it its own row, or omit the field ' +
+            'to inherit deliberately.');
+    }
+    return {
+        name: name,
+        host: e.host,
+        siteId: typeof e.siteId === 'string' && e.siteId.trim() ? e.siteId : cfg.siteId,
+        bucket: typeof e.bucket === 'string' ? e.bucket
+            : (typeof cfg.mediaBucket === 'string' ? cfg.mediaBucket : ''),
+        output: typeof e.output === 'string' && e.output ? assertId(e.output) : assertId(e.host),
+        noindex: e.noindex === true
     };
 }
 
@@ -329,6 +436,24 @@ function renderPage(templateHtml, brand, where) {
         throw new BrandError('Brand "' + brand.id + '": ' + where +
             ' still contains "{{" after rendering. A slot must not introduce tokens.');
     }
+
+    /* A noindex environment rewrites the page's robots directive, and only
+       that. It is COUNTED: a page whose robots meta this failed to find
+       would otherwise be published indexable from a review host, which is
+       the one thing a staging environment must never do. Exactly one tag,
+       or the build stops. */
+    if (brand.noindex) {
+        let hits = 0;
+        out = out.replace(/<meta name="robots" content="[^"]*"\s*\/?>/g, function () {
+            hits++;
+            return '<meta name="robots" content="noindex,nofollow" />';
+        });
+        if (hits !== 1) {
+            throw new BrandError('Brand "' + brand.id + '" environment "' + brand.env + '" is ' +
+                'noindex, but ' + where + ' has ' + hits + ' robots meta tag(s) -- expected exactly 1. ' +
+                'Refusing to publish a review page whose indexing directive is unknown.');
+        }
+    }
     return { html: out, slotsDeclared: declared };
 }
 
@@ -362,7 +487,7 @@ function makeCollector(brandId) {
 function planBrand(opts) {
     const brandsDir = opts.brandsDir;
     const templatesDir = opts.templatesDir;
-    const brand = loadBrand(brandsDir, opts.id);
+    const brand = loadBrand(brandsDir, opts.id, opts.env);
 
     const available = fs.existsSync(path.join(templatesDir, 'pages'))
         ? fs.readdirSync(path.join(templatesDir, 'pages')).filter(f => PAGE_NAME_RE.test(f)).sort()
@@ -403,7 +528,8 @@ function planBrand(opts) {
         throw new BrandError('Brand "' + brand.id + '" has no brand.js at ' + brandJs +
             '. That file is the brand\'s CMS fallback layer and is required.');
     }
-    emit('js/brand.js', fs.readFileSync(brandJs, 'utf8'), 'brands/' + brand.id + '/brand.js');
+    emit('js/brand.js', envPatched(fs.readFileSync(brandJs, 'utf8'), brand),
+         'brands/' + brand.id + '/brand.js');
 
     /* The deploy-time SEO fallback, if the brand ships one. */
     const seo = path.join(brand.dir, 'seo-config.json');
@@ -429,6 +555,54 @@ function planBrand(opts) {
     return { brand: brand, files: files, slotsDeclared: [...slotsUsed].sort() };
 }
 
+/* An environment build gets its serving host appended to the brand's data
+   layer. This is not cosmetic and it is not optional:
+
+   js/cms.js repaints canonical, og:url and the JSON-LD urls from
+   seo.baseUrl once it runs (setLink('canonical', pageUrl(page))). A review
+   host that kept the brand's production baseUrl would therefore serve
+   STATIC html pointing at itself and then, a moment later, a canonical
+   pointing at a domain that is not even connected -- handing a review
+   copy's signals to production. The static tags are rendered from
+   {{brand.domain}} and are already right; this makes the runtime agree
+   with them.
+
+   Appended rather than rewritten: the brand's own file is left exactly as
+   committed, and the override is a visible block at the end of the
+   generated copy. Production appends nothing, so its brand.js is byte
+   for byte the committed one. */
+function envPatched(source, brand) {
+    if (brand.env === CANONICAL_ENV) return source;
+    return source +
+        '\n\n/* ============================================================\n' +
+        '   ENVIRONMENT OVERRIDE -- ' + brand.env + '\n' +
+        '   ------------------------------------------------------------\n' +
+        '   Generated by tools/build-brand.js for the "' + brand.env + '" environment.\n' +
+        '   Not committed: it exists only in this build\'s output.\n' +
+        '\n' +
+        '   This build is served from ' + brand.domain + '.\n' +
+        '   The brand launches on ' + brand.canonicalDomain + ', which is NOT this host.\n' +
+        '\n' +
+        '   js/cms.js repaints the canonical link, og:url and the JSON-LD\n' +
+        '   urls from seo.baseUrl when it runs. Without this block a review\n' +
+        '   host would tell crawlers its canonical is the production domain.\n' +
+        '   ============================================================ */\n' +
+        '(function () {\n' +
+        '    var b = window.CMS_BRAND || (window.CMS_BRAND = {});\n' +
+        '    b.seo = b.seo || {};\n' +
+        '    b.seo.baseUrl = ' + JSON.stringify('https://' + brand.domain) + ';\n' +
+        (brand.noindex
+            ? '\n' +
+              '    /* Whole-deployment noindex. js/cms.js repaints the robots meta\n' +
+              '       from the merged CMS data, and that data is layered -- so\n' +
+              '       setting noindex as DATA could be overridden by the Supabase\n' +
+              '       row above it. This flag is read by the engine directly and\n' +
+              '       nothing downstream can undo it. */\n' +
+              '    window.CMS_NOINDEX = true;\n'
+            : '') +
+        '})();\n';
+}
+
 /* ---------- writing ---------- */
 function writePlan(plan, outRoot) {
     const dest = safeJoin(outRoot, plan.brand.output, 'Output directory');
@@ -442,5 +616,6 @@ function writePlan(plan, outRoot) {
 
 module.exports = {
     BrandError, loadBrand, listBrands, planBrand, writePlan,
-    renderPage, safeJoin, assertId, tokenValues, makeCollector, checkSlot
+    renderPage, safeJoin, assertId, tokenValues, makeCollector, checkSlot,
+    resolveEnv, CANONICAL_ENV, envPatched
 };

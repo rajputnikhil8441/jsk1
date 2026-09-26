@@ -125,10 +125,27 @@ console.log('\n===== ONE REGISTERED BRAND =====');
   const block = (cfg.match(/window\.CMS_BRANDS\s*=\s*\{[\s\S]*?\n\};/) || [''])[0];
   check('CMS_BRANDS block was found in js/cms-config.js', block.length > 0);
   const hosts = [...block.matchAll(/'([a-z0-9.-]+)'\s*:\s*\{/g)].map(m => m[1]);
-  check('CMS_BRANDS registers exactly the two real hostnames',
-    JSON.stringify(hosts.slice().sort()) === '["jsk-1.com","playzone9.app"]', hosts);
-  check('every brand directory is registered and every registration has a directory',
-    JSON.stringify(brands.slice().sort()) === JSON.stringify(hosts.slice().sort()), [brands, hosts]);
+  /* Phase 6 added a staging HOST, not a brand: playzones9.com serves the
+     Playzone9 brand for review. So the registry is no longer one entry per
+     directory. Rather than hardcode the list, derive what it should be from
+     the brands themselves -- every registered hostname must be some brand's
+     canonical domain or one of its declared environment hosts, and every one
+     of those must be registered. An unexplained entry fails either way. */
+  const expectedHosts = [];
+  for (const b of brands) {
+    const x = KIT.loadBrand(PROD_BRANDS, b);
+    expectedHosts.push(x.domain);
+    for (const e of x.environments) expectedHosts.push(KIT.loadBrand(PROD_BRANDS, b, e).domain);
+  }
+  check('the brands declare hostnames to check',
+    expectedHosts.length >= brands.length && expectedHosts.length > 0, expectedHosts);
+  check('CMS_BRANDS registers exactly the hostnames the brands declare',
+    JSON.stringify(hosts.slice().sort()) === JSON.stringify(expectedHosts.slice().sort()),
+    [hosts, expectedHosts]);
+  check('every registered hostname is explained by a brand or one of its environments',
+    hosts.every(h => expectedHosts.includes(h)), hosts.filter(h => !expectedHosts.includes(h)));
+  check('and every declared hostname is registered',
+    expectedHosts.every(h => hosts.includes(h)), expectedHosts.filter(h => !hosts.includes(h)));
   check('no synthetic test brand reached the production registry',
     !/acme\.test|zeta\.test|omega\.test/.test(cfg));
 
@@ -139,7 +156,36 @@ console.log('\n===== ONE REGISTERED BRAND =====');
   for (const m of block.matchAll(/'([a-z0-9.-]+)'\s*:\s*\{[^}]*?siteId:\s*'([^']+)'[^}]*?bucket:\s*'([^']+)'/g)) {
     siteIds[m[1]] = { siteId: m[2], bucket: m[3] };
   }
-  check('both registrations were parsed', Object.keys(siteIds).length === 2, siteIds);
+  check('every registration was parsed and none was skipped',
+    Object.keys(siteIds).length === hosts.length && hosts.length > 0, siteIds);
+  /* Every host must read a DIFFERENT row. Two hosts sharing one is how a
+     review copy publishes over the site it is reviewing. */
+  const rows = Object.values(siteIds).map(v => v.siteId);
+  check('no two registered hostnames share a Supabase row',
+    new Set(rows).size === rows.length, rows);
+  const buckets = Object.values(siteIds).map(v => v.bucket);
+  check('and no two share a media bucket', new Set(buckets).size === buckets.length, buckets);
+  /* The same rule stated over environments rather than over one named host:
+     every environment host reads a different row from its brand's canonical
+     host, and from every other brand. A review copy sharing the production
+     row would publish over the site it is reviewing. */
+  let envPairs = 0;
+  for (const b of brands) {
+    const canon = KIT.loadBrand(PROD_BRANDS, b);
+    for (const e of canon.environments) {
+      const y = KIT.loadBrand(PROD_BRANDS, b, e);
+      envPairs++;
+      check(b + ' --env ' + e + ': its host reads a different row from the canonical host',
+        siteIds[y.domain] && siteIds[canon.domain] &&
+        siteIds[y.domain].siteId !== siteIds[canon.domain].siteId, [y.domain, canon.domain]);
+      check(b + ' --env ' + e + ': and a different row from every other brand',
+        brands.filter(o => o !== b).every(o =>
+          siteIds[KIT.loadBrand(PROD_BRANDS, o).domain].siteId !== siteIds[y.domain].siteId));
+    }
+  }
+  check('every declared environment was checked against the registry',
+    envPairs === brands.reduce((n, b) => n + KIT.loadBrand(PROD_BRANDS, b).environments.length, 0),
+    envPairs);
   check('jsk-1.com keeps its historical siteId', siteIds['jsk-1.com'].siteId === 'playzone9', siteIds);
   check('playzone9.app does NOT use JSK1\'s row',
     siteIds['playzone9.app'].siteId !== 'playzone9', siteIds);
@@ -148,11 +194,17 @@ console.log('\n===== ONE REGISTERED BRAND =====');
     siteIds['jsk-1.com'].siteId !== siteIds['playzone9.app'].siteId, siteIds);
   check('the two brands have different media buckets',
     siteIds['jsk-1.com'].bucket !== siteIds['playzone9.app'].bucket, siteIds);
-  check('each brand.json agrees with the registry it is registered under', (() => {
+  check('each brand.json agrees with the registry entry for its own domain', (() => {
     return brands.every(b => {
       const x = KIT.loadBrand(PROD_BRANDS, b);
-      return siteIds[b] && siteIds[b].siteId === x.siteId;
+      return siteIds[x.domain] && siteIds[x.domain].siteId === x.siteId;
     });
+  })());
+  check('and each environment agrees with the registry entry for its host', (() => {
+    return brands.every(b => KIT.loadBrand(PROD_BRANDS, b).environments.every(e => {
+      const y = KIT.loadBrand(PROD_BRANDS, b, e);
+      return siteIds[y.domain] && siteIds[y.domain].siteId === y.siteId;
+    }));
   })());
 
   /* The synthetic brands must be unreachable from the production dir,
@@ -332,6 +384,47 @@ console.log('\n===== CLEAR REFUSALS =====');
   const mism = scratchBrand('mismatch.test', cfg => { cfg.id = 'somethingelse'; });
   refuses('a brand.json id that disagrees with its directory is refused',
     () => KIT.loadBrand(mism.brandsDir, 'mismatch.test'), /directory name and the id must match/);
+
+  /* An environment exists to be a DIFFERENT host with DIFFERENT data. Both
+     of these refusals are what stop a review copy from quietly becoming the
+     thing it is reviewing. */
+  refuses('an environment pointing at the brand\'s own canonical domain is refused',
+    () => KIT.loadBrand(scratchBrand('envhost.test', cfg => {
+      cfg.environments = { staging: { host: cfg.domain } };   /* the brand's own domain */
+    }).brandsDir, 'envhost.test', 'staging'),
+    /is the brand's canonical domain[\s\S]*served as production/);
+  refuses('an environment sharing the canonical environment\'s Supabase row is refused',
+    () => KIT.loadBrand(scratchBrand('envrow.test', cfg => {
+      cfg.environments = { staging: { host: 'stage.test', siteId: cfg.siteId } };
+    }).brandsDir, 'envrow.test', 'staging'),
+    /same row as the canonical environment[\s\S]*publish over production/);
+  refuses('an environment with no host is refused',
+    () => KIT.loadBrand(scratchBrand('envnohost.test', cfg => {
+      cfg.environments = { staging: { noindex: true } };
+    }).brandsDir, 'envnohost.test', 'staging'),
+    /missing required field "host"/);
+  refuses('an environment called "production" is refused -- that one is the brand itself',
+    () => KIT.loadBrand(scratchBrand('envprod.test', cfg => {
+      cfg.environments = { production: { host: 'other.test' } };
+    }).brandsDir, 'envprod.test'),
+    /not a valid environment name[\s\S]*never declared/);
+  refuses('"environments" that is not an object is refused',
+    () => KIT.loadBrand(scratchBrand('envarr.test', cfg => { cfg.environments = ['staging']; }).brandsDir,
+      'envarr.test'), /"environments" must be a JSON object/);
+  /* A scratch brand, not a real one: which environments the production
+     brands declare is their business and changes between phases. What is
+     being asserted is that an unknown name is refused and the real ones are
+     named in the message. */
+  refuses('an unknown environment is refused, and the declared ones are listed',
+    () => KIT.loadBrand(scratchBrand('envlist.test', cfg => {
+      cfg.environments = { staging: { host: 'stage.test', siteId: 'stage-row' },
+                           preview: { host: 'preview.test', siteId: 'preview-row' } };
+    }).brandsDir, 'envlist.test', 'nosuchenv'),
+    /has no environment "nosuchenv"[\s\S]*Declared: preview, staging/);
+  check('a brand with no environments still loads, on its own domain', (() => {
+    const b = KIT.loadBrand(PROD_BRANDS, 'jsk-1.com');
+    return b.env === KIT.CANONICAL_ENV && b.domain === b.canonicalDomain && b.noindex === false;
+  })());
 
   const nojs = scratchBrand('nojs.test');
   fs.unlinkSync(path.join(nojs.dir, 'brand.js'));

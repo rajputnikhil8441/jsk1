@@ -26,9 +26,18 @@ A template declares a named, empty region:
     </form><!-- BRAND:login-notice --><!-- /BRAND:login-notice -->
 
 A brand fills it with `brands/<id>/slots/login-notice.html`. Two slot points are
-declared today: `login-notice` on the login page and `register-notice` on the
-register page, so a brand can customise either sign-up step without an edit to
-`js/cms.js` or to any shared template. A brand that says
+declared today:
+
+| Slot | Where | What a brand uses it for |
+|---|---|---|
+| `head-extra` | in `<head>`, on every page | its own stylesheet, fonts, or icons — the brand layer |
+| `login-notice` | after the login form | login-specific copy or markup |
+| `register-notice` | after the register form | register-specific copy or markup |
+
+So a brand can re-tint the whole site and customise either sign-up step
+without an edit to `js/cms.js` or to any shared template. A brand fills `head-extra`
+with, for example, a `<link>` to a stylesheet it ships in its own `static/`
+overlay. A brand that says
 nothing gets nothing: the markers and everything between them are removed, so a
 page with no slots filled is byte-identical to one that never had markers. That
 property is what let slots be added to the live pages at all.

@@ -39,15 +39,40 @@ for one thing: no separate slug to keep in step with the domain.
 data migration, not a refactor. Keeping the two fields apart is what lets the
 hostname be correct while the row keeps its historical name.
 
-## Two brands today
+## Environments
 
-| Brand | Domain | siteId | Media bucket |
-|---|---|---|---|
-| `jsk-1.com` | jsk-1.com | `playzone9` | `cms-media` |
-| `playzone9.app` | playzone9.app | `playzone9app` | `cms-media-pz9` |
+A brand may be served on more than one hostname. `brand.json` keeps `domain`
+as the brand's canonical domain and declares the others separately:
 
-The two siteIds differ by one word and mean completely different things. See
-`brands/playzone9.app/README.md`.
+    "domain": "example.com",
+    "environments": {
+      "staging": { "host": "review.example",
+                   "siteId": "example-staging",
+                   "bucket": "cms-media-example-staging",
+                   "noindex": true }
+    }
+
+    node tools/build-site.js example.com                  # the canonical domain
+    node tools/build-site.js example.com --env staging     # review.example
+
+Building with `--env` swaps the host, so every canonical, `og:url`, JSON-LD
+url and sitemap entry follows automatically — they all render from
+`{{brand.domain}}`. The brand id, its directory and its identity do not move,
+which is the point: renaming a brand to its staging host would mean renaming
+it back at launch.
+
+`production` is never declared. It is the brand on its own `domain`, so a
+brand that has never heard of environments behaves exactly as before.
+
+Three refusals keep a review copy from becoming the thing it reviews: an
+environment may not use the brand's canonical domain, may not share the
+canonical `siteId`, and must name a `host`.
+
+**`noindex: true`** makes the build a review host: every page's robots meta is
+rewritten to `noindex,nofollow` (counted — one tag per page or the build
+stops), no `sitemap.xml` is emitted at all, `robots.txt` blocks everything,
+and the generated `brand.js` sets `window.CMS_NOINDEX` so the engine cannot
+repaint it indexable from any data layer.
 
 ## Adding a brand
 

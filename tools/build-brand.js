@@ -4,7 +4,7 @@
    GENERATE A BRAND'S SITE FILES
    ------------------------------------------------------------
      node tools/build-brand.js --list
-     node tools/build-brand.js <brand-id> [--check] [--out DIR]
+     node tools/build-brand.js <brand-id> [--env NAME] [--check] [--out DIR]
 
    --check plans and prints, writing nothing. Use it in review:
    every validation runs, so a broken brand fails here rather
@@ -47,12 +47,15 @@ function main() {
         return 0;
     }
 
-    const id = argv.find(a => a.charAt(0) !== '-');
+    const env = opt('--env', '');
+    const id = argv.filter(a => a.charAt(0) !== '-').find(a => a !== env);
     if (!id) { console.error('No brand id given.'); return 2; }
 
-    const plan = kit.planBrand({ brandsDir: BRANDS, templatesDir: TEMPLATES, id: id });
+    const plan = kit.planBrand({ brandsDir: BRANDS, templatesDir: TEMPLATES, id: id,
+                                 env: opt('--env', '') });
     console.log('Brand   : ' + plan.brand.id + '  (name=' + plan.brand.name +
                 ', domain=' + plan.brand.domain + ', siteId=' + plan.brand.siteId + ')');
+    console.log('Env     : ' + plan.brand.env + (plan.brand.noindex ? '   NOINDEX' : ''));
     console.log('Slots   : ' + (plan.slotsDeclared.length ? plan.slotsDeclared.join(', ') : '(none declared by these pages)'));
     console.log('Filled  : ' + (Object.keys(plan.brand.slots).length ? Object.keys(plan.brand.slots).sort().join(', ') : '(none)'));
     console.log('Override: ' + (Object.keys(plan.brand.overrides).length ? Object.keys(plan.brand.overrides).sort().join(', ') : '(none)'));
