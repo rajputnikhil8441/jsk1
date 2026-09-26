@@ -1,21 +1,37 @@
 /* ============================================================
-   PLAYZONE9 - main.js
-   Handles all frontend interactions
+   main.js — frontend interactions
+   Brand-neutral: every brand-specific value below comes from the
+   CMS, so this file is shared by every brand unchanged.
    ============================================================ */
 
 /* ============================================================
    CONFIGURATION
    Edit these values to customise the site quickly
    ============================================================ */
+/* Read through the CMS so nothing here names a brand. The keys are
+   read directly off data().text rather than through get(), because
+   'support.whatsappMessage' contains a dot in the key itself and a
+   dotted path would be walked as three levels. */
+function cmsText(key, fallback) {
+  try {
+    var v = window.CMS && window.CMS.data().text[key];
+    return (typeof v === 'string' && v) ? v : fallback;
+  } catch (e) { return fallback; }
+}
+
 var CONFIG = {
   /* WhatsApp support number — managed in /admin (Branding > Footer) */
   whatsappNumber: (window.CMS && CMS.get('branding.whatsapp')) || '91xxxxxx',
 
-  /* WhatsApp message (URL encoded) */
-  whatsappMessage: 'Hello%2C%20I%20need%20support%20on%20JSK1.',
+  /* WhatsApp message (URL encoded) — managed in /admin (Text).
+     The fallback carries no brand name on purpose: a brand that has not
+     set this should ask for support without claiming to be someone else. */
+  whatsappMessage: cmsText('support.whatsappMessage', 'Hello%2C%20I%20need%20support.'),
 
-  /* Site name */
-  siteName: 'JSK1'
+  /* Site name. Nothing in this file reads it today; it is kept because
+     it is part of CONFIG's shape, and sourced from the CMS so it cannot
+     go stale or name the wrong brand. */
+  siteName: (window.CMS && CMS.get('branding.siteName')) || ''
 };
 
 /* ============================================================

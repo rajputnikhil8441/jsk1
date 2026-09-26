@@ -43,3 +43,23 @@ Comparing a candidate generator's output against production:
 
 Only when JSK1 is intentionally changed, in its own commit, with the
 reason stated. Never as part of making a refactor pass.
+
+### Change log
+
+**Phase 3 — `js/brand.js` re-captured.** Phase 3 moved JSK1's content out
+of `js/cms.js` DEFAULTS, where every brand inherited it, and into
+`js/brand.js`, which is JSK1's own file. So this one fixture grew from
+1,415 to 9,121 bytes on purpose, and Phase 4's generator must reproduce
+the NEW file rather than the old one. The other ten are untouched and
+still byte-identical to the live files.
+
+Because the bytes of `js/brand.js` legitimately moved, its checksum could
+not be the baseline for that step. The stronger guarantee was used
+instead and is kept alongside these fixtures:
+`../render-baseline-jsk1.json` records every observable value on every
+page -- title, description, canonical, og, twitter, headings, body text,
+footer, JSON-LD -- rendered with an EMPTY Supabase row, which is exactly
+the case where DEFAULTS and `brand.js` decide what a visitor sees. All
+152 of those values were unchanged by Phase 3, and `test_brand_isolation.js`
+asserts it on every run. That is the check that actually protects JSK1;
+a file hash only protects the file.

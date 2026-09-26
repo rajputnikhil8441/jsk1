@@ -123,6 +123,7 @@
     ];
 
     var TEXT_LABELS = {
+        'support.whatsappMessage': 'WhatsApp message (URL encoded)',
         'btn.apk': 'APK button', 'btn.demo': 'Demo button',
         'btn.login': 'Login button', 'btn.register': 'Register button',
         'marquee.text': 'Marquee message',
@@ -2412,7 +2413,7 @@
     function buildSeoGlobal() {
         var a = $('#seoGlobalIdentity'); a.innerHTML = '';
         a.appendChild(bound('seo.siteName', { label: 'Site name', hint: 'Used in og:site_name, the title template and Organization schema.' }));
-        a.appendChild(bound('seo.baseUrl', { label: 'Base URL', hint: 'No trailing slash, e.g. <code>https://jsk-1.com</code>. Every canonical is built from this.' }));
+        a.appendChild(bound('seo.baseUrl', { label: 'Base URL', hint: 'No trailing slash, e.g. <code>https://example.com</code>. Every canonical is built from this.' }));
         a.appendChild(bound('seo.titleTemplate', { label: 'Title template', hint: '<code>%s</code> is the page title. Only applied when the page title does not already contain the site name.' }));
 
         var b = $('#seoGlobalDefaults'); b.innerHTML = '';

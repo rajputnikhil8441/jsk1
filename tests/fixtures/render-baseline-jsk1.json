@@ -1,0 +1,349 @@
+{
+ "_comment": "Rendered output of every JSK1 page with an EMPTY Supabase row — the case where js/cms.js DEFAULTS and js/brand.js are what a visitor sees. Phase 3 moves content between those two layers and must not change a single value here.",
+ "pages": {
+  "index.html": {
+   "title": "JSK1 — Official Site | JSK1 Login & Online Gaming",
+   "description": "JSK1 is the official JSK1 online gaming site. Access your JSK1 account, log in, and get 24x7 support. Visit the official JSK1 website at jsk-1.com.",
+   "robots": "index,follow",
+   "canonical": "https://jsk-1.com/",
+   "ogTitle": "JSK1 — Official Site | JSK1 Login & Online Gaming",
+   "ogDescription": "JSK1 is the official JSK1 online gaming site. Access your JSK1 account, log in, and get 24x7 support. Visit the official JSK1 website at jsk-1.com.",
+   "ogImage": null,
+   "ogSiteName": "JSK1",
+   "ogUrl": "https://jsk-1.com/",
+   "twTitle": "JSK1 — Official Site | JSK1 Login & Online Gaming",
+   "twDescription": "JSK1 is the official JSK1 online gaming site. Access your JSK1 account, log in, and get 24x7 support. Visit the official JSK1 website at jsk-1.com.",
+   "twImage": null,
+   "h1": [
+    "JSK1 — Official Online Gaming Site"
+   ],
+   "h2": [
+    "Important Links",
+    "Account",
+    "Support"
+   ],
+   "bodyText": "JSK1 Download Apk Demo Login Register ▾ 🔥🔥 The casino floor is buzzing with excitement! Teenpatti BaccaratPoker Play Live JSK1 — Official Online Gaming Site Van Assche v Hug Gaston Blockx v Darderi Welsh Fire v MI London West Indies v Pakistan Robin Pacha - Martin Bittner Racing Sports Horse Racing Greyhound Racing Others Our Casino Our VIP Casino Our Premium Casino Our Virtual Live Casino Slot Game Fantasy Game All Sports Politics Cricket Football Tennis Table Tennis Badminton Esoccer Basketball Volleyball Snooker Ice Hockey E Games Futsal Handball Kabaddi Golf Rugby League Boxing Beach Volleyball Mixed Martial Arts MotoGP Chess Cycling Motorbikes Athletics Basketball 3X3 Sumo Virtual sports Motor Sports Baseball Rugby Union Darts Soccer Esports Boat Racing Wrestling American Football CRICKET FOOTBALL TENNIS TABLE TENNIS HORSE RACING GREYHOUND BASKETBALL ESOCCER Wrestling Volleyball Badminton Snooker Darts Super Over2 BM West Indies v Pakistan BM 25/07/2026 19:30:00 3.1 3.15 2.08 2.1 4.8 5.1 Welsh Fire v MI London BM 25/07/2026 22:30:00 1.64 1.65 - - 2.52 2.54 Pakistan T10 v New Zealand T10 BM 25/07/2026 23:30:00 - - - - - - Melbourne Stars XI v Sydney Sixers XI BM 25/07/2026 23:40:00 - - - - - - SNP XI v JT XI BM 25/07/2026 23:45:00 - - - - - - Delhi Capitals (e) - Rajasthan Royals (e) BM 25/07/2026 23:48:00 - - - - - - Punjab Kings (e) - Delhi Capitals (e) BM 25/07/2026 23:48:00 - - - - - - The Hundred BM 21/07/2026 23:00:00 - - - - - - Punjab Kings - Chennai Super Kings (e) BM 25/07/2026 23:51:00 - - - - - - Australia T10 v West Indies T10 BM 26/07/2026 00:35:00 - - - - - - Guyana Amazon Warriors v Desert Vipers BM 26/07/2026 04:30:00 1.47 1.62 - - 2.62 3.15 Kandy Royals v Jaffna Kings BM 26/07/2026 15:00:00 1.66 3 - - 1.5 2.5 Manchester Super Giants W v Birmingham Phoenix W BM 26/07/2026 15:30:00 1.74 1.75 - - 2.32 2.36 Middlesex v Glamorgan BM 26/07/2026 15:30:00 - - - - - - Essex v Derbyshire BM 26/07/2026 15:30:00 - - - - - - Worcestershire v Hampshire BM 26/07/2026 15:30:00 - - - - - - Surrey v Northamptonshire BM 26/07/2026 15:30:00 - - - - - - Somerset v Warwickshire BM 26/07/2026 15:30:00 - - - - - - Leicestershire v Lancashire BM 26/07/2026 15:30:00 - - - - - - Zimbabwe v India BM 26/07/2026 16:30:00 11 12 - - 1.09 1.1 Trent Rockets W v London Spirit W BM 26/07/2026 19:00:00 1.65 1.73 - - 2.36 2.42 Manchester Super Giants v Birmingham Phoenix W BM 26/07/2026 19:00:00 1.71 1.78 - - 2.28 2.42 San Francisco Unicorns v Perth Scorchers BM 26/07/2026 19:30:00 2.44 2.48 - - 1.68 1.7 Trent Rockets v London Spirit BM 26/07/2026 22:30:00 1.72 1.73 - - 2.36 2.4 The Hundred - Womens BM 16/08/2026 18:45:00 - - - - - - DOLI DANA MOGAMBO 24X7 Support WhatsApp Support JSK1 The official JSK1 website. Create an account, sign in and reach support any time. IMPORTANT LINKS Home About Contact Responsible Gaming Privacy Policy ACCOUNT Login Register SUPPORT Contact us WhatsApp Support © Copyright 2026 JSK1. All Rights Reserved.",
+   "footerText": "JSK1 The official JSK1 website. Create an account, sign in and reach support any time. IMPORTANT LINKS Home About Contact Responsible Gaming Privacy Policy ACCOUNT Login Register SUPPORT Contact us WhatsApp Support © Copyright 2026 JSK1. All Rights Reserved.",
+   "jsonLd": [
+    {
+     "@type": "Organization",
+     "name": "JSK1",
+     "url": "https://jsk-1.com",
+     "@context": "https://schema.org"
+    },
+    {
+     "@type": "WebSite",
+     "name": "JSK1",
+     "url": "https://jsk-1.com/",
+     "@context": "https://schema.org"
+    }
+   ],
+   "logoAlt": "JSK1",
+   "siteNameNodes": [
+    "JSK1",
+    "JSK1"
+   ]
+  },
+  "about.html": {
+   "title": "About JSK1 — About the Official JSK1 Website",
+   "description": "Learn about JSK1, the official JSK1 online gaming website. Find out what JSK1 offers and how to get started at jsk-1.com.",
+   "robots": "index,follow",
+   "canonical": "https://jsk-1.com/about.html",
+   "ogTitle": "About JSK1 — About the Official JSK1 Website",
+   "ogDescription": "Learn about JSK1, the official JSK1 online gaming website. Find out what JSK1 offers and how to get started at jsk-1.com.",
+   "ogImage": null,
+   "ogSiteName": "JSK1",
+   "ogUrl": "https://jsk-1.com/about.html",
+   "twTitle": "About JSK1 — About the Official JSK1 Website",
+   "twDescription": "Learn about JSK1, the official JSK1 online gaming website. Find out what JSK1 offers and how to get started at jsk-1.com.",
+   "twImage": null,
+   "h1": [
+    "About JSK1"
+   ],
+   "h2": [
+    "What JSK1 offers",
+    "Getting started with JSK1",
+    "Play responsibly",
+    "Important Links",
+    "Account",
+    "Support"
+   ],
+   "bodyText": "JSK1 Download Apk Demo Login Register ▾ 🔥🔥 The casino floor is buzzing with excitement! Teenpatti BaccaratPoker Play Live HOME ABOUT CONTACT RESPONSIBLE GAMING LOGIN REGISTER Home › About About JSK1 The official JSK1 website — jsk-1.com. JSK1 is an online gaming site. This page is where you tell visitors who you are, what the site offers and how to get started. Edit all of it in /admin > Pages > About. What JSK1 offers Editable placeholder — describe the games and features you actually offer, in your own words. Nothing here has been written for you, because only you know what is true of your site. Getting started with JSK1 To use JSK1, create an account on the Register page, then sign in from the Login page. If you need help, the ways to reach us are listed on the Contact page. Play responsibly JSK1 is intended for adults aged 18 and over. Please read our Responsible Gaming page before you play. 24X7 Support WhatsApp Support JSK1 The official JSK1 website. Create an account, sign in and reach support any time. IMPORTANT LINKS Home About Contact Responsible Gaming Privacy Policy ACCOUNT Login Register SUPPORT Contact us WhatsApp Support © Copyright 2026 JSK1. All Rights Reserved.",
+   "footerText": "JSK1 The official JSK1 website. Create an account, sign in and reach support any time. IMPORTANT LINKS Home About Contact Responsible Gaming Privacy Policy ACCOUNT Login Register SUPPORT Contact us WhatsApp Support © Copyright 2026 JSK1. All Rights Reserved.",
+   "jsonLd": [
+    {
+     "@type": "WebPage",
+     "name": "About JSK1 — About the Official JSK1 Website",
+     "url": "https://jsk-1.com/about.html",
+     "inLanguage": "en",
+     "description": "Learn about JSK1, the official JSK1 online gaming website. Find out what JSK1 offers and how to get started at jsk-1.com.",
+     "isPartOf": {
+      "@type": "WebSite",
+      "url": "https://jsk-1.com/"
+     },
+     "@context": "https://schema.org"
+    },
+    {
+     "@type": "BreadcrumbList",
+     "itemListElement": [
+      {
+       "@type": "ListItem",
+       "position": 1,
+       "name": "Home",
+       "item": "https://jsk-1.com/"
+      },
+      {
+       "@type": "ListItem",
+       "position": 2,
+       "name": "About",
+       "item": "https://jsk-1.com/about.html"
+      }
+     ],
+     "@context": "https://schema.org"
+    }
+   ],
+   "logoAlt": "JSK1",
+   "siteNameNodes": [
+    "JSK1",
+    "JSK1"
+   ]
+  },
+  "contact.html": {
+   "title": "Contact JSK1 — JSK1 Support & Help",
+   "description": "Contact JSK1 support. Reach the official JSK1 team for help with your JSK1 account at jsk-1.com.",
+   "robots": "index,follow",
+   "canonical": "https://jsk-1.com/contact.html",
+   "ogTitle": "Contact JSK1 — JSK1 Support & Help",
+   "ogDescription": "Contact JSK1 support. Reach the official JSK1 team for help with your JSK1 account at jsk-1.com.",
+   "ogImage": null,
+   "ogSiteName": "JSK1",
+   "ogUrl": "https://jsk-1.com/contact.html",
+   "twTitle": "Contact JSK1 — JSK1 Support & Help",
+   "twDescription": "Contact JSK1 support. Reach the official JSK1 team for help with your JSK1 account at jsk-1.com.",
+   "twImage": null,
+   "h1": [
+    "Contact JSK1"
+   ],
+   "h2": [
+    "Before you contact us",
+    "Important Links",
+    "Account",
+    "Support"
+   ],
+   "bodyText": "JSK1 Download Apk Demo Login Register ▾ 🔥🔥 The casino floor is buzzing with excitement! Teenpatti BaccaratPoker Play Live HOME ABOUT CONTACT RESPONSIBLE GAMING LOGIN REGISTER Home › Contact Contact JSK1 Get in touch with the JSK1 support team. Use any of the channels below to reach us about your account, signing in, or a general question. WhatsApp: add your real WhatsApp number here Email: add your real support email here Support hours: add your real support hours here Before you contact us If you are trying to sign in, go to the JSK1 Login page. New here? Create an account on the JSK1 Register page. You can read more about the site on the About JSK1 page. 24X7 Support WhatsApp Support JSK1 The official JSK1 website. Create an account, sign in and reach support any time. IMPORTANT LINKS Home About Contact Responsible Gaming Privacy Policy ACCOUNT Login Register SUPPORT Contact us WhatsApp Support © Copyright 2026 JSK1. All Rights Reserved.",
+   "footerText": "JSK1 The official JSK1 website. Create an account, sign in and reach support any time. IMPORTANT LINKS Home About Contact Responsible Gaming Privacy Policy ACCOUNT Login Register SUPPORT Contact us WhatsApp Support © Copyright 2026 JSK1. All Rights Reserved.",
+   "jsonLd": [
+    {
+     "@type": "ContactPage",
+     "name": "Contact JSK1 — JSK1 Support & Help",
+     "url": "https://jsk-1.com/contact.html",
+     "inLanguage": "en",
+     "description": "Contact JSK1 support. Reach the official JSK1 team for help with your JSK1 account at jsk-1.com.",
+     "isPartOf": {
+      "@type": "WebSite",
+      "url": "https://jsk-1.com/"
+     },
+     "@context": "https://schema.org"
+    },
+    {
+     "@type": "BreadcrumbList",
+     "itemListElement": [
+      {
+       "@type": "ListItem",
+       "position": 1,
+       "name": "Home",
+       "item": "https://jsk-1.com/"
+      },
+      {
+       "@type": "ListItem",
+       "position": 2,
+       "name": "Contact",
+       "item": "https://jsk-1.com/contact.html"
+      }
+     ],
+     "@context": "https://schema.org"
+    }
+   ],
+   "logoAlt": "JSK1",
+   "siteNameNodes": [
+    "JSK1",
+    "JSK1"
+   ]
+  },
+  "login.html": {
+   "title": "Login — JSK1",
+   "description": "Sign in to your JSK1 account on the official JSK1 website.",
+   "robots": "noindex,follow",
+   "canonical": "https://jsk-1.com/login.html",
+   "ogTitle": "Login — JSK1",
+   "ogDescription": "Sign in to your JSK1 account on the official JSK1 website.",
+   "ogImage": null,
+   "ogSiteName": "JSK1",
+   "ogUrl": "https://jsk-1.com/login.html",
+   "twTitle": "Login — JSK1",
+   "twDescription": "Sign in to your JSK1 account on the official JSK1 website.",
+   "twImage": null,
+   "h1": [
+    "LOGIN"
+   ],
+   "h2": [],
+   "bodyText": "LOGIN submit Forgot Don't have ? Register here Download APK Terms and Conditions Responsible Gaming 24X7 Support +18304058563",
+   "footerText": "",
+   "jsonLd": [],
+   "logoAlt": null,
+   "siteNameNodes": []
+  },
+  "register.html": {
+   "title": "Register — JSK1",
+   "description": "Create a JSK1 account on the official JSK1 website.",
+   "robots": "noindex,follow",
+   "canonical": "https://jsk-1.com/register.html",
+   "ogTitle": "Register — JSK1",
+   "ogDescription": "Create a JSK1 account on the official JSK1 website.",
+   "ogImage": null,
+   "ogSiteName": "JSK1",
+   "ogUrl": "https://jsk-1.com/register.html",
+   "twTitle": "Register — JSK1",
+   "twDescription": "Create a JSK1 account on the official JSK1 website.",
+   "twImage": null,
+   "h1": [
+    "REGISTER"
+   ],
+   "h2": [
+    "Registration is currently closed"
+   ],
+   "bodyText": "REGISTER Register as New User Get your instant ID from whatsapp CLICK HERE OR 🇮🇳 +91 🇦🇪 +971 🇬🇧 +44 🇺🇸 +1 🇦🇺 +61 🇧🇩 +880 🇳🇵 +977 Create Account Already have an account? Login here Please get your ID from WhatsApp.",
+   "footerText": "",
+   "jsonLd": [],
+   "logoAlt": null,
+   "siteNameNodes": []
+  },
+  "404.html": {
+   "title": "Page not found — JSK1",
+   "description": "The page you were looking for could not be found on the JSK1 website.",
+   "robots": "noindex,follow",
+   "canonical": null,
+   "ogTitle": null,
+   "ogDescription": null,
+   "ogImage": null,
+   "ogSiteName": null,
+   "ogUrl": null,
+   "twTitle": null,
+   "twDescription": null,
+   "twImage": null,
+   "h1": [
+    "Page not found"
+   ],
+   "h2": [
+    "Where to go next",
+    "Important Links",
+    "Account",
+    "Support"
+   ],
+   "bodyText": "JSK1 Download Apk Demo Login Register ▾ 🔥🔥 The casino floor is buzzing with excitement! Teenpatti BaccaratPoker Play Live HOME ABOUT CONTACT RESPONSIBLE GAMING LOGIN REGISTER Page not found We could not find the page you were looking for. The address may have been mistyped, or the page may have been moved or removed. Where to go next JSK1 home — the main site About JSK1 — what this site is Contact — reach the support team Responsible Gaming — playing safely 24X7 Support WhatsApp Support JSK1 The official JSK1 website. Create an account, sign in and reach support any time. IMPORTANT LINKS Home About Contact Responsible Gaming Privacy Policy ACCOUNT Login Register SUPPORT Contact us WhatsApp Support © Copyright 2026 JSK1. All Rights Reserved.",
+   "footerText": "JSK1 The official JSK1 website. Create an account, sign in and reach support any time. IMPORTANT LINKS Home About Contact Responsible Gaming Privacy Policy ACCOUNT Login Register SUPPORT Contact us WhatsApp Support © Copyright 2026 JSK1. All Rights Reserved.",
+   "jsonLd": [],
+   "logoAlt": "JSK1",
+   "siteNameNodes": [
+    "JSK1",
+    "JSK1"
+   ]
+  },
+  "privacy-policy.html": {
+   "title": "Privacy Policy | JSK1",
+   "description": "Read the JSK1 Privacy Policy to understand how information is handled when you use the JSK1 website and services.",
+   "robots": "index,follow",
+   "canonical": "https://jsk-1.com/privacy-policy.html",
+   "ogTitle": "Privacy Policy | JSK1",
+   "ogDescription": "Read the JSK1 Privacy Policy to understand how information is handled when you use the JSK1 website and services.",
+   "ogImage": null,
+   "ogSiteName": "JSK1",
+   "ogUrl": "https://jsk-1.com/privacy-policy.html",
+   "twTitle": "Privacy Policy | JSK1",
+   "twDescription": "Read the JSK1 Privacy Policy to understand how information is handled when you use the JSK1 website and services.",
+   "twImage": null,
+   "h1": [
+    "Privacy Policy"
+   ],
+   "h2": [
+    "Important Links",
+    "Account",
+    "Support"
+   ],
+   "bodyText": "JSK1 Download Apk Demo Login Register ▾ 🔥🔥 The casino floor is buzzing with excitement! Teenpatti BaccaratPoker Play Live HOME ABOUT CONTACT RESPONSIBLE GAMING LOGIN REGISTER Privacy Policy This Privacy Policy explains how JSK1 handles information when you use this website and its services. Editable placeholder — write your own privacy policy here, in /admin > Pages > Privacy Policy. It should describe what this site actually collects, why, how long it is kept and who to contact about it. Nothing has been written for you, because only you know what is true of your site. 24X7 Support WhatsApp Support JSK1 The official JSK1 website. Create an account, sign in and reach support any time. IMPORTANT LINKS Home About Contact Responsible Gaming Privacy Policy ACCOUNT Login Register SUPPORT Contact us WhatsApp Support © Copyright 2026 JSK1. All Rights Reserved.",
+   "footerText": "JSK1 The official JSK1 website. Create an account, sign in and reach support any time. IMPORTANT LINKS Home About Contact Responsible Gaming Privacy Policy ACCOUNT Login Register SUPPORT Contact us WhatsApp Support © Copyright 2026 JSK1. All Rights Reserved.",
+   "jsonLd": [],
+   "logoAlt": "JSK1",
+   "siteNameNodes": [
+    "JSK1",
+    "JSK1"
+   ]
+  },
+  "responsible-gaming.html": {
+   "title": "Responsible Gaming — JSK1",
+   "description": "JSK1 responsible gaming information: 18+ only, setting limits, spotting warning signs and where to get help. Official JSK1 site, jsk-1.com.",
+   "robots": "index,follow",
+   "canonical": "https://jsk-1.com/responsible-gaming.html",
+   "ogTitle": "Responsible Gaming — JSK1",
+   "ogDescription": "JSK1 responsible gaming information: 18+ only, setting limits, spotting warning signs and where to get help. Official JSK1 site, jsk-1.com.",
+   "ogImage": null,
+   "ogSiteName": "JSK1",
+   "ogUrl": "https://jsk-1.com/responsible-gaming.html",
+   "twTitle": "Responsible Gaming — JSK1",
+   "twDescription": "JSK1 responsible gaming information: 18+ only, setting limits, spotting warning signs and where to get help. Official JSK1 site, jsk-1.com.",
+   "twImage": null,
+   "h1": [
+    "Responsible Gaming"
+   ],
+   "h2": [
+    "18+ only",
+    "Play within your limits",
+    "Warning signs",
+    "Getting help",
+    "Talk to us",
+    "Important Links",
+    "Account",
+    "Support"
+   ],
+   "bodyText": "JSK1 Download Apk Demo Login Register ▾ 🔥🔥 The casino floor is buzzing with excitement! Teenpatti BaccaratPoker Play Live HOME ABOUT CONTACT RESPONSIBLE GAMING LOGIN REGISTER Home › Responsible Gaming Responsible Gaming Keeping play safe, and knowing where to get help. Gaming should stay fun and under control. This page explains how to keep your play responsible and where to find help if it stops feeling that way. 18+ only JSK1 is strictly for adults aged 18 and over. Underage gaming is not permitted. If you are under 18, please do not create an account or play. Play within your limits A few simple habits keep gaming healthy: Set a budget before you play and treat it as entertainment, not a way to make money. Never play with money you cannot afford to lose. Set time limits and take regular breaks. Do not try to win back losses by playing more. Do not play when stressed, upset, or under the influence of alcohol. Warning signs It may be time to step back if you notice yourself: Spending more time or money than you intended. Chasing losses or borrowing money to play. Neglecting work, studies, or relationships because of gaming. Feeling anxious, guilty, or unable to stop. Getting help If gaming is no longer under control, help is available. Support organisations such as BeGambleAware and GamCare offer free, confidential advice. Editable placeholder — add a helpline for your own country or region here. Talk to us If you have a question about your account or want to limit your play, reach us through the Contact page. 24X7 Support WhatsApp Support JSK1 The official JSK1 website. Create an account, sign in and reach support any time. IMPORTANT LINKS Home About Contact Responsible Gaming Privacy Policy ACCOUNT Login Register SUPPORT Contact us WhatsApp Support © Copyright 2026 JSK1. All Rights Reserved.",
+   "footerText": "JSK1 The official JSK1 website. Create an account, sign in and reach support any time. IMPORTANT LINKS Home About Contact Responsible Gaming Privacy Policy ACCOUNT Login Register SUPPORT Contact us WhatsApp Support © Copyright 2026 JSK1. All Rights Reserved.",
+   "jsonLd": [
+    {
+     "@type": "WebPage",
+     "name": "Responsible Gaming — JSK1",
+     "url": "https://jsk-1.com/responsible-gaming.html",
+     "inLanguage": "en",
+     "description": "JSK1 responsible gaming information: 18+ only, setting limits, spotting warning signs and where to get help. Official JSK1 site, jsk-1.com.",
+     "isPartOf": {
+      "@type": "WebSite",
+      "url": "https://jsk-1.com/"
+     },
+     "@context": "https://schema.org"
+    },
+    {
+     "@type": "BreadcrumbList",
+     "itemListElement": [
+      {
+       "@type": "ListItem",
+       "position": 1,
+       "name": "Home",
+       "item": "https://jsk-1.com/"
+      },
+      {
+       "@type": "ListItem",
+       "position": 2,
+       "name": "Responsible Gaming",
+       "item": "https://jsk-1.com/responsible-gaming.html"
+      }
+     ],
+     "@context": "https://schema.org"
+    }
+   ],
+   "logoAlt": "JSK1",
+   "siteNameNodes": [
+    "JSK1",
+    "JSK1"
+   ]
+  }
+ }
+}
