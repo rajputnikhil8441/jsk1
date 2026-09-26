@@ -39,6 +39,16 @@ for one thing: no separate slug to keep in step with the domain.
 data migration, not a refactor. Keeping the two fields apart is what lets the
 hostname be correct while the row keeps its historical name.
 
+## Two brands today
+
+| Brand | Domain | siteId | Media bucket |
+|---|---|---|---|
+| `jsk-1.com` | jsk-1.com | `playzone9` | `cms-media` |
+| `playzone9.app` | playzone9.app | `playzone9app` | `cms-media-pz9` |
+
+The two siteIds differ by one word and mean completely different things. See
+`brands/playzone9.app/README.md`.
+
 ## Adding a brand
 
 1. `mkdir brands/<hostname>` and write `brand.json` with the four required fields.

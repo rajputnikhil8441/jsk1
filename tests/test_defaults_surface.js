@@ -34,7 +34,8 @@ const SURFACE = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'def
    is here too: Phase 3b must not have added it. */
 const FORBIDDEN = [
   ['JSK1 / jsk-1.com', /jsk-?1/i],
-  ['playzone9app (the second brand)', /playzone9app/i]
+  ['playzone9app / Playzone9 (the SECOND brand -- its content belongs in its own brand.js)',
+   /playzone9app|playzone9\.app/i]
 ];
 
 /* 'playzone' alone is a THEME PRESET id, not the brand. It is stored in
@@ -229,7 +230,8 @@ function cssRootVars(file) {
     check('seo.baseUrl resolves to jsk-1.com', v.baseUrl === 'https://jsk-1.com', v.baseUrl);
     check('the about title resolves from the brand layer', /About JSK1/.test(v.aboutTitle), v.aboutTitle);
     check('js/brand.js is the source', v.brandKeys.includes('branding') && v.brandKeys.includes('pages'), v.brandKeys);
-    check('and still exactly ONE brand is registered', v.brandCount === 1, v.brandCount);
+    check('and exactly TWO brands are registered (Phase 5 added Playzone9)',
+      v.brandCount === 2, v.brandCount);
   }
 
   console.log(`\n==== ${pass} passed, ${fail} failed ====`);

@@ -149,7 +149,8 @@ async function serveUnderHost(ctx) {
       const win = {}; new Function('window', 'console', src)(win, { warn() {} });
       return Object.keys(win.CMS_BRANDS);
     }, { src: CONFIG_SRC });
-    check('exactly one brand is configured in Phase 1', keys.length === 1 && keys[0] === 'jsk-1.com', keys);
+    check('exactly the two real brands are configured',
+      JSON.stringify(keys.slice().sort()) === '["jsk-1.com","playzone9.app"]', keys);
     check('no lookalike equals that key', !LOOKALIKES.some(h => keys.indexOf(h) > -1));
   }
 

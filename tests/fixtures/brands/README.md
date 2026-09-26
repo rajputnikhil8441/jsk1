@@ -4,7 +4,7 @@ Three fabricated brands used to prove the generator and the assembler
 support genuine divergence between sites. They live here, **not** in
 `brands/`, so that `node tools/build-site.js --list` can never show them and
 nobody can mistake one for a real site. They are also not in `CMS_BRANDS`,
-so the production registry never lists one of them.
+so the production registry holds only the two real brands.
 
 | Brand | Proves |
 |---|---|

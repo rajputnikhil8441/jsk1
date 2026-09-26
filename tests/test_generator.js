@@ -116,18 +116,44 @@ console.log('\n===== ONE REGISTERED BRAND =====');
 {
   const brands = KIT.listBrands(PROD_BRANDS);
   check('brands/ is non-empty', brands.length > 0, brands);
-  check('brands/ contains exactly ["jsk-1.com"]',
-    brands.length === 1 && brands[0] === 'jsk-1.com', brands);
+  /* Phase 5 added the second brand. Enumerated rather than counted, so a
+     third one has to be added here deliberately. */
+  check('brands/ contains exactly ["jsk-1.com","playzone9.app"]',
+    JSON.stringify(brands) === '["jsk-1.com","playzone9.app"]', brands);
 
   const cfg = fs.readFileSync(path.join(ROOT, 'js', 'cms-config.js'), 'utf8');
   const block = (cfg.match(/window\.CMS_BRANDS\s*=\s*\{[\s\S]*?\n\};/) || [''])[0];
   check('CMS_BRANDS block was found in js/cms-config.js', block.length > 0);
   const hosts = [...block.matchAll(/'([a-z0-9.-]+)'\s*:\s*\{/g)].map(m => m[1]);
-  check('CMS_BRANDS registers exactly one hostname',
-    hosts.length === 1 && hosts[0] === 'jsk-1.com', hosts);
+  check('CMS_BRANDS registers exactly the two real hostnames',
+    JSON.stringify(hosts.slice().sort()) === '["jsk-1.com","playzone9.app"]', hosts);
+  check('every brand directory is registered and every registration has a directory',
+    JSON.stringify(brands.slice().sort()) === JSON.stringify(hosts.slice().sort()), [brands, hosts]);
   check('no synthetic test brand reached the production registry',
-    !/acme\.test|zeta\.test/.test(cfg));
-  check('Playzone9 is still not registered', !/playzone9\.app/.test(cfg));
+    !/acme\.test|zeta\.test|omega\.test/.test(cfg));
+
+  /* The dangerous one. 'playzone9' is JSK1's row -- the name predates the
+     rename -- so the second brand must not be given it, or it would read
+     and write JSK1's live content. */
+  const siteIds = {};
+  for (const m of block.matchAll(/'([a-z0-9.-]+)'\s*:\s*\{[^}]*?siteId:\s*'([^']+)'[^}]*?bucket:\s*'([^']+)'/g)) {
+    siteIds[m[1]] = { siteId: m[2], bucket: m[3] };
+  }
+  check('both registrations were parsed', Object.keys(siteIds).length === 2, siteIds);
+  check('jsk-1.com keeps its historical siteId', siteIds['jsk-1.com'].siteId === 'playzone9', siteIds);
+  check('playzone9.app does NOT use JSK1\'s row',
+    siteIds['playzone9.app'].siteId !== 'playzone9', siteIds);
+  check('playzone9.app uses its own row', siteIds['playzone9.app'].siteId === 'playzone9app', siteIds);
+  check('the two brands have different siteIds',
+    siteIds['jsk-1.com'].siteId !== siteIds['playzone9.app'].siteId, siteIds);
+  check('the two brands have different media buckets',
+    siteIds['jsk-1.com'].bucket !== siteIds['playzone9.app'].bucket, siteIds);
+  check('each brand.json agrees with the registry it is registered under', (() => {
+    return brands.every(b => {
+      const x = KIT.loadBrand(PROD_BRANDS, b);
+      return siteIds[b] && siteIds[b].siteId === x.siteId;
+    });
+  })());
 
   /* The synthetic brands must be unreachable from the production dir,
      or --list would offer a fake site as a build target. */
@@ -278,7 +304,7 @@ console.log('\n===== CLEAR REFUSALS =====');
 {
   refuses('an unknown brand is refused, and the known brands are listed',
     () => KIT.planBrand({ brandsDir: PROD_BRANDS, templatesDir: TEMPLATES, id: 'nope.example' }),
-    /Unknown brand "nope\.example"[\s\S]*Known brands: jsk-1\.com/);
+    /Unknown brand "nope\.example"[\s\S]*Known brands: jsk-1\.com, playzone9\.app/);
 
   refuses('an empty brand id is refused', () => KIT.loadBrand(PROD_BRANDS, ''), /brand id is required/);
 

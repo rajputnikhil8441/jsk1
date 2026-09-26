@@ -74,6 +74,13 @@ window.CMS_PROJECT = {
        migrating live data for no functional gain. It is left
        exactly as production has always had it.
 
+     playzone9.app -> playzone9app
+       Note the difference from the line above: playzone9app,
+       not playzone9. The two look almost identical and are
+       completely different brands. Giving this brand the row
+       called `playzone9` would point it at JSK1's live content.
+       If you only read one comment in this file, read this one.
+
    bucket is the Supabase Storage bucket holding this brand's
    uploaded media. Separate buckets are what make one brand's
    media URLs invalid for another, so two brands must never
@@ -84,6 +91,11 @@ window.CMS_BRANDS = {
     'jsk-1.com': {
         siteId: 'playzone9',
         bucket: 'cms-media'
+    },
+
+    'playzone9.app': {
+        siteId: 'playzone9app',
+        bucket: 'cms-media-pz9'
     }
 };
 

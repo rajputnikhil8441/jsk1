@@ -286,11 +286,12 @@ console.log('\n===== ADDING A BRAND IS CONFIGURATION =====');
   /* The synthetic brands are a fixture, not a site. */
   check('the synthetic brands are not in brands/',
     !fs.existsSync(path.join(PROD_BRANDS, 'acme.test')) && !fs.existsSync(path.join(PROD_BRANDS, 'zeta.test')));
-  check('--list still offers exactly one brand',
-    JSON.stringify(KIT.listBrands(PROD_BRANDS)) === '["jsk-1.com"]', KIT.listBrands(PROD_BRANDS));
+  check('--list offers exactly the two real brands',
+    JSON.stringify(KIT.listBrands(PROD_BRANDS)) === '["jsk-1.com","playzone9.app"]',
+    KIT.listBrands(PROD_BRANDS));
   const cfg = fs.readFileSync(path.join(ROOT, 'js', 'cms-config.js'), 'utf8');
-  check('CMS_BRANDS mentions neither synthetic brand', !/acme\.test|zeta\.test/.test(cfg));
-  check('and still does not mention Playzone9', !/playzone9\.app/.test(cfg));
+  check('CMS_BRANDS mentions no synthetic brand',
+    !/acme\.test|zeta\.test|omega\.test/.test(cfg));
 }
 
 /* ====================================================================
