@@ -1,0 +1,9 @@
+{
+  "_comment": "Synthetic. Fills the login-notice slot; uses shared templates otherwise.",
+  "id": "acme.test",
+  "name": "ACMEPLAY",
+  "domain": "acme.test",
+  "siteId": "acmeplay",
+  "mediaBucket": "cms-media-acme",
+  "output": "acme.test"
+}

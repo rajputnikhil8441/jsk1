@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en" data-cms-page="login">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title data-cms-title="pages.login.title">Login — {{brand.name}}</title>
+    <meta name="description" data-cms-meta="pages.login.metaDescription" content="Sign in to your {{brand.name}} account on the official {{brand.name}} website." />
+    <link rel="canonical" href="https://{{brand.domain}}/login.html" />
+    <!-- A sign in screen is not a search landing page. noindex keeps it
+         out of results; follow still lets the links on it pass through. -->
+    <meta name="robots" content="noindex,follow" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="{{brand.name}}" />
+    <meta property="og:title" content="Login — {{brand.name}}" />
+    <meta property="og:description" content="Sign in to your {{brand.name}} account on the official {{brand.name}} website." />
+    <meta property="og:url" content="https://{{brand.domain}}/login.html" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="css/login.css">
+    <!-- Favicon. The committed file is the static fallback so the icon is
+         correct before any script runs and for crawlers; the CMS overrides
+         this href with the uploaded favicon whenever one is set. -->
+    <link rel="icon" type="image/png" sizes="512x512" href="assets/images/favicon.png" id="cmsFavicon" />
+
+    <!-- REMOTE BRAND STORAGE CONFIG (edit this one file to go live everywhere) -->
+    <script src="js/cms-config.js"></script>
+
+    <!-- PUBLISHED BRAND — regenerate from /admin > Export > Download brand.js -->
+    <script src="js/brand.js"></script>
+
+    <!-- WHITE LABEL CMS -->
+    <script src="js/cms.js"></script>
+</head>
+
+<body>
+
+    <div class="login-page">
+        <main class="login-main">
+
+            <a href="./"><img hidden class="login-logo" data-cms-img="loginLogo" data-cms-alt="siteName" alt="{{brand.name}}"></a>
+
+            <div class="login-card">
+
+                <h1 class="login-title"><span data-cms="login.heading">Login</span><i class="fas fa-right-to-bracket t-icon"></i></h1>
+
+                <form id="contactForm" class="login-form" autocomplete="off">
+
+                    <div class="input-row">
+                        <input type="text" id="firstName" name="firstName" placeholder="Username" data-cms-ph="login.userPh" maxlength="60" autocomplete="username">
+                        <span class="input-icon"><i class="fas fa-user"></i></span>
+                    </div>
+
+                    <div class="input-row ">
+                        <input type="password" id="surname" name="surname" placeholder="Password" data-cms-ph="login.passPh" maxlength="60" autocomplete="current-password">
+                        <span class="input-icon"><i class="fas fa-key"></i></span>
+                    </div>
+
+                    <button type="submit" class="btn-login-submit ">
+<span class="btn-login-text" data-cms="login.submit">Login</span>
+                        <span class="btn-login-icon"><i class="fas fa-right-to-bracket"></i></span>
+                    </button>
+
+                </form><!-- BRAND:login-notice --><!-- /BRAND:login-notice -->
+
+                <div class="forgot-row">
+                    <button class="forgot-link" id="helpBtn" type="button" data-cms="login.forgot">Forgotpassword</button>
+                </div>
+
+                <div class="register-row">
+                    <span class="reg-label" data-cms="login.regLabel">Don't have ?</span>
+                    <a href="#" id="contactLink" data-cms="login.regLink">Register here</a>
+                </div>
+
+                <div class="apk-row">
+                    <a href="#" class="apk-link" id="apkLink"><i class="fas fa-download"></i><span data-cms="login.apk">Download APK</span></a>
+                </div>
+
+            </div>
+
+        </main>
+
+        <footer class="login-footer">
+
+            <div class="footer-legal">
+                <a href="#" id="termsLink" data-cms="login.terms">Terms and Conditions</a>
+                <a href="#" id="respLink" data-cms="login.responsible">Responsible Gaming</a>
+            </div>
+
+            <div class="footer-support">
+                <span class="footer-support-label" data-cms="login.footerLabel">24X7 Support</span>
+                <a href="#" class="footer-phone" id="footerPhone" data-cms="login.phone">+18304058563</a>
+            </div>
+
+            <div class="footer-social">
+                <a href="#" class="fs-fb"  id="socFb"  aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
+                <a href="#" class="fs-ig"  id="socIg"  aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+                <a href="#" class="fs-tg"  id="socTg"  aria-label="Telegram"><i class="fab fa-telegram-plane"></i></a>
+                <a href="#" class="fs-x"   id="socX"   aria-label="X"><i class="fab fa-x-twitter"></i></a>
+                <a href="#" class="fs-wa"  id="socWa"  aria-label="WhatsApp"><i class="fab fa-whatsapp"></i></a>
+                <a href="#" class="fs-web" id="socWeb" aria-label="Website"><i class="fas fa-globe"></i></a>
+            </div>
+
+        </footer>
+
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+
+            /* Plain login form: does not send data anywhere and does not
+               redirect. Submitting just clears the fields locally. */
+            document.getElementById('contactForm').addEventListener('submit', function (e) {
+                e.preventDefault();
+                document.getElementById('firstName').value = '';
+                document.getElementById('surname').value = '';
+            });
+
+            /* "Register here" is normal internal navigation. */
+            var regLink = document.getElementById('contactLink');
+            if (regLink) regLink.setAttribute('href', 'register.html');
+
+            /* Non-functional placeholder buttons stay inert. */
+            var apk = document.getElementById('apkLink');
+            if (apk) apk.addEventListener('click', function (e) { e.preventDefault(); });
+
+            var help = document.getElementById('helpBtn');
+            if (help) help.addEventListener('click', function (e) { e.preventDefault(); });
+        });
+    </script>
+
+</body>
+
+</html>

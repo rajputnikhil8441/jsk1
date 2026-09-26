@@ -1,0 +1,4 @@
+# Generated brand output. Built by tools/build-brand.js from brands/ + templates/.
+# Not committed in this phase: Phase 7 decides whether the deploy consumes it
+# from the repository or builds it on the runner.
+sites/

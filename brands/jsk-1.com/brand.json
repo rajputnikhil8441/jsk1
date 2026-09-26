@@ -1,0 +1,24 @@
+{
+  "_comment": [
+    "JSK1 — the first brand, and for now the only one.",
+    "",
+    "The directory name is the hostname the brand is served from, which is also",
+    "the key js/cms-config.js resolves on. One name, one place, nothing to keep",
+    "in step by hand.",
+    "",
+    "siteId is the row in Supabase holding this brand's content. It reads oddly",
+    "because it predates the JSK1 name; renaming it would mean migrating live",
+    "data for no functional gain, so it stays exactly as production has it.",
+    "",
+    "Adding a brand means adding a sibling directory to this one. It does not",
+    "mean editing js/cms.js, the generator, or any template."
+  ],
+
+  "id": "jsk-1.com",
+  "name": "JSK1",
+  "domain": "jsk-1.com",
+  "siteId": "playzone9",
+  "mediaBucket": "cms-media",
+
+  "output": "jsk-1.com"
+}

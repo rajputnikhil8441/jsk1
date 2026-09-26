@@ -1,0 +1,24 @@
+{
+  "_comment": [
+    "COMMITTED FALLBACK for tools/build-seo-files.js.",
+    "The live CMS record is the source of truth for sitemap.xml and robots.txt.",
+    "This file is used only when the deploy cannot reach it -- a database outage,",
+    "or a fork with remote storage switched off. Keep it in step with the shipped",
+    "defaults in js/cms.js; it is the last thing standing between an outage and a",
+    "sitemap that describes the wrong site.",
+    "A white-label deployment edits baseUrl and the pages below, nothing else."
+  ],
+  "seo": {
+    "baseUrl": "https://jsk-1.com",
+    "robotsExtra": ""
+  },
+  "pages": {
+    "home": { "url": "", "updatedAt": "2026-09-17", "inSitemap": true, "robots": { "index": true } },
+    "login": { "url": "login.html", "updatedAt": "", "inSitemap": false, "robots": { "index": false } },
+    "register": { "url": "register.html", "updatedAt": "", "inSitemap": false, "robots": { "index": false } },
+    "about": { "url": "about.html", "updatedAt": "2026-09-17", "inSitemap": true, "robots": { "index": true } },
+    "contact": { "url": "contact.html", "updatedAt": "2026-09-17", "inSitemap": true, "robots": { "index": true } },
+    "responsible-gaming": { "url": "responsible-gaming.html", "updatedAt": "2026-09-17", "inSitemap": true, "robots": { "index": true } },
+    "privacy-policy": { "url": "privacy-policy.html", "updatedAt": "2026-09-21", "inSitemap": true, "robots": { "index": true } }
+  }
+}
