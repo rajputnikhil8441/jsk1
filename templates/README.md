@@ -35,9 +35,9 @@ declared today:
 | `register-notice` | after the register form | register-specific copy or markup |
 
 So a brand can re-tint the whole site and customise either sign-up step
-without an edit to `js/cms.js` or to any shared template. A brand fills `head-extra`
-with, for example, a `<link>` to a stylesheet it ships in its own `static/`
-overlay. A brand that says
+without an edit to `js/cms.js` or to any shared template. Playzone9 uses
+`head-extra` to load its own `css/brand.css`; see
+`brands/playzone9.app/README.md`. A brand that says
 nothing gets nothing: the markers and everything between them are removed, so a
 page with no slots filled is byte-identical to one that never had markers. That
 property is what let slots be added to the live pages at all.

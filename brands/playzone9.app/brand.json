@@ -17,5 +17,29 @@
   "domain": "playzone9.app",
   "siteId": "playzone9app",
   "mediaBucket": "cms-media-pz9",
-  "output": "playzone9.app"
+  "output": "playzone9.app",
+
+  "_environments_comment": [
+    "The brand is Playzone9. playzone9.app is the domain it will LAUNCH on",
+    "and is reserved: no deployment, no DNS, nothing points at it yet.",
+    "playzones9.com is where it is reviewed first.",
+    "",
+    "The staging host is declared HERE rather than by renaming this brand,",
+    "because the brand and the hostname are different things. Renaming would",
+    "mean renaming back at launch -- directory, id, Supabase row, every test",
+    "that names it -- to change nothing about the brand.",
+    "",
+    "siteId is its own: a review copy sharing the production row would",
+    "publish over production. NEITHER row exists yet; both render from",
+    "brand.js. noindex makes every staging page noindex,nofollow and",
+    "replaces the sitemap with a robots.txt that blocks everything."
+  ],
+  "environments": {
+    "staging": {
+      "host": "playzones9.com",
+      "siteId": "playzone9staging",
+      "bucket": "cms-media-pz9-staging",
+      "noindex": true
+    }
+  }
 }

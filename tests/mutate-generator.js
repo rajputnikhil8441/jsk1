@@ -26,7 +26,7 @@ const { execFileSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
 const SUITES = ['test_generator.js', 'test_multibrand.js', 'test_deploy_surface.js',
-  'test_assembly.js'];
+  'test_assembly.js', 'test_staging.js'];
 
 /* Only what the two suites read. node_modules and .git are excluded
    deliberately: neither suite needs a browser. */
@@ -44,6 +44,13 @@ function copyInto(sandbox) {
      the only honest way to ask -- so the sandbox has to be a repository too.
      Indexing it also makes .gitignore apply, exactly as in the real one. */
   gitInit(sandbox);
+  /* test_staging.js drives a real browser, because the one thing it has to
+     prove -- that js/cms.js does not repaint a review host's canonical and
+     robots tags back to production -- only happens once scripts run. The
+     sandbox borrows the installed playwright rather than reinstalling it. */
+  try {
+    fs.symlinkSync(path.join(__dirname, 'node_modules'), path.join(sandbox, 'tests', 'node_modules'));
+  } catch (e) { /* already there, or unsupported: the suite will say so */ }
 }
 
 function gitInit(sandbox) {
@@ -234,13 +241,13 @@ const MUTANTS = [
 
   { id: 'P5', desc: 'the SEO step is not told which brand it is building',
     file: 'tools/lib/sitekit.js', expect: 'test_assembly.js',
-    find: "        '--brand', site.plan.brand.id, '--out', dest, '--config', seoCfg];",
+    find: "        '--brand', site.plan.brand.domain, '--out', dest, '--config', seoCfg];",
     repl: "        '--out', dest, '--config', seoCfg];" },
 
   { id: 'P6', desc: 'the SEO step reads the root fallback instead of the brand\'s own',
     file: 'tools/lib/sitekit.js', expect: 'test_assembly.js',
-    find: "        '--brand', site.plan.brand.id, '--out', dest, '--config', seoCfg];",
-    repl: "        '--brand', site.plan.brand.id, '--out', dest];" },
+    find: "        '--brand', site.plan.brand.domain, '--out', dest, '--config', seoCfg];",
+    repl: "        '--brand', site.plan.brand.domain, '--out', dest];" },
 
   { id: 'P7', desc: 'the shared asset directory is left out of every site',
     file: 'tools/lib/sitekit.js', expect: 'test_assembly.js',
@@ -325,7 +332,93 @@ const MUTANTS = [
 
   { id: 'S7', desc: 'internal links are made root-absolute, breaking on any sub-path host',
     file: 'templates/pages/index.html', expect: 'test_assembly.js', all: 2,
-    find: 'href="about.html"', repl: 'href="/about.html"' }
+    find: 'href="about.html"', repl: 'href="/about.html"' },
+
+  /* ---- staging: a review host that gets indexed competes with the real
+     site for the real site's own terms, and a review host that claims the
+     production domain hands its signals to a domain nobody has connected.
+     Each of these is one of the ways that happens. ---- */
+  { id: 'T1', desc: 'an environment\'s noindex flag is ignored',
+    file: 'tools/lib/brandkit.js', expect: 'test_staging.js',
+    find: 'noindex: e.noindex === true', repl: 'noindex: false' },
+
+  { id: 'T2', desc: 'the static robots meta is never rewritten for a noindex build',
+    file: 'tools/lib/brandkit.js', expect: 'test_staging.js',
+    find: '    if (brand.noindex) {\n        let hits = 0;', repl: '    if (false) {\n        let hits = 0;' },
+
+  { id: 'T3', desc: 'the engine stops honouring a whole-deployment noindex, so JS repaints it indexable',
+    file: 'js/cms.js', expect: 'test_staging.js',
+    find: "        if (window.CMS_NOINDEX === true) return 'noindex,nofollow';", repl: '' },
+
+  { id: 'T4', desc: 'the staging build keeps the brand\'s production baseUrl, so JS repaints the canonical to production',
+    file: 'tools/lib/brandkit.js', expect: 'test_staging.js',
+    find: "        '    b.seo.baseUrl = ' + JSON.stringify('https://' + brand.domain) + ';\\n' +",
+    repl: "        '    b.seo.baseUrl = ' + JSON.stringify('https://' + brand.canonicalDomain) + ';\\n' +" },
+
+  { id: 'T5', desc: 'a review host publishes a sitemap, inviting the crawl it must not get',
+    file: 'tools/lib/sitekit.js', expect: 'test_staging.js',
+    find: "    const seo = plan.brand.noindex ? ['robots.txt'] : ['sitemap.xml', 'robots.txt'];",
+    repl: "    const seo = ['sitemap.xml', 'robots.txt'];" },
+
+  { id: 'T6', desc: 'the staging robots.txt allows everything',
+    file: 'tools/lib/sitekit.js', expect: 'test_staging.js',
+    find: "        'Disallow: /\\n';", repl: "        'Allow: /\\n';" },
+
+  { id: 'T7', desc: 'an environment may point at the brand\'s canonical domain',
+    file: 'tools/lib/brandkit.js', expect: 'test_generator.js',
+    find: '    if (e.host === cfg.domain) {', repl: '    if (false) {' },
+
+  { id: 'T8', desc: 'an environment may share the canonical environment\'s Supabase row',
+    file: 'tools/lib/brandkit.js', expect: 'test_generator.js',
+    find: '    if (e.siteId !== undefined && e.siteId === cfg.siteId) {', repl: '    if (false) {' },
+
+  { id: 'T9', desc: 'the environment\'s siteId is ignored, so staging reads the production row',
+    file: 'tools/lib/brandkit.js', expect: 'test_staging.js',
+    find: "        siteId: typeof e.siteId === 'string' && e.siteId.trim() ? e.siteId : cfg.siteId,",
+    repl: '        siteId: cfg.siteId,' },
+
+  { id: 'T10', desc: 'the staging build writes over the production build\'s output directory',
+    file: 'tools/lib/brandkit.js', expect: 'test_staging.js',
+    find: "        output: typeof e.output === 'string' && e.output ? assertId(e.output) : assertId(e.host),",
+    repl: '        output: id,' },
+
+  { id: 'T11', desc: 'the staging host is unregistered, so it resolves to the default brand',
+    file: 'js/cms-config.js', expect: 'test_staging.js',
+    find: "    'playzones9.com': {\n        siteId: 'playzone9staging',",
+    repl: "    'playzones9.com.disabled': {\n        siteId: 'playzone9staging'," },
+
+  { id: 'T12', desc: 'the staging host is pointed at JSK1\'s row',
+    file: 'js/cms-config.js', expect: 'test_generator.js',
+    find: "    'playzones9.com': {\n        siteId: 'playzone9staging',",
+    repl: "    'playzones9.com': {\n        siteId: 'playzone9'," },
+
+  { id: 'T13', desc: 'the staging workflow is given permission to deploy to Pages',
+    file: '.github/workflows/staging-playzone9.yml', expect: 'test_staging.js',
+    find: 'permissions:\n  contents: read',
+    repl: 'permissions:\n  contents: read\n  pages: write\n  id-token: write' },
+
+  { id: 'T14', desc: 'the staging workflow starts running on every push to main',
+    file: '.github/workflows/staging-playzone9.yml', expect: 'test_staging.js',
+    find: 'on:\n  workflow_dispatch:',
+    repl: 'on:\n  workflow_dispatch:\n  push:\n    branches: ["main"]' },
+
+  { id: 'T15', desc: 'the staging workflow takes the production deploy\'s concurrency group',
+    file: '.github/workflows/staging-playzone9.yml', expect: 'test_staging.js',
+    find: 'group: "staging-playzone9"', repl: 'group: "pages"' },
+
+  { id: 'T16', desc: 'the staging workflow builds the canonical domain instead of staging',
+    file: '.github/workflows/staging-playzone9.yml', expect: 'test_staging.js',
+    find: 'node tools/build-site.js playzone9.app --env staging --out staging-out',
+    repl: 'node tools/build-site.js playzone9.app --out staging-out' },
+
+  { id: 'T17', desc: 'the head-extra slot point is removed, so a brand cannot ship its own stylesheet',
+    file: 'templates/pages/login.html', expect: 'test_generator.js',
+    find: '<!-- BRAND:head-extra --><!-- /BRAND:head-extra -->', repl: '' },
+
+  { id: 'T18', desc: 'the brand overlay is dropped from the staging build',
+    file: 'tools/lib/sitekit.js', expect: 'test_staging.js',
+    find: "    for (const p of site.overlay) copyFile(path.join(site.overlayDir, p), kit.safeJoin(dest, p, 'Overlay file'));",
+    repl: '' }
 ];
 
 function run(sandbox, suite) {

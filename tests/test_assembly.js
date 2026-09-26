@@ -91,10 +91,25 @@ for (const [id, b] of Object.entries(SITES)) {
   check(id + ': every file exists on disk and is non-empty',
     onDisk === b.files.length && onDisk > 0, onDisk + '/' + b.files.length);
 }
-check('both sites have the same file count -- one engine, two brands',
-  jsk1.files.length === pz9.files.length, [jsk1.files.length, pz9.files.length]);
-check('and exactly the same file LIST',
-  JSON.stringify(jsk1.files) === JSON.stringify(pz9.files));
+/* Phase 6 gave Playzone9 its own stylesheet and favicon, so the two sites
+   are no longer file-for-file identical -- and that is the point of a brand
+   layer. What must still be identical is the SHARED part: one engine. The
+   difference between the two sites must be exactly Playzone9's overlay. */
+check('the two sites ship the same shared engine, file for file',
+  JSON.stringify(jsk1.s.shared) === JSON.stringify(pz9.s.shared),
+  [jsk1.s.shared.length, pz9.s.shared.length]);
+check('JSK1 ships no overlay of its own', jsk1.s.overlay.length === 0, jsk1.s.overlay);
+check('Playzone9 ships one', pz9.s.overlay.length > 0, pz9.s.overlay);
+{
+  const extra = pz9.files.filter(f => !jsk1.files.includes(f)).sort();
+  const missing = jsk1.files.filter(f => !pz9.files.includes(f)).sort();
+  check('the only files Playzone9 has and JSK1 does not are its overlay additions',
+    JSON.stringify(extra) === JSON.stringify(pz9.s.overlay.filter(f => !jsk1.files.includes(f)).sort()),
+    [extra, pz9.s.overlay]);
+  check('and JSK1 has nothing Playzone9 lacks', missing.length === 0, missing);
+  check('the overlay replaced at least one shared file in place',
+    pz9.s.overlay.some(f => jsk1.files.includes(f)), pz9.s.overlay);
+}
 check('a site is more than its pages', jsk1.files.length > 100, jsk1.files.length);
 
 /* The four layers are all actually present. */

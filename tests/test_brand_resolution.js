@@ -149,8 +149,13 @@ async function serveUnderHost(ctx) {
       const win = {}; new Function('window', 'console', src)(win, { warn() {} });
       return Object.keys(win.CMS_BRANDS);
     }, { src: CONFIG_SRC });
-    check('exactly the two real brands are configured',
-      JSON.stringify(keys.slice().sort()) === '["jsk-1.com","playzone9.app"]', keys);
+    /* Three registered hostnames for two brands: Phase 6 added a staging
+       HOST, not a brand. Enumerated rather than counted, so a fourth has to
+       be added here deliberately. tests/test_generator.js checks the
+       stronger property -- that every entry is explained by some brand's
+       canonical domain or one of its declared environments. */
+    check('exactly the three configured hostnames are registered',
+      JSON.stringify(keys.slice().sort()) === '["jsk-1.com","playzone9.app","playzones9.com"]', keys);
     check('no lookalike equals that key', !LOOKALIKES.some(h => keys.indexOf(h) > -1));
   }
 

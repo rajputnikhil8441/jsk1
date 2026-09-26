@@ -1,0 +1,91 @@
+# Build the Playzone9 STAGING site for review.
+#
+# WHAT THIS DOES NOT DO, BY CONSTRUCTION
+#
+# It does not deploy. It cannot: this job requests `contents: read` and
+# nothing else, so it holds neither `pages: write` nor `id-token: write`
+# and the deploy-pages action would fail if it were ever added. There is
+# no configure-pages step, no upload-pages-artifact, no deploy-pages.
+#
+# It never runs by itself. workflow_dispatch only -- no push trigger, so
+# merging to main cannot start it.
+#
+# It cannot interfere with the production deploy. That workflow holds
+# `concurrency: group: "pages"`; this one uses its own group, so a
+# staging build never queues behind, cancels, or delays a JSK1 deploy.
+#
+# It does not touch playzone9.app. The build targets the staging
+# environment declared in brands/playzone9.app/brand.json, whose host is
+# playzones9.com. The canonical domain is not built here and is not
+# connected to anything.
+#
+# WHY AN ARTIFACT AND NOT A SITE
+#
+# One GitHub Pages site per repository, one custom domain. This
+# repository's Pages site IS jsk-1.com. Serving a second hostname from
+# it would mean changing that domain, which is production. So this
+# produces the built directory as a downloadable artifact; giving it a
+# hostname needs a second repository or another static host, and that is
+# a decision with a DNS change behind it rather than something a
+# workflow should assume.
+
+name: Build Playzone9 staging site
+
+on:
+  workflow_dispatch:
+
+# Read-only. This is what makes deployment impossible rather than merely
+# absent: no pages:write, no id-token:write.
+permissions:
+  contents: read
+
+# Deliberately NOT "pages": that group belongs to the production deploy.
+concurrency:
+  group: "staging-playzone9"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build the staging site
+        run: node tools/build-site.js playzone9.app --env staging --out staging-out
+
+      # The assembler checks itself and exits non-zero on a problem, so
+      # reaching this step already means it passed. These are the two
+      # properties that matter most for a review host, re-asserted here so
+      # the workflow log says so out loud and a future edit to the
+      # assembler cannot quietly publish an indexable staging site.
+      - name: Refuse to publish anything indexable
+        run: |
+          DIR=staging-out/playzones9.com
+          test -d "$DIR" || { echo "::error::$DIR was not built"; exit 1; }
+          if [ -e "$DIR/sitemap.xml" ]; then
+            echo "::error::staging must not ship a sitemap.xml"; exit 1
+          fi
+          grep -qx 'Disallow: /' "$DIR/robots.txt" || {
+            echo "::error::staging robots.txt does not block everything"; exit 1; }
+          PAGES=$(find "$DIR" -maxdepth 1 -name '*.html' | wc -l)
+          test "$PAGES" -gt 0 || { echo "::error::no pages were built"; exit 1; }
+          INDEXABLE=0
+          for f in "$DIR"/*.html; do
+            grep -q '<meta name="robots" content="noindex,nofollow"' "$f" || {
+              echo "::error::$f is not noindex,nofollow"; INDEXABLE=1; }
+          done
+          test "$INDEXABLE" -eq 0 || exit 1
+          # The production domain must appear in no page. The shared brand
+          # registry in js/ names it by design and is not a page.
+          if grep -l 'playzone9\.app' "$DIR"/*.html 2>/dev/null; then
+            echo "::error::a staging page names the reserved production domain"; exit 1
+          fi
+          echo "$PAGES page(s), all noindex,nofollow; no sitemap; robots blocks all."
+
+      - name: Upload the staging site for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: playzone9-staging-site
+          path: staging-out/playzones9.com
+          retention-days: 7

@@ -39,21 +39,38 @@ for one thing: no separate slug to keep in step with the domain.
 data migration, not a refactor. Keeping the two fields apart is what lets the
 hostname be correct while the row keeps its historical name.
 
+## Two brands, three hostnames
+
+| Brand | Environment | Host | siteId | Bucket | Served? |
+|---|---|---|---|---|---|
+| `jsk-1.com` | production | jsk-1.com | `playzone9` | `cms-media` | **yes — live** |
+| `playzone9.app` | production | playzone9.app | `playzone9app` | `cms-media-pz9` | no — reserved |
+| `playzone9.app` | `staging` | playzones9.com | `playzone9staging` | `cms-media-pz9-staging` | built for review |
+
+Three hostnames, two brands. A brand's identity and the hostname it is served
+on are different things, so the staging host is declared as an **environment**
+of the Playzone9 brand rather than as a brand of its own — see "Environments"
+below. All three siteIds differ, and no two hosts may share one:
+`tests/test_generator.js` asserts it.
+
+The siteIds `playzone9` and `playzone9app` differ by one word and mean
+completely different things. See `brands/playzone9.app/README.md`.
+
 ## Environments
 
 A brand may be served on more than one hostname. `brand.json` keeps `domain`
 as the brand's canonical domain and declares the others separately:
 
-    "domain": "example.com",
+    "domain": "playzone9.app",
     "environments": {
-      "staging": { "host": "review.example",
-                   "siteId": "example-staging",
-                   "bucket": "cms-media-example-staging",
+      "staging": { "host": "playzones9.com",
+                   "siteId": "playzone9staging",
+                   "bucket": "cms-media-pz9-staging",
                    "noindex": true }
     }
 
-    node tools/build-site.js example.com                  # the canonical domain
-    node tools/build-site.js example.com --env staging     # review.example
+    node tools/build-site.js playzone9.app                  # the canonical domain
+    node tools/build-site.js playzone9.app --env staging     # playzones9.com
 
 Building with `--env` swaps the host, so every canonical, `og:url`, JSON-LD
 url and sitemap entry follows automatically — they all render from

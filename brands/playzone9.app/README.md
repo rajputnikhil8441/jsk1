@@ -64,3 +64,101 @@ is a worked example.
 
 Nothing about this brand is deployed. Which directory a host serves, and for
 which domain, is not decided in this repository yet.
+
+---
+
+## Staging: playzones9.com
+
+This brand is reviewed on **playzones9.com** before **playzone9.app** is ever
+connected. The staging host is declared as an `environment` in `brand.json`,
+not as a brand of its own, because the brand and the hostname are different
+things — renaming this brand to its staging host would mean renaming it back
+at launch, and with it the directory, the id, the Supabase row and every test.
+
+    node tools/build-site.js playzone9.app --env staging
+
+| | production | staging |
+|---|---|---|
+| host | playzone9.app *(reserved, not served)* | playzones9.com |
+| siteId | `playzone9app` | `playzone9staging` |
+| bucket | `cms-media-pz9` | `cms-media-pz9-staging` |
+| indexable | yes | **no** |
+| output | `sites/playzone9.app/` | `sites/playzones9.com/` |
+
+Separate rows on purpose: reviewing a site must not be able to write to the
+content the real site will serve. **Neither row exists yet**, so both render
+from `brand.js`.
+
+### Why staging cannot be indexed
+
+Four independent mechanisms, because being indexed would put a review copy in
+competition with the real site for the real site's own terms:
+
+1. every page's robots meta is rewritten to `noindex,nofollow` at build time,
+   counted — one tag per page or the build fails;
+2. `robots.txt` is `Disallow: /` with no `Sitemap:` line;
+3. no `sitemap.xml` is published at all, so nothing invites a crawl;
+4. the generated `brand.js` sets `window.CMS_NOINDEX`, which `js/cms.js`
+   honours directly — without it the engine repaints the robots meta from the
+   merged CMS data, and any layer above the brand could hand the host back to
+   the crawlers.
+
+The fourth is the one that is easy to miss and `tests/test_staging.js` proves
+it in a real browser: without it the pages load `noindex` and then rewrite
+themselves to `index,follow`.
+
+### Why staging does not claim to be production
+
+The staging build's `brand.js` gets an appended override setting
+`seo.baseUrl` to `https://playzones9.com`. `js/cms.js` repaints the canonical
+link, `og:url` and the JSON-LD urls from that value, so without it the pages
+would serve correct static tags and then point their canonical at a domain
+nobody has connected. The production build appends nothing, so its `brand.js`
+is byte for byte the committed file.
+
+`playzone9.app` appears in no staging page. It appears in the shared brand
+registry — by design, every brand ships the same registry — and in this
+brand's own copy, where the descriptions mention it as text. Neither is a URL
+signal, and the pages are noindex regardless.
+
+### The visual layer
+
+| File | What it does |
+|---|---|
+| `slots/head-extra.html` | loads `css/brand.css` after the shared stylesheets, on every page |
+| `static/css/brand.css` | the brand's palette as custom properties on `:root` |
+| `static/assets/images/favicon.png` | replaces the shared favicon at the same path |
+
+The colours are **not invented**. This project already ships a Playzone9 theme
+preset — "Playzone Blue", in the `SEEDS` table in `js/admin.js`, whose brand
+label is literally `PLAYZONE9`. Its palette is `CMS.DEFAULTS.colors`, which
+Phase 3b proved is an exact duplicate of the `:root` block in
+`css/style.css`. So Playzone Blue is what the shared stylesheet already
+renders, and `brand.css` restates the five seed values without changing
+anything visually today.
+
+That is deliberate. The values now live in the **brand** instead of being
+inherited by accident from a stylesheet shared with every other site, so
+changing them changes this brand and nothing else. A real redesign belongs in
+a later phase with visual review; this is the seam it will happen at.
+
+**Still to supply:** a real logo and a real favicon. The header renders the
+brand name as a text wordmark when `images.logo` is unset, which is already
+correct for Playzone9. The favicon here is a flat placeholder in the brand's
+own primary colour — better than serving JSK1's mark on a Playzone9 host, and
+not a substitute for the real one. Typography has a documented, deliberately
+empty seam in `brand.css`.
+
+### Login and register
+
+Both pages support all three levels, and nothing about them is special-cased:
+
+1. **shared page** — what Playzone9 uses today;
+2. **brand slot** — `slots/login-notice.html`, `slots/register-notice.html`,
+   both declared by the shared templates and both empty for this brand;
+3. **whole-page override** — `pages/login.html` or `pages/register.html`
+   replaces the shared template outright.
+
+`tests/fixtures/brands/omega.test` exercises the slots on both pages and
+`zeta.test` exercises a whole-page login override, so none of it depends on
+this brand choosing to use it.
