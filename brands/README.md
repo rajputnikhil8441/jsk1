@@ -69,3 +69,11 @@ exist without appearing in production.
   carry brand assets when it arrives, but does not invent them now.
 - **A second brand.** `brands/` has exactly one entry, and
   `tests/test_generator.js` asserts it.
+
+## This directory is not part of the published site
+
+`brands/` is build input. The Pages deploy removes it — along with `templates/`,
+`tools/` and `tests/` — from the runner's checkout before the artifact is
+packed, so a brand's configuration and fallback content are never served from
+the production domain. See `templates/README.md` and
+`tests/test_deploy_surface.js`.

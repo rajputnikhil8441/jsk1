@@ -25,11 +25,11 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
-const SUITES = ['test_generator.js', 'test_multibrand.js'];
+const SUITES = ['test_generator.js', 'test_multibrand.js', 'test_deploy_surface.js'];
 
 /* Only what the two suites read. node_modules and .git are excluded
    deliberately: neither suite needs a browser. */
-const COPY = ['js', 'css', 'tools', 'templates', 'brands',
+const COPY = ['js', 'css', 'admin', 'assets', 'tools', 'templates', 'brands', '.github', '.gitignore',
   'index.html', 'about.html', 'contact.html', 'login.html', 'register.html',
   'privacy-policy.html', 'responsible-gaming.html', '404.html',
   'sitemap.xml', 'robots.txt'];
@@ -39,6 +39,19 @@ function copyInto(sandbox) {
   for (const rel of COPY) fs.cpSync(path.join(ROOT, rel), path.join(sandbox, rel), { recursive: true });
   for (const s of SUITES) fs.cpSync(path.join(__dirname, s), path.join(sandbox, 'tests', s));
   fs.cpSync(path.join(__dirname, 'fixtures'), path.join(sandbox, 'tests', 'fixtures'), { recursive: true });
+  /* test_deploy_surface.js asks git what a fresh checkout contains, which is
+     the only honest way to ask -- so the sandbox has to be a repository too.
+     Indexing it also makes .gitignore apply, exactly as in the real one. */
+  gitInit(sandbox);
+}
+
+function gitInit(sandbox) {
+  const env = Object.assign({}, process.env, {
+    GIT_AUTHOR_NAME: 'mutation', GIT_AUTHOR_EMAIL: 'mutation@example.invalid',
+    GIT_COMMITTER_NAME: 'mutation', GIT_COMMITTER_EMAIL: 'mutation@example.invalid'
+  });
+  execFileSync('git', ['init', '-q'], { cwd: sandbox, env, stdio: 'ignore' });
+  execFileSync('git', ['add', '-A'], { cwd: sandbox, env, stdio: 'ignore' });
 }
 
 /* Each mutant removes or inverts exactly one guard. The "expect" field
@@ -157,6 +170,46 @@ const MUTANTS = [
     file: 'tests/fixtures/golden-jsk1/about.html', expect: 'test_generator.js',
     find: '<body', repl: '<body data-tampered="1"' },
 
+  /* ---- the deploy surface: the source templates must not become pages ---- */
+  { id: 'W1', desc: 'the prune step is renamed, so nothing removes the sources',
+    file: '.github/workflows/static.yml', expect: 'test_deploy_surface.js',
+    find: '- name: Remove build-only sources from the published site',
+    repl: '- name: Tidy up' },
+
+  { id: 'W2', desc: 'templates/ is dropped from the list of removed directories',
+    file: '.github/workflows/static.yml', expect: 'test_deploy_surface.js',
+    find: '          rm -rf templates brands tools tests',
+    repl: '          rm -rf brands tools tests' },
+
+  { id: 'W3', desc: 'the prune no longer verifies that the directories are gone',
+    file: '.github/workflows/static.yml', expect: 'test_deploy_surface.js',
+    find: '          for d in templates brands tools tests; do',
+    repl: '          for d in brands tools; do' },
+
+  { id: 'W4', desc: 'a failed verification no longer fails the deploy',
+    file: '.github/workflows/static.yml', expect: 'test_deploy_surface.js',
+    find: 'echo "::error::$f is missing after the prune"; exit 1',
+    repl: 'echo "::warning::$f is missing after the prune"' },
+
+  { id: 'W5', desc: 'the prune runs after the artifact has already been packed',
+    file: '.github/workflows/static.yml', expect: 'test_deploy_surface.js',
+    find: '      - name: Upload artifact\n        uses: actions/upload-pages-artifact@v3\n        with:\n          # Upload entire repository\n          path: \'.\'\n',
+    repl: '' },
+
+  { id: 'W6', desc: 'the prune takes a real production directory with it',
+    file: '.github/workflows/static.yml', expect: 'test_deploy_surface.js',
+    find: '          rm -rf templates brands tools tests',
+    repl: '          rm -rf templates brands tools tests assets' },
+
+  { id: 'W7', desc: 'a stray un-rendered page appears outside every pruned directory',
+    file: 'preview/login.html', expect: 'test_deploy_surface.js',
+    add: '<!DOCTYPE html>\n<html><head><title>Login — {{brand.name}}</title>\n' +
+         '<link rel="canonical" href="https://{{brand.domain}}/login.html" />\n' +
+         '</head><body>stray</body></html>\n' },
+
+  { id: 'W8', desc: 'a copy of a template is dropped at the repository root',
+    file: 'login-template.html', expect: 'test_deploy_surface.js',
+    add: '<!DOCTYPE html>\n<html><head><title>{{brand.name}}</title></head><body>x</body></html>\n' }
 ];
 
 function run(sandbox, suite) {
@@ -199,6 +252,37 @@ for (const mut of MUTANTS) {
   const box = fs.mkdtempSync(path.join(os.tmpdir(), 'mut-' + mut.id + '-'));
   copyInto(box);
   const target = path.join(box, mut.file);
+
+  /* An "add" mutant creates a file instead of editing one. Some guards --
+     "no stray page can appear outside the pruned directories" -- can only
+     be broken by adding something, and a harness that cannot add a file
+     cannot test them. */
+  if (mut.add !== undefined) {
+    if (fs.existsSync(target)) {
+      console.log('  ANCHOR  ' + mut.id + ': ' + mut.file + ' already exists; an "add" mutant must create a new file.');
+      survived.push(mut.id + ' (bad anchor)');
+      fs.rmSync(box, { recursive: true, force: true });
+      continue;
+    }
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, mut.add);
+    gitInit(box);                     /* re-index so git sees the new file */
+    const results = SUITES.map(s => [s, run(box, s)]);
+    const noticed = results.filter(([, r]) => r.crashed || r.failed > 0 || r.code !== 0).map(([s]) => s);
+    if (noticed.length) {
+      caught++;
+      console.log('  caught  ' + mut.id + '  ' + mut.desc);
+      console.log('          noticed by: ' + noticed.join(', ') +
+        (noticed.includes(mut.expect) ? '' : '   (NOT by ' + mut.expect + ')'));
+    } else {
+      survived.push(mut.id);
+      console.log('  SURVIVED ' + mut.id + '  ' + mut.desc);
+      results.forEach(([s, r]) => console.log('          ' + s + ': ' + r.passed + ' passed, ' + r.failed + ' failed'));
+    }
+    fs.rmSync(box, { recursive: true, force: true });
+    continue;
+  }
+
   const src = fs.readFileSync(target, 'utf8');
   const occurrences = src.split(mut.find).length - 1;
   if (occurrences !== 1) {

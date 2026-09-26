@@ -50,6 +50,20 @@ than an exit from the system, and the other pages still come from the shared
 templates. `tests/fixtures/brands/zeta.test` is a worked example: a completely
 different login form, with no edit to `js/cms.js`.
 
+## These files are never served
+
+A template is source, not a page. It carries the brand placeholders
+un-substituted, including in `<link rel="canonical">`, so served from the
+production domain it would be a crawlable page claiming to be a page that does
+not exist. The Pages deploy therefore removes `templates/`, `brands/`, `tools/`
+and `tests/` from the runner's checkout before the artifact is packed, and
+verifies both that they are gone and that the real pages survived.
+
+`tests/test_deploy_surface.js` holds that line. It classifies **every** `.html`
+file in the repository as either a production page on an explicit allowlist or
+a file inside a pruned directory — so a stray template, fixture or scratch page
+anywhere else fails the suite rather than appearing on the live site.
+
 ## Editing a template
 
 Every change here lands on every brand. Run the tests: `test_generator.js`
