@@ -105,6 +105,32 @@ window.CMS_BRAND_DEFAULT = 'jsk-1.com';
 
 
 /* ------------------------------------------------------------
+   3b. THE BRAND WHOSE BROWSER STORAGE PREDATES BRAND SCOPING
+   ------------------------------------------------------------
+   Every brand's cache and admin session live under their own
+   localStorage / sessionStorage keys, suffixed with the siteId:
+
+       whiteLabelCMS:playzone9app
+       cmsAdminToken:playzone9app
+
+   One brand cannot use a suffix, because its data is ALREADY in
+   people's browsers under the bare, unsuffixed name. Renaming
+   those keys would orphan every cached brand and sign out every
+   open admin session on the live site, for no gain.
+
+   So this names that brand by its siteId, and it keeps the bare
+   keys forever. Note it is tied to the SITE ID, not to whichever
+   brand happens to be the default above: making a different
+   brand the default must not silently move this one's storage.
+
+   For a brand new white-label deployment with no existing
+   browsers to care about, set this to '' and every brand gets a
+   suffix, including the first.
+   ------------------------------------------------------------ */
+window.CMS_LEGACY_STORAGE_SITE_ID = 'playzone9';
+
+
+/* ------------------------------------------------------------
    4. UPLOADED CMS MEDIA — SUPABASE STORAGE
    ------------------------------------------------------------
    This is what lets an admin add an image from /admin instead of
@@ -238,6 +264,29 @@ window.CMS_MEDIA_SETTINGS = {
         enabled: !!settings.enabled && !!bucket,
         bucket: bucket,
         maxBytes: settings.maxBytes
+    };
+
+    /* ----- browser storage scoping -----
+       localStorage and sessionStorage are per ORIGIN, so two brands on two
+       domains are already separate and this changes nothing for them. It
+       matters when two brands share an origin -- a preview host, a staging
+       path, someone serving both from one machine -- where without it
+       brand B would read brand A's cached record and inherit its admin
+       session token.
+
+       The legacy brand keeps the bare names its data is already stored
+       under. Everything else is suffixed with its siteId, which is the
+       identity of the row the cache mirrors. */
+    var legacySiteId = typeof window.CMS_LEGACY_STORAGE_SITE_ID === 'string'
+        ? window.CMS_LEGACY_STORAGE_SITE_ID : '';
+    var suffix = (siteId && siteId !== legacySiteId) ? ':' + siteId : '';
+
+    window.CMS_STORAGE = {
+        suffix: suffix,
+        /* Callers pass the historical name and get the scoped one, so the
+           bare name stays visible at every call site and a reader can see
+           what it used to be. */
+        key: function (name) { return String(name) + suffix; }
     };
 
     /* What resolution decided, for a brand indicator in /admin and for

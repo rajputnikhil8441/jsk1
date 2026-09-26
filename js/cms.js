@@ -12,7 +12,22 @@
 (function (window, document) {
     'use strict';
 
-    var KEY = 'whiteLabelCMS';
+    /* The master record's localStorage name, scoped to this brand.
+
+       js/cms-config.js resolves the suffix: '' for the brand whose data
+       already lives under the bare name, ':<siteId>' for every other, so
+       two brands sharing an origin cannot read each other's cache. The
+       fallback keeps the historical name when CMS_STORAGE is absent --
+       a page that loads this file without the config, or a test that
+       stubs the config -- which is exactly the behaviour that existed
+       before brands did.
+
+       Everything downstream follows automatically: CMS.KEY, the storage
+       meter in /admin, and the `storage` event listener at the bottom of
+       this file all read this one variable. */
+    var KEY = (window.CMS_STORAGE && typeof window.CMS_STORAGE.key === 'function')
+        ? window.CMS_STORAGE.key('whiteLabelCMS')
+        : 'whiteLabelCMS';
 
     /* ========================================================
        DEFAULTS — the JSK1 brand as shipped
@@ -4047,7 +4062,15 @@
     }
 
     var REMOTE_ON = !!(RC.enabled && RC.url && RC.anonKey) && !SECRET_KEY_CONFIGURED;
-    var TOKEN_KEY = 'cmsAdminToken';
+    /* Scoped for the same reason, and more sharply: an admin signed in to
+       one brand must not appear signed in to another served from the same
+       origin. The token is only ever accepted by the project it came
+       from, so this is about not presenting a stale session as a live
+       one rather than about privilege -- but a sign-in box that lies is
+       its own kind of bug. */
+    var TOKEN_KEY = (window.CMS_STORAGE && typeof window.CMS_STORAGE.key === 'function')
+        ? window.CMS_STORAGE.key('cmsAdminToken')
+        : 'cmsAdminToken';
 
     function rurl(path) {
         return String(RC.url).replace(/\/+$/, '') + path;

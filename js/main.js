@@ -313,7 +313,15 @@ document.addEventListener('DOMContentLoaded', function() {
    2nd click onwards   -> straight to login page
 ============================================================ */
 (function () {
-    var KEY = 'gateSeen';
+    /* Scoped like the rest. This one is only presentation state -- whether
+       this visitor has already been shown the toast once -- so leaking it
+       between brands would cost a missing toast rather than anything
+       serious. It is scoped anyway: one unscoped key among scoped ones is
+       the kind of exception that later gets copied by someone who assumes
+       it was reasoned about. The gate's behaviour is untouched. */
+    var KEY = (window.CMS_STORAGE && typeof window.CMS_STORAGE.key === 'function')
+        ? window.CMS_STORAGE.key('gateSeen')
+        : 'gateSeen';
     var LOGIN_URL = 'login.html';
     var hideTimer = null;
 
