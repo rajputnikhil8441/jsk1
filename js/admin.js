@@ -326,7 +326,12 @@
             });
         }
         renderPreview();
-        $('#brandLabel').textContent = CMS.get('branding.siteName', 'BRAND');
+        var brandName = CMS.get('branding.siteName', 'BRAND');
+        $('#brandLabel').textContent = brandName;
+        /* The tab title is shared markup, so it cannot carry a brand
+           name of its own -- it is painted from the brand like the
+           label beside it. */
+        document.title = brandName + ' CMS — Admin';
         updateStorageMeter();
         return pending || true;
     }
@@ -3762,7 +3767,12 @@
         buildBuilder();
         buildPresets();
         renderPreview();
-        $('#brandLabel').textContent = CMS.get('branding.siteName', 'BRAND');
+        var brandName = CMS.get('branding.siteName', 'BRAND');
+        $('#brandLabel').textContent = brandName;
+        /* The tab title is shared markup, so it cannot carry a brand
+           name of its own -- it is painted from the brand like the
+           label beside it. */
+        document.title = brandName + ' CMS — Admin';
         updateStorageMeter();
         refreshPublishSize();
         paintRemoteStatus();
