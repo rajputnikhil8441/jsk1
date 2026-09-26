@@ -1,0 +1,15 @@
+{
+  "_comment": [
+    "Synthetic, tests only. Covers what acme.test and zeta.test do not:",
+    "a static/ OVERLAY (its own stylesheet and its own logo) and a slot on",
+    "BOTH the login and the register page. It is also deliberately absent",
+    "from CMS_BRANDS, so the assembler's unregistered-brand warning has",
+    "something real to fire on."
+  ],
+  "id": "omega.test",
+  "name": "OMEGAPLAY",
+  "domain": "omega.test",
+  "siteId": "omegaplay",
+  "mediaBucket": "cms-media-omega",
+  "output": "omega.test"
+}

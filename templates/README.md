@@ -25,7 +25,10 @@ A template declares a named, empty region:
 
     </form><!-- BRAND:login-notice --><!-- /BRAND:login-notice -->
 
-A brand fills it with `brands/<id>/slots/login-notice.html`. A brand that says
+A brand fills it with `brands/<id>/slots/login-notice.html`. Two slot points are
+declared today: `login-notice` on the login page and `register-notice` on the
+register page, so a brand can customise either sign-up step without an edit to
+`js/cms.js` or to any shared template. A brand that says
 nothing gets nothing: the markers and everything between them are removed, so a
 page with no slots filled is byte-identical to one that never had markers. That
 property is what let slots be added to the live pages at all.

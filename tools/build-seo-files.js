@@ -30,6 +30,22 @@
    USAGE
      node tools/build-seo-files.js            write the files
      node tools/build-seo-files.js --check    print, write nothing
+
+   THE THREE OPTIONS BELOW EXIST FOR THE ASSEMBLER
+
+   tools/build-site.js assembles a brand's deployable directory
+   and needs this same generator pointed somewhere else. Rather
+   than reimplement sitemap and robots generation there -- two
+   code paths producing two slightly different sitemaps is
+   exactly the bug a white-label platform cannot afford -- it
+   invokes this script with:
+
+     --brand <hostname>   resolve the siteId for THAT brand
+     --config <path>      the committed fallback to read
+     --out <dir>          where to write the two files
+
+   With none of them given every default is what it has always
+   been, so the deploy step's behaviour is unchanged.
    ============================================================ */
 
 'use strict';
@@ -44,14 +60,33 @@ const SEOFiles = require(path.join(ROOT, 'js', 'seo-files.js'));
 
 const CHECK = process.argv.indexOf('--check') > -1;
 
+function opt(name, dflt) {
+    const i = process.argv.indexOf(name);
+    return i > -1 && process.argv[i + 1] ? process.argv[i + 1] : dflt;
+}
+
+/* A brand id is a hostname and becomes part of a path, so it is checked
+   before it is used as either -- the generator's rule, kept the same. */
+const BRAND = opt('--brand', '');
+const FALLBACK_FILE = path.resolve(ROOT, opt('--config', path.join('tools', 'seo-config.json')));
+const OUT_DIR = path.resolve(ROOT, opt('--out', '.'));
+
 function log(msg) { process.stdout.write(msg + '\n'); }
+function rel(p) { return path.relative(ROOT, p).split(path.sep).join('/'); }
 function warn(msg) { process.stdout.write('::warning::' + msg + '\n'); }
 
 /* ---------- the deployment's own configuration ----------
    js/cms-config.js is plain assignments to `window`, so it is read the
    same way the browser reads it rather than by pattern-matching text. */
 function readConfig() {
-    const sandbox = { window: {} };
+    /* With --brand the hostname is handed to cms-config.js exactly as a
+       browser hands it over, so the brand is resolved by the SAME block
+       that resolves it for a visitor. Duplicating that lookup here would
+       be a second answer to "which brand is this?", and the two would
+       eventually disagree. Without --brand there is no location at all,
+       which is what this has always done: cms-config.js then falls to
+       CMS_BRAND_DEFAULT. */
+    const sandbox = BRAND ? { window: { location: { hostname: BRAND } } } : { window: {} };
     try {
         vm.runInNewContext(fs.readFileSync(path.join(ROOT, 'js', 'cms-config.js'), 'utf8'), sandbox,
                            { timeout: 2000 });
@@ -106,9 +141,9 @@ function fetchRow(cfg) {
    is missing or wrong just because the database was briefly unreachable --
    and so a fork with remote storage switched off still gets correct files. */
 function readFallback() {
-    const p = path.join(ROOT, 'tools', 'seo-config.json');
+    const p = FALLBACK_FILE;
     try { return JSON.parse(fs.readFileSync(p, 'utf8')); }
-    catch (e) { warn('tools/seo-config.json could not be read: ' + e.message); return null; }
+    catch (e) { warn(rel(p) + ' could not be read: ' + e.message); return null; }
 }
 
 /* Only the parts these two files are built from. Taking a subset rather
@@ -147,6 +182,10 @@ function withProvenanceXml(xml, source, when) {
 }
 
 (async function main() {
+    if (BRAND && !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/.test(BRAND)) {
+        log('--brand "' + BRAND + '" is not a valid hostname. Refusing.');
+        process.exit(2);
+    }
     const cfg = readConfig();
     const row = await fetchRow(cfg);
 
@@ -155,9 +194,9 @@ function withProvenanceXml(xml, source, when) {
     let when = row.updatedAt ? String(row.updatedAt).slice(0, 10) : '';
 
     if (!data || !SEOFiles.baseUrl(data)) {
-        if (row.why) warn('Could not use the live CMS record (' + row.why + '). Falling back to tools/seo-config.json.');
+        if (row.why) warn('Could not use the live CMS record (' + row.why + '). Falling back to ' + rel(FALLBACK_FILE) + '.');
         data = seoSubset(readFallback());
-        source = 'tools/seo-config.json (committed fallback)';
+        source = rel(FALLBACK_FILE) + ' (committed fallback)';
         when = '';
     }
 
@@ -175,6 +214,11 @@ function withProvenanceXml(xml, source, when) {
                                               provenance(source, when));
 
     const urls = SEOFiles.sitemapPages(data).map(p => base + '/' + p.file);
+    /* Which brand's row was consulted, and under which id. Printed because
+       it is the one thing a deploy operator cannot otherwise see and the one
+       thing that would be catastrophic to get wrong: two brands sharing a
+       siteId means two sites publishing over each other. */
+    log('Brand:   ' + (BRAND || '(default, no --brand given)') + '   siteId: ' + (cfg.siteId || '(none)'));
     log('Source:  ' + source);
     log('Base:    ' + base);
     log('Sitemap: ' + urls.length + ' URL(s)');
@@ -182,7 +226,9 @@ function withProvenanceXml(xml, source, when) {
 
     if (CHECK) { log('\n--check: nothing written.'); return; }
 
-    fs.writeFileSync(path.join(ROOT, 'sitemap.xml'), xml, 'utf8');
-    fs.writeFileSync(path.join(ROOT, 'robots.txt'), txt, 'utf8');
-    log('\nWrote sitemap.xml and robots.txt.');
+    fs.mkdirSync(OUT_DIR, { recursive: true });
+    fs.writeFileSync(path.join(OUT_DIR, 'sitemap.xml'), xml, 'utf8');
+    fs.writeFileSync(path.join(OUT_DIR, 'robots.txt'), txt, 'utf8');
+    log('\nWrote sitemap.xml and robots.txt' +
+        (OUT_DIR === path.resolve(ROOT) ? '.' : ' to ' + rel(OUT_DIR) + '/.'));
 })();

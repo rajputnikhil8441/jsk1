@@ -145,9 +145,13 @@ check('the eight source templates are pruned',
 check('the eight Phase 0 golden fixtures are pruned',
   HTML.filter(f => f.startsWith('tests/fixtures/golden-jsk1/')).length === 8 &&
   HTML.filter(f => f.startsWith('tests/fixtures/golden-jsk1/')).every(isPruned));
-check('the synthetic brands\' page files are pruned',
-  HTML.filter(f => f.startsWith('tests/fixtures/brands/')).length === 2 &&
-  HTML.filter(f => f.startsWith('tests/fixtures/brands/')).every(isPruned));
+/* acme's login slot, zeta's login override, omega's login and register
+   slots. Counted so that a new fixture page has to be accounted for here
+   rather than quietly appearing on a live domain. */
+check('the synthetic brands\' page and slot files are pruned',
+  HTML.filter(f => f.startsWith('tests/fixtures/brands/')).length === 4 &&
+  HTML.filter(f => f.startsWith('tests/fixtures/brands/')).every(isPruned),
+  HTML.filter(f => f.startsWith('tests/fixtures/brands/')));
 
 /* ---------- 3. what a deploy would actually publish ---------- */
 console.log('\n===== THE PUBLISHED SURFACE =====');

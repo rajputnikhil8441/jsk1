@@ -46,14 +46,23 @@ hostname be correct while the row keeps its historical name.
    headings, page copy, SEO defaults. Nothing here is shared.
 3. Optionally add `seo-config.json`, `slots/`, `pages/` — see `templates/README.md`
    for what a slot and an override are.
-4. `node tools/build-brand.js <hostname> --check` — plans and prints, writes
+4. Add `seo-config.json` — copy `tools/seo-config.json` and set `seo.baseUrl`
+   to the brand's own `https://<hostname>`. This one is **required**: a site
+   assembled without it would ship a sitemap describing another brand's domain.
+5. `node tools/build-site.js <hostname> --check` — plans and prints, writes
    nothing. Every validation runs, so a broken brand fails here.
-5. `node tools/build-brand.js <hostname>` — writes `sites/<output>/`.
-6. Register the hostname in `js/cms-config.js` `CMS_BRANDS` so a visitor on that
-   domain resolves to the right `siteId` and the right storage namespace.
-7. Give the brand its own Supabase `site_brand` row, keyed by its `siteId`.
+6. `node tools/build-site.js <hostname>` — assembles `sites/<output>/`: the
+   shared engine, the brand's overlay, its generated pages, and its sitemap and
+   robots.txt. `tools/build-brand.js` is still there for the brand-owned files
+   alone.
+7. Register the hostname in `js/cms-config.js` `CMS_BRANDS` so a visitor on that
+   domain resolves to the right `siteId` and the right storage namespace. A
+   brand can be assembled before this step — that is how a site gets reviewed
+   before its domain is wired up — and the assembler says so when it is missing.
+8. Give the brand its own Supabase `site_brand` row, keyed by its `siteId`.
+   **Never reuse another brand's row.**
 
-Steps 6 and 7 are the only ones outside this directory, and neither is a code
+Steps 7 and 8 are the only ones outside this directory, and neither is a code
 change to shared behaviour: one is a registry entry, the other is a database row.
 
 A brand that is **not** registered in `CMS_BRANDS` can still be generated. That
