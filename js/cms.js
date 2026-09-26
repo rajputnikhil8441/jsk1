@@ -964,6 +964,23 @@
     }
 
     function robotsValue(page) {
+        /* A deployment that must never be indexed says so once, here, and
+           nothing downstream can undo it.
+
+           This is not the same thing as a PAGE being noindex. It is the
+           whole deployment: a staging or review host serving a copy of a
+           real brand. Without it, noindex would have to live in the data,
+           and the data is layered -- DEFAULTS < brand.js < the Supabase
+           row < local edits -- so any layer above the one that set it
+           could hand a review host back to the crawlers. A review copy
+           being indexed is not a cosmetic bug: it competes with the real
+           site for the real site's own terms.
+
+           The flag is set by the generated brand.js of an environment
+           build (see envPatched in tools/lib/brandkit.js) and is undefined
+           everywhere else, so no existing deployment changes behaviour. */
+        if (window.CMS_NOINDEX === true) return 'noindex,nofollow';
+
         if (!page || !page.robots) return '';
         var r = page.robots;
         if (r.index === undefined && r.follow === undefined) return '';
