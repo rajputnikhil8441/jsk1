@@ -6,6 +6,33 @@ on:
   push:
     branches: ["main"]
 
+  # CODE IS NOT THE ONLY THING THAT CHANGES.
+  #
+  # --from-cms bakes the published CMS record into the HTML at BUILD time.
+  # Publishing in /admin writes the CMS row and touches nothing here, so with
+  # `push` as the only trigger the served HTML stays frozen at whatever the
+  # row held when the last commit landed -- while the browser paints the
+  # current row over it after load. That is the DevTools/View-Source split:
+  # the page looks right and its source is stale. A publish therefore has to
+  # be able to start a build.
+  #
+  # repository_dispatch is the immediate path. Anything server-side that
+  # knows a publish happened -- a Supabase Database Webhook on the brand
+  # table is the intended one -- POSTs to
+  #   /repos/<owner>/<repo>/dispatches   {"event_type":"cms-published"}
+  # with a token of its own, and the site rebuilds within the minute. No
+  # credential lives in this repository and no browser code is involved.
+  # Until that is configured this trigger is simply never fired.
+  repository_dispatch:
+    types: [cms-published]
+
+  # The safety net, and what makes publishing reach the HTML with nothing
+  # configured at all: rebuild on a timer. The build is deterministic -- same
+  # row, same bytes -- so a run with nothing to do republishes what is
+  # already there, and one that cannot read the row fails without deploying.
+  schedule:
+    - cron: "*/30 * * * *"
+
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
@@ -61,3 +88,23 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+      # PROVE IT, rather than trusting that the steps above add up.
+      #
+      # Every step here can report success while the acceptance criterion
+      # fails: the build can bake, the upload can succeed, the deployment can
+      # say "Reported success!", and the HTML the site returns can still be
+      # the previous version -- which a browser hides, because the runtime
+      # paints the live row over the mount after load. So the URL that was
+      # just deployed to is fetched, and the baked markup THIS run produced
+      # has to be in the response body, verbatim, with no JavaScript
+      # involved. A mismatch fails the deploy loudly instead of leaving a
+      # page whose source and DOM disagree.
+      #
+      # It learns the pages and the expected bytes from the artifact that was
+      # just built and the URL that was just deployed to, so it names no
+      # brand and no domain of its own.
+      - name: Verify the baked CMS content is in the deployed HTML
+        run: |
+          node tools/verify-deployed.js \
+            --site _site/jsk-1.com \
+            --url "${{ steps.deployment.outputs.page_url }}"

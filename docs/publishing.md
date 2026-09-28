@@ -339,8 +339,18 @@ same renderer — a second SOURCE, not a second bake — and it is what removes 
 export-and-commit step from an ordinary content change:
 
 ```
-CMS publish  ->  deploy  ->  build-site.js --from-cms  ->  HTML contains the content
+CMS publish  ->  a build runs  ->  build-site.js --from-cms  ->  HTML contains the content
 ```
+
+The middle box is not free, and leaving it out is how this broke in production
+once. `--from-cms` reads the row **when the build runs**, so publishing reaches
+the HTML only if publishing can *start a build*. Publishing writes the Supabase
+row and touches nothing in this repository; with `push` as the deploy's only
+trigger, nothing rebuilt, the served HTML stayed at the row as it was when the
+last commit landed, and the runtime painted the current row over the mount after
+load. The page looked correct and its source was a week old — the same content
+visible in DevTools and absent from View Source. See **What starts a deploy**
+below.
 
 The trade is deliberate. A build that reads the row is no longer a pure function
 of the commit; it is a function of the commit *and* what is published when it
@@ -377,8 +387,8 @@ which source it used on its own `Content :` line, first thing.
 
 Publishing in `/admin` is live immediately for anyone running JavaScript. The
 baked copy — what a crawler without JavaScript reads — updates on the next
-deploy, exactly as every other brand-layer value already does. The build prints
-what it baked per page:
+build, which a publish can now start (see **What starts a deploy**). The build
+prints what it baked per page:
 
 ```
 Builder  : about (1 section)   baked into the HTML from brands/<id>/brand.js
@@ -388,6 +398,72 @@ Builder  : (no published content in brands/<id>/brand.js)
 so a drift is visible rather than silent, and the build never claims to have
 baked content it did not. A baker that cannot run is a build failure, not an
 empty div.
+
+### What starts a deploy
+
+Both site deploys (`static.yml`, `deploy-playzone9.yml`) carry four triggers,
+and two of them exist because **content changes without a commit**:
+
+| Trigger | When | Why |
+| --- | --- | --- |
+| `push` to `main` | a code or brand-layer change | as before |
+| `repository_dispatch` `cms-published` | something server-side says a publish happened | the immediate path: a rebuild within the minute |
+| `schedule` `*/30 * * * *` | every 30 minutes | the safety net — publishing reaches the HTML with nothing configured |
+| `workflow_dispatch` | someone clicks Run workflow | publish now, deploy now |
+
+The timer alone is enough: a published change is in the HTML source within half
+an hour, unattended. The build is deterministic for a given row, so a run with
+nothing new republishes the same bytes, and a run that cannot read the row fails
+without deploying.
+
+#### Making a publish deploy immediately (optional, needs configuration)
+
+`repository_dispatch` is inert until something fires it. The intended firer is a
+**Supabase Database Webhook** on the brand table — server-side, so no credential
+reaches a browser and none is committed here:
+
+1. Create a fine-grained GitHub personal access token scoped to **this
+   repository only**, with **Contents: read and write** (the permission
+   `POST /repos/{owner}/{repo}/dispatches` requires). Nothing else.
+2. In the Supabase dashboard, add a **Database Webhook** on the brand table for
+   `UPDATE`, pointing at
+   `https://api.github.com/repos/<owner>/<repo>/dispatches`, with headers
+   `Authorization: Bearer <token>`, `Accept: application/vnd.github+json`, and
+   body `{"event_type":"cms-published"}`.
+
+That is a dashboard change, not a repository one: the token lives in Supabase,
+the workflow already accepts the event, and nothing in this repo needs editing.
+Skipping it costs only latency — the timer still gets the content out.
+
+### The deploy checks the HTML it published
+
+A green deploy is not evidence that the content is in the served HTML. The build
+can bake, the upload can succeed, `deploy-pages` can report success, and the
+site can still return the previous version — and a browser will hide that,
+because the runtime paints the live row over the mount. So the last step asks
+the site:
+
+```yaml
+- name: Verify the baked CMS content is in the deployed HTML
+  run: |
+    node tools/verify-deployed.js \
+      --site _site/jsk-1.com \
+      --url "${{ steps.deployment.outputs.page_url }}"
+```
+
+`tools/verify-deployed.js` takes every `data-cms-baked` mount in the artifact
+that was just built and requires the mount's **entire markup** to appear
+verbatim in the response body for that page's URL. No JavaScript is executed, so
+whatever it finds is in the initial HTML. It learns the pages and the expected
+bytes from the artifact and the URL it is given, so it names no brand and no
+domain; `--served DIR` reads the response from a directory instead of the
+network, which is how `tests/test_cms_bake.js` covers it offline.
+
+| Exit | Meaning |
+| --- | --- |
+| 0 | every baked mount is in the served HTML (or nothing was baked, and it says so) |
+| 1 | a mount is missing or differs — the deployed HTML is not what was built |
+| 2 | the check could not be made (the site could not be fetched) |
 
 ### What the deploy actually does
 
