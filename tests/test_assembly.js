@@ -30,6 +30,7 @@ const vm = require('vm');
 
 const ROOT = path.resolve(__dirname, '..');
 const KIT = require(path.join(ROOT, 'tools', 'lib', 'brandkit.js'));
+const SHELL = require(path.join(__dirname, 'lib', 'pbshell.js'));
 const SITE = require(path.join(ROOT, 'tools', 'lib', 'sitekit.js'));
 
 const PROD_BRANDS = path.join(ROOT, 'brands');
@@ -130,18 +131,60 @@ check('the shared brand.js is not published as-is either -- layer 3 owns it',
 console.log('\n===== JSK1: ASSEMBLED == DEPLOYED =====');
 {
   const PAGES = ['404.html', 'about.html', 'contact.html', 'index.html', 'login.html',
-    'privacy-policy.html', 'register.html', 'responsible-gaming.html', 'js/brand.js'];
+    'privacy-policy.html', 'register.html', 'responsible-gaming.html'];
+  /* The assembly is compared against the Phase 0 fixtures with the
+     brand's published Page Builder content taken out of the input, not
+     out of the comparison: the SHELL build. The fixtures froze the pages
+     as they were when the brand published nothing, so that is the build
+     they describe. What the real assembly bakes into the mounts is
+     asserted straight after, against the same two builds. */
+  const shellRoot = mktmp('jsk1-shell');
+  const shell = build(SHELL.shellBrandsDir(PROD_BRANDS, path.join(shellRoot, 'brands')), 'jsk-1.com');
   let compared = 0, identical = 0;
   for (const rel of PAGES) {
-    const a = path.join(jsk1.dir, rel), b = path.join(GOLDEN, rel);
-    check('assembled ' + rel + ' exists', fs.existsSync(a));
+    const a = path.join(shell.dir, rel), b = path.join(GOLDEN, rel);
+    check('assembled ' + rel + ' exists', fs.existsSync(path.join(jsk1.dir, rel)));
     if (!fs.existsSync(a) || !fs.existsSync(b)) continue;
     compared++;
     if (sha(a) === sha(b)) identical++;
     else check(rel + ' is byte-identical to its Phase 0 fixture', false);
   }
-  check('all nine were compared', compared === 9, compared);
-  check('all nine are byte-identical to the Phase 0 fixtures', identical === 9, identical);
+  check('all eight were compared', compared === 8, compared);
+  check('all eight are byte-identical to the Phase 0 fixtures', identical === 8, identical);
+
+  /* js/brand.js is the brand's own layer and now carries what the site
+     has published, so the assembly must ship it unchanged rather than
+     match a frozen copy of it. */
+  check('the assembled js/brand.js IS the brand\'s committed layer',
+    sha(path.join(jsk1.dir, 'js', 'brand.js')) ===
+    sha(path.join(PROD_BRANDS, 'jsk-1.com', 'brand.js')));
+
+  /* And the published content reached the HTML, in the mount and nowhere
+     else. This is the claim the whole bake exists for, made here against
+     the assembled site a host would serve. */
+  const blocks = SHELL.publishedBlocks(PROD_BRANDS, 'jsk-1.com');
+  check('the brand publishes Page Builder content, so this proves something',
+    Object.keys(blocks).length > 0, blocks);
+  let baked = 0;
+  for (const rel of PAGES) {
+    const slug = rel.replace(/\.html$/, '');
+    const d = SHELL.bakedDelta(fs.readFileSync(path.join(shell.dir, rel), 'utf8'),
+                               fs.readFileSync(path.join(jsk1.dir, rel), 'utf8'));
+    check(rel + ': the shell and the assembled page line up', d.aligned, d.detail);
+    if (!blocks[slug]) {
+      check(rel + ': publishes nothing, so the assembly is the shell byte for byte',
+        d.aligned && d.changed.length === 0 && d.styles.length === 0,
+        { changed: d.changed.length, styles: d.styles.length });
+      continue;
+    }
+    baked++;
+    check(rel + ': the mount is the only line that differs, and it is baked',
+      d.aligned && d.changed.length === 1 && d.styles.length === 1 &&
+      d.changed[0].baked.indexOf('data-cms-baked="' + blocks[slug] + '"') > -1,
+      { changed: d.changed.map(c => c.line), styles: d.styles.length });
+  }
+  check('every published page was checked', baked === Object.keys(blocks).length,
+    baked + '/' + Object.keys(blocks).length);
 
   /* Shared files are byte copies, so they must be exactly the live ones. */
   let sharedSame = 0, sharedChecked = 0;

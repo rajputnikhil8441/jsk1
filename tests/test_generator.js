@@ -31,6 +31,7 @@ const crypto = require('crypto');
 
 const ROOT = path.resolve(__dirname, '..');
 const KIT = require(path.join(ROOT, 'tools', 'lib', 'brandkit.js'));
+const SHELL = require(path.join(__dirname, 'lib', 'pbshell.js'));
 const { BrandError } = KIT;
 
 const PROD_BRANDS = path.join(ROOT, 'brands');
@@ -240,23 +241,80 @@ console.log('\n===== JSK1: GENERATED == DEPLOYED =====');
   check('the files on disk are EXACTLY the expected files -- no more, no fewer',
     JSON.stringify(found.slice().sort()) === JSON.stringify(EXPECTED_JSK1), found);
 
+  /* The SHELL build: the same generator, the same brand, with the
+     published Page Builder blocks removed from the layer it reads. That
+     is what the Phase 0 fixtures froze, because in Phase 0 the brand
+     published none. Comparing against it keeps the byte-for-byte claim
+     over every part of the page the template owns; the content the real
+     build bakes in is asserted separately below, not excused. */
+  const shellOut = mktmp('jsk1-shell');
+  const shellBrands = SHELL.shellBrandsDir(PROD_BRANDS, path.join(shellOut, 'brands'));
+  KIT.writePlan(KIT.planBrand({ brandsDir: shellBrands, templatesDir: TEMPLATES, id: 'jsk-1.com' }),
+                path.join(shellOut, 'site'));
+  const shellDir = path.join(shellOut, 'site', 'jsk-1.com');
+
   /* Counted, because a loop over an empty list passes vacuously. */
   let compared = 0, identical = 0;
   for (const rel of EXPECTED_JSK1) {
     const gen = path.join(dir, rel);
     check('generated ' + rel + ' exists and is non-empty',
       fs.existsSync(gen) && fs.statSync(gen).size > 0);
+    /* js/brand.js is the brand's own layer, copied through. Its bytes are
+       whatever the site last published, so a Phase 0 snapshot of them
+       would be pinning content rather than behaviour; the invariant that
+       matters is asserted directly below. */
+    if (rel === 'js/brand.js') continue;
     const target = rel === 'seo-config.json'
       ? path.join(ROOT, 'tools', 'seo-config.json')
       : path.join(GOLDEN, rel);
     if (!fs.existsSync(target)) { check('comparison target exists for ' + rel, false, target); continue; }
     compared++;
-    if (sha(gen) === sha(target)) identical++;
+    const from = /\.html$/.test(rel) ? path.join(shellDir, rel) : gen;
+    if (sha(from) === sha(target)) identical++;
     else check(rel + ' is byte-identical to its Phase 0 / production target', false, rel);
   }
-  check('all ten outputs were actually compared', compared === 10, compared);
-  check('all ten outputs are byte-identical to the deployed files', identical === compared && compared > 0,
+  check('all nine shell outputs were actually compared', compared === 9, compared);
+  check('all nine are byte-identical to the deployed files', identical === compared && compared > 0,
     identical + '/' + compared);
+
+  /* js/brand.js: the build copies the brand's committed layer through
+     unchanged. That is the claim -- one brand layer, not a second copy
+     the generator could edit. */
+  check('generated js/brand.js IS the brand\'s committed layer, byte for byte',
+    sha(path.join(dir, 'js', 'brand.js')) === sha(path.join(PROD_BRANDS, 'jsk-1.com', 'brand.js')));
+
+  /* And the difference between the two builds is the baked content, in
+     the two places it belongs and nowhere else. */
+  const blocks = SHELL.publishedBlocks(PROD_BRANDS, 'jsk-1.com');
+  check('the brand publishes Page Builder content, so this proves something',
+    Object.keys(blocks).length > 0, blocks);
+  let bakedPages = 0; const strayPages = [];
+  for (const rel of EXPECTED_JSK1.filter(f => /\.html$/.test(f))) {
+    const slug = rel.replace(/\.html$/, '');
+    const d = SHELL.bakedDelta(fs.readFileSync(path.join(shellDir, rel), 'utf8'),
+                               fs.readFileSync(path.join(dir, rel), 'utf8'));
+    check(rel + ': the two builds line up', d.aligned, d.detail);
+    if (!blocks[slug]) {
+      check(rel + ': nothing published, so the build IS the shell byte for byte',
+        d.aligned && d.changed.length === 0 && d.styles.length === 0,
+        { changed: d.changed.slice(0, 2), styles: d.styles.length });
+      continue;
+    }
+    bakedPages++;
+    const only = d.aligned && d.changed.length === 1 && d.styles.length === 1;
+    check(rel + ': the mount is the ONLY line the bake changed',
+      only && /^\s*<div data-cms-sections="[a-z0-9-]+"><\/div>$/.test(d.changed[0].shell) &&
+      d.changed[0].baked.indexOf('data-cms-baked="' + blocks[slug] + '"') > -1,
+      { changed: d.changed.map(c => c.line), styles: d.styles.length });
+    check(rel + ': and the content it baked in is the published content',
+      only && d.changed[0].baked.indexOf('class="pb-section') > -1,
+      (d.changed[0] || {}).baked && d.changed[0].baked.slice(0, 120));
+    if (!only) strayPages.push(rel);
+  }
+  check('every page the brand publishes was checked', bakedPages === Object.keys(blocks).length,
+    bakedPages + '/' + Object.keys(blocks).length);
+  check('no page differs anywhere outside its mount and its style tag',
+    strayPages.length === 0, strayPages);
 
   /* Nothing half-rendered got through. */
   let scanned = 0;
@@ -304,13 +362,40 @@ console.log('\n===== GENERATED == FIXTURE == DEPLOYED =====');
   check('all eleven deployed files were compared to their fixtures', live === LIVE.length && live === 11, live);
   check('the Phase 0 fixtures still describe what production serves', live === 11, live);
 
-  /* The transitional duplication of brand.js, pinned in both
-     directions: the generator's source and the file production serves
-     today are the same bytes, until Phase 7 removes one of them. */
-  check('brands/jsk-1.com/brand.js is byte-identical to the deployed js/brand.js',
-    sha(path.join(PROD_BRANDS, 'jsk-1.com', 'brand.js')) === sha(path.join(ROOT, 'js', 'brand.js')));
-  check('and to the Phase 0 fixture',
-    sha(path.join(PROD_BRANDS, 'jsk-1.com', 'brand.js')) === sha(path.join(GOLDEN, 'js', 'brand.js')));
+  /* The transitional duplication of brand.js has ENDED, which is what
+     this pair used to be waiting for. Production no longer serves the
+     repository root: the deploy assembles the site and the brand layer
+     it ships comes from brands/<id>/brand.js, which is an export of what
+     the CMS has published and therefore changes whenever the site
+     publishes. The root copy stayed behind as the pre-CMS fallback the
+     local server and the browser suites load, and the Phase 0 fixture
+     still describes it.
+
+     So the two files are no longer required to be identical, and
+     asserting that they are would now mean re-exporting a file nothing
+     serves on every publish. What must hold is asserted instead: the
+     build ships the brand's layer unchanged (above), the root copy is
+     still the frozen shipped layer, and the two remain the same SHAPE,
+     so a structural divergence -- a key the engine needs appearing in
+     one and not the other -- is still caught. */
+  check('the repository-root js/brand.js is still the Phase 0 shipped layer',
+    sha(path.join(ROOT, 'js', 'brand.js')) === sha(path.join(GOLDEN, 'js', 'brand.js')));
+  {
+    const keys = f => Object.keys(SHELL.readBrand(f)).sort();
+    const brandKeys = keys(path.join(PROD_BRANDS, 'jsk-1.com', 'brand.js'));
+    const rootKeys = keys(path.join(ROOT, 'js', 'brand.js'));
+    /* An export is the whole record, so it holds strictly more than the
+       shipped layer -- the colours, images, themes and settings an admin
+       has saved. What must not happen is the other direction: a key the
+       shipped layer provides going missing from the file production
+       ships, which would leave that value to DEFAULTS alone. */
+    const missing = rootKeys.filter(k => brandKeys.indexOf(k) === -1);
+    check('and every key the shipped layer provides is still in the brand layer the build ships',
+      missing.length === 0, { missing: missing, root: rootKeys, brand: brandKeys });
+    check('  which is not a vacuous comparison',
+      rootKeys.length >= 4 && brandKeys.length >= rootKeys.length,
+      [rootKeys.length, brandKeys.length]);
+  }
   check('brands/jsk-1.com/seo-config.json is byte-identical to tools/seo-config.json',
     sha(path.join(PROD_BRANDS, 'jsk-1.com', 'seo-config.json')) === sha(path.join(ROOT, 'tools', 'seo-config.json')));
 }
