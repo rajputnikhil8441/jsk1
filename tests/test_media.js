@@ -335,8 +335,26 @@ const ascii = s => Array.from(s).map(c => c.charCodeAt(0));
       /holiday photo \(2\)\.PNG/i.test(await p.$eval('#mediaGrid .mediacard-name', e => e.textContent)));
     check('the status line reports success', /Uploaded 1 image/i.test(await p.$eval('#mediaStatus', e => e.textContent)));
 
+    /* An upload NO LONGER PUBLISHES. It used to call the publishing path
+       directly, which made a media upload a second, silent way to push every
+       pending change in the admin to every visitor. The bytes still go to the
+       bucket -- that is the upload -- but the library row is CMS content and
+       travels the one publishing route like everything else.
+
+       The original concern is not dropped, it is asserted properly: the row
+       must carry the library AFTER a publish, so other devices do see it. */
+    check('uploading did NOT publish on its own', rowOf() === null, rowOf());
+    check('but the library is in local state, ready to publish',
+      (await p.evaluate(() => window.CMS.data().media.items.length)) === 1);
+
+    /* Two steps by design: Review & Publish opens a sheet, then it is
+       confirmed. Nothing reaches the server until the confirm. */
+    await p.click('#btnReview');
+    await p.waitForTimeout(500);
+    await p.click('#pubConfirm');
+    await p.waitForTimeout(1200);
     const row = rowOf();
-    check('the library was published, so other devices will see it',
+    check('after Review & Publish the library IS published, so other devices will see it',
       !!row && !!row.data.media && row.data.media.items.length === 1, row && row.data.media);
 
     /* alt text */

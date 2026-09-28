@@ -337,7 +337,9 @@ const MANIFEST = path.join(ROOT, 'assets', 'asset-manifest.json');
     await p.goto(`${BASE}/admin/index.html`, { waitUntil: 'networkidle' });
     await p.fill('#authEmail', 'a@b.c'); await p.fill('#authPass', 'x'); await p.click('#authBtn');
     await p.waitForTimeout(400);
-    await p.click('.adm-nav-item[data-panel="builder"]'); await p.waitForTimeout(700);
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(700);
+    await p.click('#pageTabs .pagetab[data-page-key="about"]'); await p.waitForTimeout(300);
+    await p.click('#pageSubtabContent'); await p.waitForTimeout(700);
     await p.click('#pbAdd .pb-addbtn[data-type="image"]'); await p.waitForTimeout(600);
 
     const CARD = '#pbList .pb-sec:first-child .pb-elcard:first-child';
@@ -516,15 +518,17 @@ const MANIFEST = path.join(ROOT, 'assets', 'asset-manifest.json');
     check('and it is centred in the stage', parseInt(fit.ml, 10) > 0, fit);
 
     /* survives a page switch and a reload */
-    await p.click('#pbTabs .pagetab[data-slug="contact"]'); await p.waitForTimeout(700);
-    await p.click('#pbTabs .pagetab[data-slug="about"]'); await p.waitForTimeout(700);
+    await p.click('#pageTabs .pagetab[data-page-key="contact"]'); await p.waitForTimeout(700);
+    await p.click('#pageTabs .pagetab[data-page-key="about"]'); await p.waitForTimeout(700);
     check('the viewport choice survives switching pages',
       await p.$eval('#pbDevices .pb-devtab[data-viewport="mobile"]', n => n.classList.contains('active')));
     check('and the draft came back unchanged',
       (await p.evaluate(() => JSON.stringify(CMS.sections.draft('about').sections))) === before);
 
     await p.reload({ waitUntil: 'networkidle' });
-    await p.click('.adm-nav-item[data-panel="builder"]'); await p.waitForTimeout(900);
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(900);
+    await p.click('#pageTabs .pagetab[data-page-key="about"]'); await p.waitForTimeout(300);
+    await p.click('#pageSubtabContent'); await p.waitForTimeout(900);
     check('the draft survives a reload',
       (await p.evaluate(() => JSON.stringify(CMS.sections.draft('about').sections))) === before);
     const f2 = fr();

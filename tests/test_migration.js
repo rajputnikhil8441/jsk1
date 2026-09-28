@@ -650,8 +650,15 @@ const look = p => p.evaluate(() => {
   console.log('\n===== A NEW PAGE GETS THE SAME ARCHITECTURE =====');
   {
     const admin = fs.readFileSync(path.join(ROOT, 'js', 'admin.js'), 'utf8');
+    /* The mount moved into mountHtml(), which writes it with or without the
+       page's already-published sections, so the text to look for moved with it.
+       This stays a source check for the same reason it always was -- it is
+       cheap and it pins the shape; the behavioural check, which generates a
+       real stub and reads it back, is in tests/test_pb_bake.js section G. */
     check('the generated page carries a builder mount',
-      /data-cms-sections="' \+ e\(key\)/.test(admin));
+      /data-cms-sections="' \+ esc\(key\)/.test(admin) && /function mountHtml\(/.test(admin));
+    check('and the mount is filled from the renderer, not a second one',
+      /CMS\.sections\.renderInto\(host, sections\)/.test(admin));
     check('the generated page carries its own h1 above the mount',
       /<h1 data-cms-text="pages\.' \+ e\(key\)/.test(admin));
     check('the generated page keeps the body binding for migration',
@@ -686,14 +693,17 @@ const look = p => p.evaluate(() => {
     await p.goto(`${BASE}/admin/`, { waitUntil: 'networkidle' });
     await p.fill('#authEmail', 'a@b.c'); await p.fill('#authPass', 'x');
     await p.click('#authBtn'); await p.waitForTimeout(500);
-    await p.evaluate(() => document.querySelector('.adm-nav-item[data-panel="builder"]').click());
+    /* Pages > Content: the builder is an area of the Pages panel now. */
+    await p.evaluate(() => document.querySelector('.adm-nav-item[data-panel="pages"]').click());
     await p.waitForTimeout(500);
 
     const openTab = async slug => {
       await p.evaluate(sl => {
-        const t = [...document.querySelectorAll('#pbTabs .pagetab')]
-          .find(x => x.getAttribute('data-slug') === sl);
+        const t = [...document.querySelectorAll('#pageTabs .pagetab')]
+          .find(x => x.getAttribute('data-page-key') === sl);
         if (t) t.click();
+        const c = document.getElementById('pageSubtabContent');
+        if (c && !c.disabled) c.click();
       }, slug);
       await p.waitForTimeout(350);
     };

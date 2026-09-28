@@ -452,7 +452,9 @@ const cs = (p, sel, prop) => p.$eval(sel, (n, k) => getComputedStyle(n)[k], prop
 
     /* ---- the element control ---- */
     console.log('\n===== THE ELEMENT CONTROL OFFERS A ROLE OR A CUSTOM VALUE =====');
-    await p.click('.adm-nav-item[data-panel="builder"]'); await p.waitForTimeout(500);
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(500);
+    await p.click('#pageTabs .pagetab[data-page-key="about"]'); await p.waitForTimeout(300);
+    await p.click('#pageSubtabContent'); await p.waitForTimeout(500);
     await p.click('#pbAdd .pb-addbtn[data-type="text"]'); await p.waitForTimeout(400);
     const sid = await p.$eval('#pbList .pb-sec', e => e.getAttribute('data-sec-id'));
     const TOP = `#pbList .pb-sec[data-sec-id="${sid}"] > .pb-sec-body > .pb-subbody`;
@@ -526,7 +528,9 @@ const cs = (p, sel, prop) => p.$eval(sel, (n, k) => getComputedStyle(n)[k], prop
     /* Changing the global value must reach it too, without a reload. */
     await p.click('.adm-nav-item[data-panel="design"]'); await p.waitForTimeout(400);
     await p.fill('[data-typo-input="h1.fontSize"]', '57'); await p.waitForTimeout(700);
-    await p.click('.adm-nav-item[data-panel="builder"]'); await p.waitForTimeout(700);
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(700);
+    await p.click('#pageTabs .pagetab[data-page-key="about"]'); await p.waitForTimeout(300);
+    await p.click('#pageSubtabContent'); await p.waitForTimeout(700);
     if (fr) {
       const r = await fr.evaluate(id => {
         const n = document.querySelector('[data-el="' + id + '"]');

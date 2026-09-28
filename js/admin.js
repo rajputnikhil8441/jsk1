@@ -279,52 +279,141 @@
         t._t = setTimeout(function () { t.className = 'toast'; }, 2600);
     }
 
+    /* ========================================================
+       TWO STATES, NEVER ONE
+       ------------------------------------------------------
+       LOCAL SAVE STATE  is this edit on this disk?      #savedFlag
+       PUBLISH STATE     does the server have it?        #pubState
+
+       They used to be one flag, so a Page Builder keystroke -- which saves
+       locally and deliberately does not publish -- flipped the top bar to
+       "Saved" and disarmed the unload guard while the brand was still
+       unpublished. Splitting them is the fix.
+
+       `dirty` now means "not published", not "not saved". That is what the
+       unload guard and the change count are actually about: a local save is
+       cheap and automatic, a publish is not.
+    ======================================================== */
+    var pubState = 'clean';      /* clean | local | publishing | published | failed */
+    var pubError = '';
+
     function markDirty() {
         dirty = true;
         var f = $('#savedFlag');
-        f.textContent = 'Unsaved changes';
-        f.className = 'adm-saved dirty';
+        if (f) {
+            f.textContent = 'Unsaved changes';
+            f.className = 'adm-saved dirty';
+        }
+        /* A failure stays a failure until a publish confirms: editing more
+           does not make the last failed publish any less true. */
+        if (pubState !== 'failed' && pubState !== 'publishing') setPubState('local');
+        else paintPubState();
     }
 
-    function markSaved() {
-        dirty = false;
+    /* Written to this device. Says nothing about the server, deliberately. */
+    function markLocalSaved() {
         var f = $('#savedFlag');
-        f.textContent = 'Saved';
-        f.className = 'adm-saved show';
-        setTimeout(function () { f.className = 'adm-saved'; }, 1800);
+        if (f) {
+            f.textContent = 'Saved on this device';
+            f.className = 'adm-saved show';
+            setTimeout(function () { f.className = 'adm-saved'; }, 1800);
+        }
+        /* dirty is NOT cleared here. A local save has not published
+           anything, and the unload guard and the change count both mean
+           "unpublished". */
+        if (pubState === 'clean') setPubState('local');
+        else paintPubState();
     }
 
-    /* Persist + repaint the admin's own preview */
-    function commit(silent) {
+    function setPubState(next, reason) {
+        pubState = next;
+        pubError = (next === 'failed') ? (reason || 'Unknown error') : '';
+        if (next === 'published' || next === 'clean') dirty = false;
+        paintPubState();
+    }
+
+    /* The brand this admin publishes to, in words, for a button or a toast.
+       The display name is editable content and can be blank mid-edit, so the
+       hostname is the fallback -- and the row id is always shown, because it
+       is the thing that actually keeps two brands apart. */
+    function publishBrandName() {
+        return sstr(CMS.get('branding.siteName', '')) || CMS.brand.host() || 'this site';
+    }
+
+    function publishTargetLabel() {
+        return publishBrandName() + ' (' + (CMS.brand.host() || 'no hostname') +
+               ' → row ' + (CMS.brand.siteId() || 'none') + ')';
+    }
+
+    /* The publish target, written out rather than implied. Repainted with the
+       state because the display name comes from editable content. */
+    function paintPubTarget() {
+        var n = $('#pubTargetName'), h = $('#pubTargetHost'), r = $('#pubTargetRow');
+        if (n) n.textContent = publishBrandName();
+        if (h) h.textContent = CMS.brand.host() || 'no hostname';
+        if (r) {
+            r.textContent = CMS.remote.enabled
+                ? 'Target: ' + (CMS.brand.siteId() || 'none')
+                : 'Not publishing — remote storage is off';
+            r.className = CMS.brand.agrees() ? '' : 'chk-warn';
+        }
+    }
+
+    function paintPubState() {
+        paintPubTarget();
+        var el = $('#pubState');
+        if (!el) return;
+        var text = '', cls = '';
+        if (pubState === 'publishing') {
+            text = 'Publishing…'; cls = 'publishing';
+        } else if (pubState === 'published') {
+            var d = new Date();
+            text = 'Published ✓ ' + ('0' + d.getHours()).slice(-2) + ':' +
+                   ('0' + d.getMinutes()).slice(-2);
+            cls = 'published';
+        } else if (pubState === 'failed') {
+            text = 'Not published — ' + pubError; cls = 'failed';
+        } else if (pubState === 'local') {
+            text = 'Unpublished changes'; cls = 'local';
+        } else {
+            text = CMS.remote.enabled ? 'Everything published' : 'Local only';
+            cls = 'clean';
+        }
+        el.textContent = text;
+        el.className = 'pubstate ' + cls;
+        el.setAttribute('data-pubstate', pubState);
+        var btn = $('#btnReview');
+        if (btn) btn.disabled = (pubState === 'publishing');
+    }
+
+    /* ========================================================
+       LOCAL SAVE vs PUBLISH — the one rule this admin runs on
+       ------------------------------------------------------
+       There used to be a single commit(silent) that did both jobs, and the
+       difference between "this browser" and "every visitor" was one boolean
+       argument at 20 call sites. That is what made Save, Save draft and
+       Publish indistinguishable.
+
+       They are two functions now, named for what they reach:
+
+         commitLocal()      localStorage. Never the network. Never says
+                            "Published". Never clears the unpublished-change
+                            state.
+         publishToRemote()  the ONLY path to Supabase. Goes through the
+                            review flow, the brand guard, and a read-back.
+
+       The Page Builder is handed commitLocal and a staging call, never a
+       generic commit, so it cannot reach the network even by mistake.
+    ======================================================== */
+
+    /* Persist to this device + repaint the admin's own preview.
+       Returns whether the write reached storage. */
+    function commitLocal() {
         if (!CMS.save()) {
             toast('Storage full — remove or shrink some images.', true);
             return false;
         }
-        markSaved();
-
-        /* With remote storage on, saving means publishing to every device.
-           The promise is handed back (milestone C) so a caller can hold its
-           own button until the round trip finishes -- without it, a second
-           click lands while the first is still in flight and publishes
-           twice. Callers that only test truthiness are unaffected: a
-           promise is truthy, exactly as `true` was. */
-        var pending = null;
-        if (CMS.remote.enabled && !silent) {
-            var btn = $('#btnSave');
-            btn.disabled = true;
-            var label = btn.innerHTML;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Publishing…';
-            pending = CMS.remote.publish().then(function () {
-                btn.disabled = false;
-                btn.innerHTML = label;
-                toast('Published. Every device sees this now.');
-            }).catch(function (err) {
-                btn.disabled = false;
-                btn.innerHTML = label;
-                toast('Saved locally but NOT published: ' + err.message, true);
-                if (/sign in/i.test(err.message)) showGate();
-            });
-        }
+        markLocalSaved();
         renderPreview();
         var brandName = CMS.get('branding.siteName', 'BRAND');
         $('#brandLabel').textContent = brandName;
@@ -332,8 +421,273 @@
            name of its own -- it is painted from the brand like the
            label beside it. */
         document.title = brandName + ' CMS — Admin';
+        /* And WHICH brand that is, in the sidebar, on every screen -- not
+           only on the Brands panel. */
+        var hostLine = $('#brandHost');
+        if (hostLine) {
+            hostLine.textContent = CMS.brand.host() || 'no hostname';
+            hostLine.title = 'Publishing to row "' + CMS.brand.siteId() + '"' +
+                (CMS.brand.matched() ? '' : ' (this hostname is not a registered brand)');
+            hostLine.className = 'adm-brand-host' +
+                (CMS.brand.matched() && CMS.brand.agrees() ? '' : ' chk-warn');
+        }
+        buildBrands();
         updateStorageMeter();
-        return pending || true;
+        return true;
+    }
+
+    /* The ONLY function in this file that reaches Supabase.
+
+       Returns a promise that settles either way, so the caller can hold its
+       button for the whole round trip -- without that, a second click lands
+       while the first is in flight and publishes twice.
+
+       "Published" is set by CMS.remote.publish() succeeding, and that now
+       means the row was written AND read back. A 2xx alone no longer
+       qualifies. A failure leaves the state `failed`, keeps the change count,
+       and keeps the reason on screen: it is not a toast that vanishes while
+       the brand is still unpublished. */
+    function publishToRemote() {
+        if (!CMS.remote.enabled) {
+            toast('Remote publishing is off — changes stay in this browser.', true);
+            return Promise.resolve(false);
+        }
+        setPubState('publishing');
+        return CMS.remote.publish().then(function () {
+            setPubState('published');
+            toast('Published to ' + publishTargetLabel() + '.');
+            return true;
+        }).catch(function (err) {
+            setPubState('failed', err && err.message ? err.message : String(err));
+            if (/sign in/i.test(err && err.message || '')) showGate();
+            return false;
+        });
+    }
+
+    /* ========================================================
+       STAGED PUBLISH INTENT
+       ------------------------------------------------------
+       Page Builder Publish and Unpublish do not mutate anything when
+       pressed. They describe what they want -- {slug: 'publish'|'unpublish'}
+       -- and that description is applied only when a publish is actually
+       confirmed.
+
+       Staging rather than mutate-then-rollback is what makes Cancel free:
+       there is nothing to undo, because nothing was done. Rollback logic is
+       the thing that gets a half-applied state wrong.
+    ======================================================== */
+    var pendingIntent = null;
+
+    /* Returns the publish promise. It MUST: the builder holds its button
+       until this settles, and a version that returned undefined released the
+       guard synchronously -- so three clicks in one tick published three
+       times. tests/test_pagebuilder_safety.js asserts one. */
+    function stagePublish(intent) {
+        pendingIntent = intent || null;
+        return openPublishReview();
+    }
+
+    /* Turn the staged description into real local state. Called from inside
+       the publish flow, after confirmation, never before. */
+    function applyPendingIntent() {
+        if (!pendingIntent) return;
+        var slugs = Object.keys(pendingIntent), i;
+        for (i = 0; i < slugs.length; i++) {
+            if (pendingIntent[slugs[i]] === 'publish')        CMS.sections.publish(slugs[i]);
+            else if (pendingIntent[slugs[i]] === 'unpublish') CMS.sections.unpublish(slugs[i]);
+        }
+        pendingIntent = null;
+    }
+
+    function clearPendingIntent() { pendingIntent = null; }
+
+    /* The single door to the network. Phase 3 puts the review sheet in front
+       of the confirm step; the sequence below is what runs once confirmed. */
+    function confirmPublish() {
+        applyPendingIntent();
+        if (!commitLocal()) return Promise.resolve(false);
+        buildBuilder();
+        return publishToRemote();
+    }
+
+    /* ========================================================
+       REVIEW & PUBLISH
+       ------------------------------------------------------
+       The list is built from CMS.changedAreas(), which hashes the SAME record
+       withoutLocalKeys(load()) sends. It cannot describe one thing while the
+       payload carries another.
+
+       Labels live here, not in js/cms.js: the area keys are data, their
+       wording is presentation.
+    ======================================================== */
+    var AREA_LABELS = {
+        branding:     'Branding',
+        colors:       'Colours',
+        typography:   'Typography',
+        design:       'Global design',
+        text:         'Site text',
+        images:       'Images',
+        home:         'Home content',
+        footer:       'Footer',
+        seo:          'SEO defaults',
+        themes:       'Themes',
+        sportsTable:  'Sports table',
+        registerPage: 'Register page',
+        media:        'Media library',
+        settings:     'Settings'
+    };
+
+    var PAGE_PART_LABELS = {
+        builder:         'Page content',
+        title:           'Page title',
+        metaDescription: 'Meta description',
+        heading:         'H1 heading',
+        lead:            'Intro text',
+        body:            'Fallback copy',
+        settings:        'Search &amp; sharing settings'
+    };
+
+    /* area key -> { group, item }. An unknown key still gets a row: a change
+       nobody labelled is still a change, and hiding it would under-report. */
+    function describeArea(area) {
+        if (area.indexOf('pages.') !== 0) {
+            return { group: AREA_LABELS[area] || area, item: '' };
+        }
+        var rest = area.slice(6);
+        var cut = rest.lastIndexOf('.');
+        var slug = cut > -1 ? rest.slice(0, cut) : rest;
+        var part = cut > -1 ? rest.slice(cut + 1) : '';
+        var page = (CMS.data().pages || {})[slug] || {};
+        return {
+            group: (page.label ? esc(page.label) : esc(slug)) + ' <span class="publist-url">' +
+                   esc(page.url || '') + '</span>',
+            item: PAGE_PART_LABELS[part] || esc(part)
+        };
+    }
+
+    /* How many sections a staged page publish would put live, so the sheet can
+       say "12 sections" rather than "page content". */
+    function stagedDetail(area) {
+        if (!pendingIntent) return '';
+        var m = /^pages\.(.+)\.builder$/.exec(area);
+        if (!m) return '';
+        var want = pendingIntent[m[1]];
+        if (want === 'unpublish') return ' — take these sections OFF the live page';
+        if (want !== 'publish') return '';
+        var n = 0;
+        try { n = CMS.sections.draft(m[1]).sections.length; } catch (e) { n = 0; }
+        return ' — publish ' + n + (n === 1 ? ' section' : ' sections');
+    }
+
+    function buildPublishReview() {
+        var t = $('#pubModalTarget');
+        if (t) {
+            t.innerHTML =
+                '<strong>' + esc(publishBrandName()) + '</strong>' +
+                '<span>' + esc(CMS.brand.host() || 'no hostname') + '</span>' +
+                '<span>Target row: <code>' + esc(CMS.brand.siteId() || 'none') + '</code></span>' +
+                (CMS.brand.matched() ? '' :
+                    '<span class="chk-warn">This hostname is not a registered brand, so it is ' +
+                    'borrowing the default one. Check before publishing.</span>');
+        }
+
+        var res = CMS.changedAreas();
+        var list = $('#pubModalList');
+        var note = $('#pubModalNote');
+        var groups = {}, order = [];
+        res.areas.forEach(function (area) {
+            var d = describeArea(area);
+            if (!groups[d.group]) { groups[d.group] = []; order.push(d.group); }
+            groups[d.group].push((d.item || 'Everything in this area') + stagedDetail(area));
+        });
+
+        if (note) {
+            note.innerHTML = !res.everPublished
+                ? 'This browser has not confirmed a publish for this brand yet, so everything ' +
+                  'it holds is listed. After the first publish only real differences appear here.'
+                : (res.areas.length
+                    ? 'Everything below replaces what is on the server now.'
+                    : 'Nothing differs from what is already published.');
+        }
+
+        if (list) {
+            list.innerHTML = order.length
+                ? order.map(function (g) {
+                    return '<div class="publist-group"><h5>' + g + '</h5><ul>' +
+                        groups[g].map(function (i) { return '<li>' + i + '</li>'; }).join('') +
+                        '</ul></div>';
+                  }).join('')
+                : '<p class="hint">No changes.</p>';
+        }
+
+        var last = $('#pubModalLast');
+        if (last) {
+            var lp = CMS.data().lastPublished || {};
+            last.textContent = lp.at
+                ? 'Last confirmed publish from this browser: ' + new Date(lp.at).toLocaleString() + '.'
+                : 'This browser has not confirmed a publish for this brand.';
+        }
+
+        var btn = $('#pubConfirm');
+        if (btn) {
+            var n = res.areas.length;
+            btn.innerHTML = '<i class="fas fa-cloud-arrow-up"></i> Publish ' +
+                (n ? n + (n === 1 ? ' change' : ' changes') : 'nothing') +
+                ' to ' + esc(publishBrandName());
+            btn.disabled = false;
+            btn.title = (CMS.brand.host() || 'no hostname') +
+                        ' → row ' + (CMS.brand.siteId() || 'none');
+        }
+    }
+
+    function closePublishReview() {
+        var m = $('#pubModal');
+        if (m) m.hidden = true;
+    }
+
+    /* Opens the sheet and resolves when the publish settles -- or immediately,
+       with false, if it is cancelled. The builder holds its button on this
+       promise, so it must settle in BOTH cases. */
+    var reviewResolve = null;
+
+    function openPublishReview() {
+        var m = $('#pubModal');
+        if (!m) return confirmPublish();          /* no sheet in the DOM: fail safe, still one door */
+        buildPublishReview();
+        m.hidden = false;
+        var btn = $('#pubConfirm');
+        if (btn) setTimeout(function () { btn.focus(); }, 60);
+        return new Promise(function (resolve) { reviewResolve = resolve; });
+    }
+
+    function settleReview(v) {
+        var r = reviewResolve;
+        reviewResolve = null;
+        if (r) r(v);
+    }
+
+    function wirePublishReview() {
+        var cancel = function () {
+            /* Cancel throws away the staged intent and touches nothing else.
+               Nothing was applied, so there is nothing to undo. */
+            clearPendingIntent();
+            closePublishReview();
+            paintPubState();
+            settleReview(false);
+        };
+        var x = $('#pubCancelX'), c = $('#pubCancel'), ok = $('#pubConfirm'), m = $('#pubModal');
+        if (x) x.addEventListener('click', cancel);
+        if (c) c.addEventListener('click', cancel);
+        if (m) m.addEventListener('click', function (e) { if (e.target === m) cancel(); });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && m && !m.hidden) cancel();
+        });
+        if (ok) ok.addEventListener('click', function () {
+            ok.disabled = true;
+            closePublishReview();
+            confirmPublish().then(function (v) { settleReview(v); },
+                                  function () { settleReview(false); });
+        });
     }
 
     function switchPanel(name) {
@@ -351,6 +705,10 @@
            over there. */
         if (name === 'design') buildDesign();
         if (name === 'media') { mediaShown = MEDIA_PAGE; buildMedia(); }
+        /* Pages now hosts the builder and its preview iframe, which cannot be
+           sized while the panel is hidden. Rebuilt on the way in, for the same
+           reason design and media are. */
+        if (name === 'pages') buildPages();
         /* Leaving the builder pulls the list the pointer was aiming at out
            from under a drag in flight. It ends here, and ends the way every
            cancelled drag does: without changing the draft. */
@@ -565,7 +923,7 @@
         if (designSaveTimer) clearTimeout(designSaveTimer);
         designSaveTimer = setTimeout(function () {
             designSaveTimer = null;
-            commit(true);
+            commitLocal();
         }, 250);
     }
 
@@ -1206,7 +1564,11 @@
         window.CMSMedia.remove(m.url).then(function () {
             mediaStatus('Deleted ' + esc(m.name) + '.', 'ok');
             buildMedia();
-            commit();
+            /* Local only. The bytes are already gone from the bucket, but the
+               library row is CMS content and goes live through Review &
+               Publish like every other change -- an upload must not be a
+               second, silent publishing path. */
+            commitLocal();
         }).catch(function (err) {
             btn.disabled = false;
             mediaStatus('Could not delete ' + esc(m.name) + ': ' + esc(err.message), 'bad');
@@ -1245,11 +1607,12 @@
             mediaBusy = false;
             buildMedia();
             if (okCount) {
-                /* The bytes are already in the bucket; the library row is in
-                   the record and has to be published or the next device --
-                   and the next reload on a different machine -- will not
-                   know the picture exists. */
-                commit();
+                /* The bytes are already in the bucket. The library row that
+                   remembers them is CMS content, so it reaches other devices
+                   through Review & Publish -- not from here. This used to
+                   publish the whole record on an upload, which is a second
+                   publishing path nobody asked for. */
+                commitLocal();
             }
             if (!problems.length) {
                 mediaStatus('Uploaded ' + okCount + ' image' + (okCount === 1 ? '' : 's') + '.', 'ok');
@@ -1823,23 +2186,70 @@
         }
     ];
 
-    /* Markup the toolbar drops in at the cursor */
-    var PAGE_SNIPPETS = [
-        ['H2', '<h2>Section heading</h2>'],
-        ['H3', '<h3>Sub heading</h3>'],
-        ['Paragraph', '<p>Write your paragraph here.</p>'],
-        ['List', '<ul>\n  <li>First point</li>\n  <li>Second point</li>\n</ul>'],
-        ['Numbered list', '<ol>\n  <li>First step</li>\n  <li>Second step</li>\n</ol>'],
-        ['Link', '<a href="contact.html">link text</a>'],
-        ['Table', '<table>\n  <tr><th>Heading</th><th>Heading</th></tr>\n  <tr><td>Cell</td><td>Cell</td></tr>\n</table>'],
-        ['Placeholder note', '<p class="page-note">Editable placeholder — replace this with real information.</p>']
-    ];
-
     var activePageKey = null;
 
     function pageKeys() {
         var pages = CMS.data().pages;
         return pages ? Object.keys(pages) : [];
+    }
+
+    /* Which of the two areas of the Pages panel is showing. */
+    var activePageTab = 'content';
+
+    /* Can this page's body be built at all? A page with no
+       <div data-cms-sections> in its HTML has nowhere for sections to render,
+       so offering a content editor for it would be a control that does
+       nothing -- which is exactly what the old Main content field was for
+       home, login and register. */
+    function pageHasMount(key) {
+        var mounted = (CMS.sections && CMS.sections.mounted) || {};
+        var page = (CMS.data().pages || {})[key] || {};
+        return Object.prototype.hasOwnProperty.call(mounted, key) ? !!mounted[key]
+                                                                 : !!page.builderMount;
+    }
+
+    function showPageTab(which) {
+        /* A page with no mount has no Content area, so asking for one lands on
+           Settings & SEO rather than on an empty panel. */
+        if (which === 'content' && !pageHasMount(activePageKey)) which = 'settings';
+        activePageTab = which;
+
+        var content = $('#pageArea-content'), settings = $('#pageArea-settings');
+        if (content) content.hidden = (which !== 'content');
+        if (settings) settings.hidden = (which !== 'settings');
+
+        $$('#pageSubtabs .subtab').forEach(function (b) {
+            var on = b.getAttribute('data-pagetab') === which;
+            b.classList.toggle('active', on);
+            b.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+
+        var cb = $('#pageSubtabContent');
+        if (cb) {
+            var has = pageHasMount(activePageKey);
+            cb.disabled = !has;
+            cb.title = has ? 'Build this page\u2019s body from sections.'
+                           : 'This page has no content mount, so its body is hand-built in its HTML file.';
+        }
+
+        var note = $('#pageNoMount');
+        if (note) {
+            if (pageHasMount(activePageKey)) { note.hidden = true; note.textContent = ''; }
+            else {
+                note.hidden = false;
+                note.innerHTML = 'This page\u2019s layout and body are hand-built in <code>' +
+                    esc((CMS.data().pages[activePageKey] || {}).url || activePageKey + '.html') +
+                    '</code> and are not editable from the CMS. Its title, description, ' +
+                    'headings and search settings are, in <strong>Settings &amp; SEO</strong>.';
+            }
+        }
+
+        /* The builder only repaints when it is on screen. */
+        if (which === 'content' && Builder) {
+            Builder.select(activePageKey);
+            Builder.build();
+            pbFitPreview();
+        }
     }
 
     function buildPages() {
@@ -1863,6 +2273,18 @@
             b.setAttribute('data-page-key', k);
             if (k === activePageKey) b.setAttribute('aria-current', 'page');
             b.textContent = page.label || k;
+            /* A dot for a page whose content is published, moved here from the
+               builder's own tab strip along with the selector itself. */
+            if (pageHasMount(k)) {
+                var st = null;
+                try { st = CMS.sections.status(k); } catch (e) { st = null; }
+                if (st && st.live) {
+                    var dot = document.createElement('span');
+                    dot.className = 'pb-dot' + (st.dirty ? ' dirty' : '');
+                    dot.title = st.dirty ? 'Published, with unpublished changes' : 'Published';
+                    b.appendChild(dot);
+                }
+            }
             b.addEventListener('click', function () {
                 activePageKey = k;
                 buildPages();
@@ -1871,6 +2293,15 @@
         });
 
         renderPageEditor();
+        showPageTab(activePageTab);
+    }
+
+    function wirePageSubtabs() {
+        $$('#pageSubtabs .subtab').forEach(function (b) {
+            b.addEventListener('click', function () {
+                showPageTab(b.getAttribute('data-pagetab'));
+            });
+        });
     }
 
     function renderPageEditor() {
@@ -1901,78 +2332,59 @@
         head.appendChild(grid);
         host.appendChild(head);
 
-        /* ---- body HTML ---- */
+        /* ---- the body, READ ONLY ----
+           There used to be an editable "Main content" HTML field here. It has
+           gone, for two reasons.
+
+           On a page the builder can mount, a published builder block HIDES this
+           copy: the field saved, reported success, published, and the visitor
+           saw none of it, with nothing on screen saying so. On a page with no
+           mount -- home, login, register -- nothing has ever rendered the value
+           at all, because those files carry no data-cms-html binding. Either
+           way it was a control that did not do what it looked like it did.
+
+           The VALUE is untouched. It still ships in the page HTML as the copy a
+           visitor without JavaScript reads, it still comes back if the builder
+           content is unpublished, and it is still what "Move page copy into the
+           builder" imports from. So it is shown, as what it is. */
         var bodyCard = document.createElement('div');
         bodyCard.className = 'card';
+        var mounted = pageHasMount(key);
         bodyCard.innerHTML =
-            '<h2>Main content</h2>' +
-            '<p class="hint">Plain HTML. Use the buttons to drop in a heading, paragraph, ' +
-            'list, link or table at the cursor. There is no length limit — this is where the ' +
-            'long-form content for this page lives.</p>';
+            '<h2>Fallback copy</h2>' +
+            '<p class="hint">This is the static fallback copy shipped in the page HTML. ' +
+            'It is shown when JavaScript is disabled' +
+            (mounted ? ' and can be restored if the Page Builder content is unpublished.'
+                     : '.') + '</p>' +
+            (mounted
+                ? '<p class="hint">Edit this page\u2019s body in <strong>Content</strong>. ' +
+                  'To start from the copy below, use <em>Move page copy into the builder</em> ' +
+                  'there.</p>'
+                : '<p class="hint">Nothing in the CMS renders this value for this page: ' +
+                  '<code>' + esc(page.url || key + '.html') + '</code> carries no content ' +
+                  'mount, so its body is whatever is written in the file.</p>');
 
-        var bar = document.createElement('div');
-        bar.className = 'snipbar';
-        bodyCard.appendChild(bar);
-
-        var area = document.createElement('textarea');
-        area.className = 'codearea';
-        area.rows = 22;
-        area.spellcheck = false;
-        area.value = page.body || '';
-        bodyCard.appendChild(area);
-
-        var previewLabel = document.createElement('p');
-        previewLabel.className = 'hint';
-        previewLabel.textContent = 'Preview';
-        bodyCard.appendChild(previewLabel);
-
-        var preview = document.createElement('div');
-        preview.className = 'pagepreview';
-        bodyCard.appendChild(preview);
-        host.appendChild(bodyCard);
-
-        function paintPreview() {
-            preview.innerHTML =
-                '<h1>' + esc(page.heading || '') + '</h1>' +
-                '<p class="info-lead">' + esc(page.lead || '') + '</p>' +
-                (page.body || '');
-            /* keep preview links inert */
-            $$('a', preview).forEach(function (a) {
+        if (sstr(page.body)) {
+            var ro = document.createElement('div');
+            /* Reuses .pagepreview's page-body typography rather than a second
+               copy of it; .pagefallback only adds the read-only framing. */
+            ro.className = 'pagefallback pagepreview';
+            ro.setAttribute('data-readonly', 'true');
+            /* Rendered as the markup it is, so it reads like the page. Authored
+               by a signed-in admin and already in the record; this only
+               displays what is there. */
+            ro.innerHTML = page.body;
+            $$('a', ro).forEach(function (a) {
                 a.addEventListener('click', function (e) { e.preventDefault(); });
             });
+            bodyCard.appendChild(ro);
+        } else {
+            var none = document.createElement('p');
+            none.className = 'hint';
+            none.textContent = 'This page ships no fallback copy.';
+            bodyCard.appendChild(none);
         }
-
-        area.addEventListener('input', function () {
-            page.body = area.value;
-            touchPage(page);
-            paintPreview();
-        });
-
-        PAGE_SNIPPETS.forEach(function (s) {
-            var b = document.createElement('button');
-            b.type = 'button';
-            b.className = 'adm-btn ghost snip';
-            b.textContent = s[0];
-            b.addEventListener('click', function () { insertSnippet(area, s[1]); });
-            bar.appendChild(b);
-        });
-
-        function insertSnippet(el, text) {
-            var start = el.selectionStart, end = el.selectionEnd, val = el.value;
-            var before = val.slice(0, start);
-            var pad = (before && !/\n$/.test(before)) ? '\n' : '';
-            var insert = pad + text + '\n';
-            el.value = before + insert + val.slice(end);
-            var caret = start + insert.length;
-            el.focus();
-            el.setSelectionRange(caret, caret);
-            page.body = el.value;
-            touchPage(page);
-            paintPreview();
-        }
-
-        /* the editor repaints the live preview of the page it describes */
-        paintPreview();
+        host.appendChild(bodyCard);
 
         /* ---- search engine settings ---- */
         var seoCard = document.createElement('div');
@@ -2275,12 +2687,9 @@
             touchPage(page);
             paintCount();
             if (def.key === 'heading' || def.key === 'lead') {
-                var pv = $('.pagepreview');
-                if (pv) {
-                    var h1 = pv.querySelector('h1'), lead = pv.querySelector('.info-lead');
-                    if (h1 && def.key === 'heading') h1.textContent = input.value;
-                    if (lead && def.key === 'lead') lead.textContent = input.value;
-                }
+                /* The editable body preview this used to keep in step is
+                   gone; heading and lead are their own fields and the page
+                   itself is previewed in Content. */
             }
         });
         paintCount();
@@ -2913,7 +3322,14 @@
                 warn('This page has unpublished Page Builder changes. Everything below describes ' +
                      'what is PUBLISHED — press Publish in the Page Builder to make the draft live.');
             else
-                ok('Page Builder content is published; this is what search engines see.');
+                /* It used to say "this is what search engines see", which was
+                   only true of a crawler that ran JavaScript: the content was
+                   not in the HTML the server sent. The build now bakes the
+                   published sections into the page (docs/publishing.md), so
+                   this is accurate -- and it names the deploy, because that is
+                   when the static copy catches up. */
+                ok('Page Builder content is published. It is in the HTML the site serves ' +
+                   'from the next deploy, so a crawler reads it with or without JavaScript.');
         } else if (content.draftOnly) {
             warn('A Page Builder draft exists for this page but has never been published, so the ' +
                  'checks below describe the page body that is still live.');
@@ -3077,6 +3493,9 @@
         $$('[data-editpage]', host).forEach(function (b) {
             b.addEventListener('click', function () {
                 activePageKey = b.getAttribute('data-editpage');
+                /* This row is about SEO, so it lands on Settings & SEO rather
+                   than on whichever tab was last open. */
+                activePageTab = 'settings';
                 switchPanel('pages');
                 buildPages();
             });
@@ -3213,6 +3632,37 @@
         return open + '    ' + body + '\n' + close;
     }
 
+    /* The mount for a generated page stub.
+
+       If this page already has published Page Builder content, the stub is
+       written WITH it, rather than with an empty div that would need a deploy
+       before a crawler could read anything. The markup comes from the renderer
+       itself -- the same CMS.sections.renderInto the page and the build both
+       use -- so the file a developer commits matches what the build would
+       produce for it. */
+    function mountHtml(key) {
+        var indent = '            ';
+        var sections = null;
+        try { sections = CMS.sections.published(key); } catch (e) { sections = null; }
+        if (!sections || !sections.length) {
+            return indent + '<!-- Page Builder mount. Stays empty until sections are published. -->\n' +
+                   indent + '<div data-cms-sections="' + esc(key) + '"></div>\n';
+        }
+        var host = document.createElement('div');
+        CMS.sections.renderInto(host, sections);
+        return indent + '<!-- Page Builder mount, carrying this page\u2019s published content. -->\n' +
+               indent + '<div data-cms-sections="' + esc(key) + '" data-cms-baked="' +
+               sections.length + '">' + host.innerHTML + '</div>\n';
+    }
+
+    function mountStyle(key) {
+        var sections = null;
+        try { sections = CMS.sections.published(key); } catch (e) { sections = null; }
+        if (!sections || !sections.length) return '';
+        var css = String(CMS.sections.css(sections) || '');
+        return css ? '    <style id="cmsBuilder">' + css + '</style>\n' : '';
+    }
+
     function newPageHtml(key, shell) {
         var p = CMS.data().pages[key];
         var base = sstr(seoGet('seo.baseUrl', '')).replace(/\/+$/, '');
@@ -3243,6 +3693,11 @@
             '    <script src="js/cms-config.js"></scr' + 'ipt>\n' +
             '    <script src="js/brand.js"></scr' + 'ipt>\n' +
             '    <script src="js/cms.js"></scr' + 'ipt>\n' +
+            /* The scoped styles for whatever this page already publishes, so a
+               visitor without JavaScript sees it styled rather than only
+               present. The engine replaces this element's contents wholesale
+               from the same section array, so it cannot double anything. */
+            mountStyle(key) +
             '</head>\n\n<body>\n\n' +
             shellRegion(shell, 'header', key) + '\n' +
             shellRegion(shell, 'nav', key) + '\n' +
@@ -3252,8 +3707,7 @@
             '            <h1 data-cms-text="pages.' + e(key) + '.heading">' + e(p.heading) + '</h1>\n' +
             '            <p class="info-lead" data-cms-text="pages.' + e(key) + '.lead">' + e(p.lead) + '</p>\n' +
             '            <div class="info-body" data-cms-html="pages.' + e(key) + '.body"></div>\n' +
-            '            <!-- Page Builder mount. Stays empty until sections are published. -->\n' +
-            '            <div data-cms-sections="' + e(key) + '"></div>\n' +
+            mountHtml(key) +
             '        </article>\n' +
             '    </main>\n\n' +
             shellRegion(shell, 'footer', key) + '\n' +
@@ -3479,8 +3933,8 @@
                 CMS.paintVars();
                 buildColors();
                 renderPreview();
-                commit();
-                toast(p.label + ' palette applied.');
+                commitLocal();
+                toast(p.label + ' palette applied. Review & Publish to make it live.');
             });
             host.appendChild(b);
         });
@@ -3505,11 +3959,64 @@
     /* Publish file: the whole config wrapped as a loadable script */
     function brandFileText() {
         return '/* ============================================================\n' +
-               '   PUBLISHED BRAND — ' + CMS.get('branding.siteName', 'brand') + '\n' +
+               '   BRAND DEFAULTS — ' + CMS.get('branding.siteName', 'brand') + '\n' +
                '   Generated ' + new Date().toLocaleString() + ' by /admin\n' +
-               '   Regenerate: /admin > Export / Import > Download brand.js\n' +
+               '   Regenerate: /admin > Backup & Restore > Download brand defaults\n' +
+               '\n' +
+               '   These are the values a visitor sees BEFORE the published row\n' +
+               '   loads, and the starting point for a new brand. Once this brand\n' +
+               '   has been published, the published row is what visitors get and\n' +
+               '   this file is the fallback beneath it.\n' +
                '   ============================================================ */\n' +
-               'window.CMS_BRAND = ' + CMS.exportJSON() + ';\n';
+               'window.CMS_BRAND = ' + CMS.exportJSON() + ';\n' +
+               brandProvenanceText();
+    }
+
+    /* ========================================================
+       BUILD-SOURCE PROVENANCE
+       ------------------------------------------------------
+       A SEPARATE declaration, deliberately not part of CMS_BRAND:
+
+         - CMS_BRAND is content, and the four-layer merge owns it.
+         - This is a record of where that content came from. It is never
+           merged, never edited in the CMS, and never published.
+
+       publishedRowUpdatedAt comes from lastPublished.serverUpdatedAt -- the
+       row's own timestamp as the server returned it on a CONFIRMED publish or
+       a pull. That key is device-local and is stripped from the export, which
+       is correct and unchanged; it is read here and written into this object
+       instead, so the fact travels with the build source without becoming
+       content.
+
+       WHAT THE BUILD CAN PROVE WITH THIS: that the committed brand.js holds
+       the sections this export recorded, for this brand. INTEGRITY -- a
+       hand-edit, a bad merge, a half-applied export or another brand's file
+       dropped in all fail. It CANNOT prove the export is still current; a
+       publish that happened after it leaves no trace in the repository.
+       tools/check-published.js is the only thing that can answer that, and it
+       needs the network.
+    ======================================================== */
+    function brandProvenanceText() {
+        var fp = CMS.sections.fingerprints();
+        var last = CMS.data().lastPublished || {};
+        var prov = {
+            version: 1,
+            brand: {
+                siteId: CMS.brand.siteId(),
+                host: CMS.brand.host()
+            },
+            /* '' when this browser has never confirmed a publish or a pull for
+               this brand. Recorded as empty rather than guessed. */
+            publishedRowUpdatedAt: sstr(last.serverUpdatedAt),
+            exportedAt: new Date().toISOString(),
+            builder: fp
+        };
+        return '\n/* Build-source provenance. NOT content: the build reads this to check\n' +
+               '   that the sections above are the ones this export recorded, for this\n' +
+               '   brand. It proves INTEGRITY, not freshness -- a CMS publish made after\n' +
+               '   this export leaves no trace here. See docs/publishing.md and\n' +
+               '   tools/check-published.js. */\n' +
+               'window.CMS_BRAND_PROVENANCE = ' + JSON.stringify(prov, null, 2) + ';\n';
     }
 
     function refreshPublishSize() {
@@ -3521,7 +4028,10 @@
             : kb.toFixed(0) + ' KB.');
     }
 
-    $('#btnPublish').addEventListener('click', function () {
+    /* NOT a publish. This writes a file for a developer to commit; it reaches
+       no server and changes no live site. It was called "Publish to every
+       device" and was the most misleading control in this admin. */
+    $('#btnBrandDefaults').addEventListener('click', function () {
         var blob = new Blob([brandFileText()], { type: 'application/javascript' });
         var a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
@@ -3530,7 +4040,7 @@
         a.click();
         document.body.removeChild(a);
         setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
-        toast('brand.js downloaded — put it in js/ and redeploy.');
+        toast('brand.js downloaded. This published nothing — commit it and deploy to change the defaults.');
     });
 
     $('#btnCopy').addEventListener('click', function () {
@@ -3551,10 +4061,14 @@
             return;
         }
         if (!obj || typeof obj !== 'object') { toast('Unexpected file contents.', true); return; }
-        if (!confirm('Import will replace everything currently saved. Continue?')) return;
-        if (!CMS.replace(obj)) { toast('Import too large for storage.', true); return; }
+        if (!confirm('Restore will replace everything currently saved in this browser. ' +
+                     'It does not publish — you review and publish afterwards. Continue?')) return;
+        if (!CMS.replace(obj)) { toast('Restore too large for storage.', true); return; }
         refreshAll();
-        toast('White label imported.');
+        /* A restore is a local change like any other: it does not publish, and
+           it leaves everything it restored as unpublished changes. */
+        markDirty();
+        toast('Backup restored to this browser. Review & Publish to make it live.');
     }
 
     $('#importFile').addEventListener('change', function () {
@@ -3596,18 +4110,95 @@
     /* ========================================================
        TOP BAR
     ======================================================== */
-    $('#btnSave').addEventListener('click', function () {
-        var ok = commit();
-        if (ok && !CMS.remote.enabled) {
-            toast('Saved to this browser. Turn on remote storage to publish everywhere.');
+    /* The one control that can reach Supabase. In phase 3 it opens the
+       review sheet first; the network call stays exactly here either way, so
+       there is one door and it is this one. */
+    $('#btnReview').addEventListener('click', function () {
+        if (!commitLocal()) return;
+        if (!CMS.remote.enabled) {
+            toast('Saved to this browser. Remote publishing is off in js/cms-config.js.');
+            return;
         }
+        openPublishReview();
     });
 
-    $('#btnRevert').addEventListener('click', function () {
-        if (dirty && !confirm('Discard unsaved changes?')) return;
-        CMS.reload();
-        refreshAll();
-        toast('Reverted to last save.');
+    /* RELOAD: answers "what is published?" and never destroys work.
+
+       With nothing unpublished there is nothing to lose, so it takes the
+       server's version wholesale. With unpublished changes it refreshes the
+       published BASELINE only -- so the review sheet is accurate against what
+       is on the server now, including anything another editor published -- and
+       says plainly that the local changes are still here. Reload must not be a
+       discard in disguise. */
+    $('#btnReload').addEventListener('click', function () {
+        var btn = $('#btnReload');
+        if (!CMS.remote.enabled) {
+            toast('Remote publishing is off, so there is no server to reload from.', true);
+            return;
+        }
+        btn.disabled = true;
+        /* Derived from the RECORD, not from the dirty flag. A change can exist
+           without the flag having been set -- an import, a restore, any code
+           path that wrote to the record without going through markDirty -- and
+           trusting the flag would then let Reload quietly overwrite it. The
+           change index is computed from what a publish would actually send, so
+           it cannot miss one. */
+        var hadLocal = dirty || CMS.changedAreas().areas.length > 0;
+        var done = function () { btn.disabled = false; };
+        if (!hadLocal) {
+            CMS.remote.pull().then(function (data) {
+                done();
+                refreshAll();
+                setPubState(data ? 'clean' : 'local');
+                toast(data ? 'Reloaded the published content from the server.'
+                           : 'Nothing is published for this brand yet.');
+            }).catch(function (err) { done(); toast('Could not reach the server: ' + err.message, true); });
+            return;
+        }
+        CMS.remote.baseline().then(function (res) {
+            done();
+            refreshAll();
+            var n = CMS.changedAreas().areas.length;
+            /* The state follows the RECORD after a reload, not whatever it said
+               before. The published baseline has just moved, so what counts as
+               outstanding may have changed -- including down to nothing, if
+               someone else published the same edit. */
+            setPubState(n ? 'local' : 'clean');
+            toast(res.found
+                ? 'Published state refreshed. Your ' + n + ' unpublished change' +
+                  (n === 1 ? '' : 's') + ' are still here — use Discard local changes to drop them.'
+                : 'Nothing is published for this brand yet. Your local changes are still here.');
+        }).catch(function (err) { done(); toast('Could not reach the server: ' + err.message, true); });
+    });
+
+    /* DISCARD: destructive, named as such, and explicit about what survives. */
+    $('#btnDiscardLocal').addEventListener('click', function () {
+        var n = CMS.changedAreas().areas.length;
+        var published = !!(CMS.data().lastPublished || {}).serverUpdatedAt;
+        var msg = published
+            ? 'Discard unpublished changes?\n\n' +
+              'This discards ' + n + ' unpublished brand-level change' + (n === 1 ? '' : 's') +
+              ' and restores the currently published server state.\n\n' +
+              'Page Builder drafts will be kept.'
+            : 'Nothing has been published for this brand yet, so there is no server ' +
+              'state to go back to.\n\n' +
+              'Restore the shipped defaults instead? This discards ' + n +
+              ' unpublished change' + (n === 1 ? '' : 's') + ' in this browser.\n\n' +
+              'Page Builder drafts will be kept.';
+        if (!confirm(msg)) return;
+        var btn = $('#btnDiscardLocal');
+        btn.disabled = true;
+        CMS.remote.discardLocal().then(function (res) {
+            btn.disabled = false;
+            refreshAll();
+            setPubState('clean');
+            toast(res && res.source === 'server'
+                ? 'Local changes discarded. Showing the published content.'
+                : 'Local changes discarded. Showing the shipped defaults — nothing is published yet.');
+        }).catch(function (err) {
+            btn.disabled = false;
+            toast('Could not discard: ' + err.message, true);
+        });
     });
 
     $('#admBurger').addEventListener('click', function () {
@@ -3618,8 +4209,10 @@
         b.addEventListener('click', function () { switchPanel(b.getAttribute('data-panel')); });
     });
 
+    /* Guard while anything is unpublished OR a publish failed. `dirty` means
+       "not published" now, so this is the same question asked two ways. */
     window.addEventListener('beforeunload', function (e) {
-        if (!dirty) return;
+        if (!dirty && pubState !== 'failed') return;
         e.preventDefault();
         e.returnValue = '';
     });
@@ -3660,8 +4253,8 @@
         } else {
             pill.textContent = 'on';
             pill.className = 'pill ok';
-            hint.textContent = 'Save changes publishes straight to every visitor, on every device. ' +
-                'No downloading, no redeploying.';
+            hint.textContent = 'Review & Publish writes to this brand\'s row and confirms it by ' +
+                'reading the row back. Nothing else in this admin reaches the server.';
         }
     }
 
@@ -3684,7 +4277,9 @@
                 .then(function () {
                     refreshAll();
                     paintRemoteStatus();
-                    toast('Signed in. Save changes now publishes live.');
+                    /* Freshly pulled: this browser matches the server. */
+                    setPubState('clean');
+                    toast('Signed in. Review & Publish now goes live.');
                 })
                 .catch(function (e2) {
                     btn.disabled = false;
@@ -3711,6 +4306,15 @@
     window.ADMIN_REFRESH = function () { refreshAll(); };
     window.ADMIN_READ_IMAGE = readImage;
 
+    /* Read-only, for the same reason ADMIN_REFRESH exists: the publishing
+       invariants are about state that has no single element to read. `dirty`
+       means "not published", which is the question the unload guard asks. */
+    window.ADMIN_DIRTY = function () { return !!dirty; };
+    /* Read-only: the generated page stub, so a test can assert it carries the
+       page's published content rather than an empty mount. */
+    window.ADMIN_NEW_PAGE_HTML = function (key) { return newPageHtml(key, null); };
+    window.ADMIN_PUBSTATE = function () { return { state: pubState, error: pubError }; };
+
     window.CMS_ON_QUOTA = function () {
         toast('Storage limit reached — remove some uploaded images.', true);
     };
@@ -3726,8 +4330,13 @@
        absent so a missing script degrades to "no builder panel" rather
        than a broken admin.
     ======================================================== */
+    /* The builder is handed commitLocal and stagePublish, never a generic
+       commit. That is the enforcement, not the convention: there is no
+       binding inside js/admin-builder.js that can reach Supabase, so no edit
+       made there -- autosave, drag, template, recovery -- can publish. */
     var Builder = (typeof window.PBAdmin === 'function')
-        ? window.PBAdmin({ $: $, esc: esc, toast: toast, commit: commit, download: download })
+        ? window.PBAdmin({ $: $, esc: esc, toast: toast, commitLocal: commitLocal,
+                           stagePublish: stagePublish, download: download })
         : null;
 
     function buildBuilder()  { if (Builder) Builder.build(); }
@@ -3773,6 +4382,17 @@
            name of its own -- it is painted from the brand like the
            label beside it. */
         document.title = brandName + ' CMS — Admin';
+        /* And WHICH brand that is, in the sidebar, on every screen -- not
+           only on the Brands panel. */
+        var hostLine = $('#brandHost');
+        if (hostLine) {
+            hostLine.textContent = CMS.brand.host() || 'no hostname';
+            hostLine.title = 'Publishing to row "' + CMS.brand.siteId() + '"' +
+                (CMS.brand.matched() ? '' : ' (this hostname is not a registered brand)');
+            hostLine.className = 'adm-brand-host' +
+                (CMS.brand.matched() && CMS.brand.agrees() ? '' : ' chk-warn');
+        }
+        buildBrands();
         updateStorageMeter();
         refreshPublishSize();
         paintRemoteStatus();
@@ -3780,11 +4400,88 @@
         $('#savedFlag').className = 'adm-saved';
     }
 
+    /* ========================================================
+       BRANDS PANEL
+       --------------------------------------------------------
+       Read-only, and driven entirely by CMS.brand, which in turn
+       reads what js/cms-config.js resolved. Nothing here knows a
+       brand name: a fourth brand appears in this list because it
+       is in the registry, not because this function was edited.
+
+       It exists because "which brand am I editing?" was previously
+       answerable only by reading the URL, and the consequence of
+       getting that wrong is overwriting another site's content.
+    ======================================================== */
+    function buildBrands() {
+        var now = $('#brandNow');
+        var list = $('#brandList');
+        if (!now || !list) return;
+
+        var b = CMS.brand;
+        var host = b.host();
+        var rows = [
+            ['Brand name', esc(CMS.get('branding.siteName', '') || '(not set)')],
+            ['Served from', host ? esc(host) : '(no hostname — opened as a file?)'],
+            ['Content row', esc(b.siteId() || '(none)')],
+            ['Media bucket', esc(b.bucket() || '(none)')],
+            ['Browser storage', esc(b.storageSuffix() || '(unsuffixed — the original brand)')]
+        ];
+        var html = '<table class="brandtable"><tbody>' + rows.map(function (r) {
+            return '<tr><th>' + r[0] + '</th><td><code>' + r[1] + '</code></td></tr>';
+        }).join('') + '</tbody></table>';
+
+        /* The states worth warning about, all of which mean "what you see is
+           not the live site you may think it is". */
+        if (!b.matched()) {
+            html += '<p class="hint chk-warn"><strong>This hostname is not a registered brand.</strong> ' +
+                'It is showing the default brand\'s content because something has to render — ' +
+                'localhost, a preview URL or a file:// open all land here. Anything you publish ' +
+                'goes to the row named above, so check it is the one you mean.</p>';
+        }
+        if (b.noindex()) {
+            html += '<p class="hint chk-warn"><strong>This is a review build.</strong> ' +
+                'Every page is <code>noindex,nofollow</code> and no sitemap is published. ' +
+                'It is not, and must not become, a production site.</p>';
+        }
+        if (!b.agrees()) {
+            html += '<p class="hint chk-warn"><strong>Configuration disagrees with the hostname.</strong> ' +
+                'The registry maps <code>' + esc(host) + '</code> to row <code>' +
+                esc(b.expectedSiteId()) + '</code> but the CMS is set to write <code>' +
+                esc(b.siteId()) + '</code>. Publishing is refused until that is fixed.</p>';
+        }
+        now.innerHTML = html;
+
+        var all = b.all();
+        var cnt = $('#cntBrands');
+        if (cnt) cnt.textContent = all.length;
+        if (!all.length) {
+            list.innerHTML = '<p class="hint">No brand registry is configured, so this deployment ' +
+                'serves a single brand.</p>';
+            return;
+        }
+        list.innerHTML = '<table class="brandtable"><thead><tr><th>Hostname</th>' +
+            '<th>Content row</th><th>Media bucket</th><th></th></tr></thead><tbody>' +
+            all.map(function (x) {
+                return '<tr' + (x.current ? ' class="is-current"' : '') + '>' +
+                    '<td><code>' + esc(x.host) + '</code></td>' +
+                    '<td><code>' + esc(x.siteId) + '</code></td>' +
+                    '<td><code>' + esc(x.bucket || '—') + '</code></td>' +
+                    '<td>' + (x.current
+                        ? '<strong>editing this one</strong>'
+                        : '<a href="https://' + esc(x.host) + '/admin/" rel="noopener">open its CMS</a>') +
+                    '</td></tr>';
+            }).join('') + '</tbody></table>';
+    }
+
     wireSeoButtons();
     wireBuilder();
+    wirePublishReview();
+    wirePageSubtabs();
     window.addEventListener('beforeunload', pbFlush);
     window.addEventListener('resize', pbFitPreview);
     refreshAll();
+    /* Which site, and its publish state, before anything is touched. */
+    paintPubState();
 
     /* First run with no harvested content? Tell the admin how to fill it. */
     if (!CMS.data().home.sports.length) {

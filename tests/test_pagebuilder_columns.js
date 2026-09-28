@@ -316,7 +316,9 @@ const shares = (t) => { const s = t.reduce((a, b) => a + b, 0); return t.map(v =
     await p.goto(`${BASE}/admin/index.html`, { waitUntil: 'networkidle' });
     await p.fill('#authEmail', 'a@b.c'); await p.fill('#authPass', 'x'); await p.click('#authBtn');
     await p.waitForTimeout(400);
-    await p.click('.adm-nav-item[data-panel="builder"]'); await p.waitForTimeout(500);
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(500);
+    await p.click('#pageTabs .pagetab[data-page-key="about"]'); await p.waitForTimeout(300);
+    await p.click('#pageSubtabContent'); await p.waitForTimeout(500);
     await p.click('#pbAdd .pb-addbtn[data-type="text"]'); await p.waitForTimeout(400);
     const sid = await p.$eval('#pbList .pb-sec', e => e.getAttribute('data-sec-id'));
     const TOP = `#pbList .pb-sec[data-sec-id="${sid}"] > .pb-sec-body > .pb-subbody`;

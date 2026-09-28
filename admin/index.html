@@ -26,11 +26,19 @@
                 <div>
                     <strong>White Label CMS</strong>
                     <small id="brandLabel">BRAND</small>
+                    <!-- Which brand this CMS is editing. Filled from
+                         CMS.brand at runtime; the static text is a neutral
+                         placeholder because this file is shared by every
+                         brand. -->
+                    <small class="adm-brand-host" id="brandHost"></small>
                 </div>
             </div>
 
             <nav class="adm-nav">
-                <button class="adm-nav-item active" data-panel="themes">
+                <button class="adm-nav-item active" data-panel="brands">
+            <i class="fas fa-sitemap"></i> Brands
+          </button>
+                <button class="adm-nav-item" data-panel="themes">
             <i class="fas fa-swatchbook"></i> Theme Manager
           </button>
                 <button class="adm-nav-item" data-panel="branding">
@@ -69,9 +77,6 @@
                 <button class="adm-nav-item" data-panel="pages">
             <i class="fas fa-file-lines"></i> Pages
           </button>
-                <button class="adm-nav-item" data-panel="builder">
-            <i class="fas fa-table-cells-large"></i> Page Builder
-          </button>
                 <button class="adm-nav-item" data-panel="sportstable">
             <i class="fas fa-table-list"></i> Sports Table
           </button>
@@ -79,7 +84,7 @@
             <i class="fas fa-wand-magic-sparkles"></i> Theme Presets
           </button>
                 <button class="adm-nav-item" data-panel="data">
-            <i class="fas fa-file-export"></i> Export / Import
+            <i class="fas fa-box-archive"></i> Backup &amp; Restore
           </button>
                 <button class="adm-nav-item" data-panel="reset">
             <i class="fas fa-rotate-left"></i> Reset
@@ -98,15 +103,43 @@
             <i class="fas fa-bars"></i>
           </button>
                 <h1 id="panelTitle">Theme Manager</h1>
+                <!-- WHICH SITE AM I ABOUT TO CHANGE.
+                     Name, hostname and target row, on every screen. The name
+                     is editable content and can be blank, so the hostname and
+                     the row id are the parts that are always shown: the row
+                     is the only thing that actually keeps two brands apart. -->
+                <div class="adm-target" id="pubTarget">
+                    <strong id="pubTargetName">—</strong>
+                    <span id="pubTargetHost"></span>
+                    <span id="pubTargetRow"></span>
+                </div>
                 <div class="adm-top-actions">
-                    <span class="adm-saved" id="savedFlag">Saved</span>
+                    <!-- TWO STATES, NEVER ONE.
+                         savedFlag = is it on this disk. pubState = does the
+                         server have it. A local save must never be able to
+                         say "Published". -->
+                    <span class="adm-saved" id="savedFlag">Saved on this device</span>
+                    <span class="pubstate clean" id="pubState" data-pubstate="clean">Local only</span>
                     <span class="livebadge" id="liveBadge" hidden><i class="fas fa-globe"></i> Live</span
             >
-            <button class="adm-btn ghost" id="btnRevert">
-              <i class="fas fa-clock-rotate-left"></i> Revert
+            <!-- Labels in spans so the existing narrow-screen rule
+                 (.adm-top-actions .adm-btn span { display: none }) can drop
+                 them to icons. Bare text nodes could not be hidden, which is
+                 why this bar overflowed a phone once it grew. -->
+            <!-- TWO DIFFERENT THINGS, KEPT APART.
+                 Reload from server fetches what is published. Discard local
+                 changes throws this browser's unpublished work away. The old
+                 single "Revert" button did neither honestly: it re-read
+                 localStorage, so it reverted to the last LOCAL save, not to
+                 what was live. -->
+            <button class="adm-btn ghost" id="btnReload">
+              <i class="fas fa-rotate"></i> <span>Reload from server</span>
             </button>
-            <button class="adm-btn primary" id="btnSave">
-              <i class="fas fa-floppy-disk"></i> Save changes
+            <button class="adm-btn ghost danger" id="btnDiscardLocal">
+              <i class="fas fa-trash-can"></i> <span>Discard local changes</span>
+            </button>
+            <button class="adm-btn primary" id="btnReview">
+              <i class="fas fa-cloud-arrow-up"></i> <span>Review &amp; Publish</span>
             </button>
           </div>
         </header>
@@ -126,7 +159,36 @@
 
         <div class="adm-body">
           <!-- ---------- THEME MANAGER ---------- -->
-          <section class="adm-panel active" id="panel-themes">
+          <!-- ============ BRANDS ============
+               One CMS, one brand per hostname. Every value below comes
+               from CMS_BRANDS in js/cms-config.js, which is committed code
+               reviewed in a diff -- not content, and deliberately not
+               editable from here. Adding a brand is a registry entry plus
+               a brands/<host>/ directory, never a change to this panel. -->
+          <section class="adm-panel active" id="panel-brands">
+            <div class="card">
+              <h2>This CMS</h2>
+              <p class="hint">
+                One codebase serves every brand. Which brand you are editing is
+                decided by the hostname this page was served from, and the row it
+                writes is the only thing keeping two brands apart.
+              </p>
+              <div id="brandNow"></div>
+            </div>
+
+            <div class="card">
+              <h2>Every brand this deployment knows <span class="pill" id="cntBrands">0</span></h2>
+              <p class="hint">
+                To edit another brand, open <em>its own</em> address below. The CMS
+                cannot write another brand's content from here, and refuses the
+                attempt if its configuration and its hostname ever disagree —
+                one brand overwriting another's row is not recoverable.
+              </p>
+              <div id="brandList"></div>
+            </div>
+          </section>
+
+          <section class="adm-panel" id="panel-themes">
             <div class="themewrap">
               <div class="themecol">
                 <div class="card">
@@ -744,24 +806,41 @@
 
     </section>
 
-    <!-- ---------- PAGES (About / Contact / Responsible Gaming) ---------- -->
+    <!-- ---------- PAGES ----------
+         ONE place for a page: pick it, then choose Content or Settings & SEO.
+
+         Page Builder used to be a separate navigation item, which made it look
+         like a second system editing the same thing. It is the Content tab
+         now. There is exactly one body-content editor, and the Settings & SEO
+         tab no longer carries a second one. -->
     <section class="adm-panel" id="panel-pages">
         <div class="card">
-            <h2>Info pages</h2>
+            <h2>Pages</h2>
             <p class="hint">
-                The content of <code>about.html</code>, <code>contact.html</code> and
-                <code>responsible-gaming.html</code>. Each page keeps its own
-                <code>&lt;title&gt;</code>, meta description and H1, so the global browser
-                title never overwrites them. Edits save and publish with
-                <strong>Save changes</strong>, exactly like every other panel.
+                Pick a page, then choose what to work on. <strong>Content</strong> is the page
+                body, built from sections. <strong>Settings &amp; SEO</strong> is its title,
+                description, headings and search settings. Changes are saved on this device as
+                you work and go live through <strong>Review &amp; Publish</strong>.
             </p>
             <div class="pagetabs" id="pageTabs"></div>
+            <div class="subtabs" id="pageSubtabs" role="tablist">
+                <button type="button" class="subtab active" id="pageSubtabContent"
+                        data-pagetab="content" role="tab" aria-selected="true">
+                    <i class="fas fa-table-cells-large"></i> Content
+                </button>
+                <button type="button" class="subtab" id="pageSubtabSettings"
+                        data-pagetab="settings" role="tab" aria-selected="false">
+                    <i class="fas fa-magnifying-glass-chart"></i> Settings &amp; SEO
+                </button>
+            </div>
+            <!-- Outside the two areas on purpose: a page with no content mount
+                 hides the Content area, so a note living inside it would never
+                 be seen by the one person who needs it. -->
+            <p class="hint pagenomount" id="pageNoMount" hidden></p>
         </div>
-        <div id="pageEditor"></div>
-    </section>
 
-    <!-- ---------- PAGE BUILDER ---------- -->
-    <section class="adm-panel" id="panel-builder">
+        <!-- CONTENT: the Page Builder, moved here verbatim. -->
+        <div id="pageArea-content">
 
         <div class="card">
             <h2>Page Builder</h2>
@@ -772,7 +851,6 @@
                 that ships in its HTML file, so you can always go back to it with
                 <em>Unpublish</em>.
             </p>
-            <div class="pagetabs" id="pbTabs"></div>
             <p class="pb-where" id="pbWhere"></p>
             <div class="pb-migrate" id="pbMigrate" hidden></div>
             <div class="pb-recovery" id="pbRecovery" hidden></div>
@@ -780,9 +858,6 @@
                 <span class="pb-state" id="pbState"></span>
                 <span class="pb-savestate" id="pbSaveState" hidden></span>
                 <span class="pb-bar-sp"></span>
-                <button type="button" class="adm-btn ghost" id="pbSaveDraft">
-                    <i class="fas fa-floppy-disk"></i> Save draft
-                </button>
                 <button type="button" class="adm-btn" id="pbPublish">
                     <i class="fas fa-cloud-arrow-up"></i> Publish
                 </button>
@@ -863,6 +938,14 @@
                 </div>
             </div>
         </div>
+        </div>
+
+        <!-- SETTINGS & SEO: per-page title, description, headings, search and
+             sharing. The editable "Main content" body field is deliberately
+             NOT here any more -- the body is authored in Content. -->
+        <div id="pageArea-settings" hidden>
+            <div id="pageEditor"></div>
+        </div>
     </section>
 
     <!-- ---------- SPORTS / EVENT TABLE ---------- -->
@@ -930,13 +1013,27 @@
               </button>
         </div>
 
+        <!-- BACKUP IS NOT PUBLISHING.
+             This panel used to carry a card headed "Publish to every device"
+             whose button downloaded a file. It published nothing, and its text
+             said admin changes live in this browser only -- which stopped
+             being true the day remote storage arrived. Both are gone. Nothing
+             here reaches the server; Review & Publish is the only thing that
+             does. -->
         <div class="card">
-            <h2>Export</h2>
+            <h2>Download backup</h2>
             <p class="hint">
-                One JSON file with branding, colours, text, images, home content and settings — the complete white label.
+                One JSON file with this brand's content: branding, colours, text, images,
+                page content and settings. <strong>This does not publish anything</strong> —
+                it saves a copy you can restore from.
+            </p>
+            <p class="hint">
+                Unfinished Page Builder drafts, the reusable-section library and recovery
+                points are <em>not</em> included. They belong to this browser, not to the
+                brand. Published page content is included, because that is content.
             </p>
             <button class="adm-btn primary" id="btnExport">
-                <i class="fas fa-download"></i> Download brand JSON
+                <i class="fas fa-download"></i> Download backup
               </button>
             <button class="adm-btn ghost" id="btnCopy">
                 <i class="fas fa-copy"></i> Copy to clipboard
@@ -944,27 +1041,38 @@
         </div>
 
         <div class="card">
-            <h2>Publish to every device</h2>
+            <h2>Restore from backup</h2>
             <p class="hint">
-                Admin changes live in <em>this</em> browser only. To push them to real visitors, download this file, drop it into
-                <code>js/brand.js</code> replacing what is there, and redeploy.
-            </p>
-            <button class="adm-btn primary" id="btnPublish">
-                <i class="fas fa-rocket"></i> Download brand.js
-              </button>
-            <p class="hint" id="publishSize" style="margin: 10px 0 0"></p>
-        </div>
-        <div class="card">
-            <h2>Import</h2>
-            <p class="hint">
-                Restores a complete white label instantly. This replaces everything currently saved.
+                Replaces everything currently saved in this browser with the contents of a
+                backup. It does not publish: the restored content becomes unpublished
+                changes, and you review and publish it like any other edit.
             </p>
             <input type="file" id="importFile" accept="application/json,.json" />
             <p class="hint">…or paste JSON:</p>
             <textarea id="importText" rows="8" placeholder='{ "branding": { … } }'></textarea>
             <button class="adm-btn primary" id="btnImportText">
-                <i class="fas fa-upload"></i> Import pasted JSON
+                <i class="fas fa-upload"></i> Restore pasted JSON
               </button>
+        </div>
+
+        <div class="card">
+            <h2>For developers — brand defaults</h2>
+            <p class="hint">
+                Generates the contents of <code>js/brand.js</code> from what is currently in
+                this browser. It is for <strong>seeding a brand's committed defaults in the
+                repository</strong> — the values a visitor sees before the published row
+                loads, and the starting point for a new brand.
+            </p>
+            <p class="hint">
+                <strong>It does not publish.</strong> It does not write to the server, it does
+                not change the live site, and downloading it changes nothing until a developer
+                commits the file and deploys. Once a brand has been published, the published
+                row is what visitors get; these defaults are the fallback beneath it.
+            </p>
+            <button class="adm-btn ghost" id="btnBrandDefaults">
+                <i class="fas fa-file-code"></i> Download brand defaults (brand.js)
+              </button>
+            <p class="hint" id="publishSize" style="margin: 10px 0 0"></p>
         </div>
     </section>
 
@@ -1034,6 +1142,43 @@
                 <span class="pb-asset-chosen" id="pbAssetChosen"></span>
                 <button type="button" class="adm-btn ghost" id="pbAssetCancel">Cancel</button>
                 <button type="button" class="adm-btn" id="pbAssetUse" disabled>Use this image</button>
+            </footer>
+        </div>
+    </div>
+
+    <!-- ============ REVIEW & PUBLISH ============
+         The one confirmation before anything reaches the server. It names the
+         brand, the hostname and the row, lists exactly what will be published,
+         and says what will NOT be. Cancel is inert by construction: a Page
+         Builder Publish stages its intent rather than applying it, so there is
+         nothing here to undo. -->
+    <div class="modal" id="pubModal" hidden>
+        <div class="modal-card">
+            <header>
+                <h3>Review &amp; Publish</h3>
+                <button class="icon-btn" id="pubCancelX" aria-label="Cancel">
+            <i class="fas fa-xmark"></i>
+          </button>
+            </header>
+
+            <div class="modal-body">
+                <div class="pubtarget-card" id="pubModalTarget"></div>
+                <h4 class="modal-sub">What will be published</h4>
+                <p class="hint" id="pubModalNote"></p>
+                <div class="publist" id="pubModalList"></div>
+                <h4 class="modal-sub">Not published</h4>
+                <ul class="publist-not">
+                    <li>Page Builder drafts you have not published</li>
+                    <li>The reusable-section library</li>
+                    <li>Recovery points</li>
+                    <li>This browser's own publishing bookkeeping</li>
+                </ul>
+                <p class="hint" id="pubModalLast"></p>
+            </div>
+
+            <footer>
+                <button class="adm-btn ghost" id="pubCancel">Cancel</button>
+                <button class="adm-btn primary" id="pubConfirm">Publish</button>
             </footer>
         </div>
     </div>

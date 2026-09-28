@@ -51,17 +51,34 @@ the whole ~80 variable palette automatically. Every individual value is
 still editable afterwards in the Colors panel.
 
 
-PUBLISHING — TWO WAYS
----------------------
-BEST: live publishing. Follow SETUP-SUPABASE.txt once (15 min).
-      After that, Save changes in /admin is instantly live on every
-      device. No downloads, no redeploys, ever.
+PUBLISHING — ONE ACTION
+-----------------------
+Review & Publish, in the /admin top bar, is the ONLY thing that sends
+changes to the server. It names the brand, the hostname and the row it
+is about to write, shows what will be published, and reports
+"Published" only after the write has been read back and confirmed.
 
-FALLBACK: if you skip that setup, settings stay in your own browser.
-      To publish you must go to Export / Import -> Download brand.js,
-      put it in js/brand.js, and redeploy to Netlify. Repeat for
-      every change.
+Everything else stays on this device: typing, Page Builder drafts
+("Draft saved on this device"), applying a palette, a media upload, and
+restoring a backup. None of them publish.
+
+Setup: follow SETUP-SUPABASE.txt once. Without it, remote publishing is
+off and /admin says so -- edits stay in your own browser.
+
+BACKUP IS NOT PUBLISHING. Backup & Restore downloads and restores a copy
+of this brand's content. "Download brand defaults (brand.js)" there is
+for developers seeding a brand's committed defaults in the repository; it
+writes a file and publishes nothing.
+
+PAGE CONTENT AND SEO
+--------------------
+Published Page Builder content is baked into the HTML at build time from
+brands/<id>/brand.js, so it is in View Source and a crawler reads it
+without running JavaScript. Publishing is live immediately for visitors;
+the static copy updates on the next deploy. See docs/publishing.md.
 
 Load order on every page:
       js/cms-config.js  ->  js/brand.js  ->  js/cms.js
 Priority: cms.js defaults < brand.js < server row < local edits.
+          Once a brand has been published, the server row is what
+          visitors get; brand.js is the fallback beneath it.

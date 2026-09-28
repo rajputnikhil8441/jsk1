@@ -170,7 +170,13 @@ const check=(n,c,e)=>{c?(pass++,console.log('  PASS  '+n)):(fail++,fails.push(n)
       const q=route.request();
       if(q.url().includes('/auth/v1/token')) return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({access_token:'t'})});
       if(q.method()==='POST'){published=JSON.parse(q.postData()||'{}');serverRow=published;return route.fulfill({status:201,body:''});}
-      return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(serverRow?[{data:serverRow.data}]:[])});
+      /* updated_at is echoed back in POSTGRES's format -- an offset, not a Z --
+         because publish() now reads the row back and checks it. A stub that
+         omitted it would report every publish as unconfirmed, and comparing
+         the strings rather than the instants would fail on this very line. */
+      return route.fulfill({status:200,contentType:'application/json',
+        body:JSON.stringify(serverRow?[{data:serverRow.data,
+          updated_at:new Date(serverRow.updated_at).toISOString().replace(/\.000Z$/,'+00:00').replace(/Z$/,'+00:00')}]:[])});
     });
     const p=await c.newPage(); const errs=[];
     p.on('pageerror',e=>errs.push(String(e)));
@@ -202,7 +208,8 @@ const check=(n,c,e)=>{c?(pass++,console.log('  PASS  '+n)):(fail++,fails.push(n)
     check('editing marks unsaved changes', /Unsaved/.test(await p.textContent('#savedFlag')));
 
     // save -> publish
-    await p.click('#btnSave'); await p.waitForTimeout(800);
+    await p.click('#btnReview'); await p.waitForTimeout(400);
+    await p.click('#pubConfirm'); await p.waitForTimeout(900);
     check('published to Supabase', !!published);
     check('published payload carries sportsTable', !!(published&&published.data.sportsTable&&published.data.sportsTable.mobTitleSize==='17'),
           published&&published.data.sportsTable&&published.data.sportsTable.mobTitleSize);

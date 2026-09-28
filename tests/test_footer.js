@@ -859,12 +859,21 @@ const GOOD = JSON.stringify({
     await p.waitForTimeout(350);
     check('the Footer panel opens', await p.isVisible('#panel-footer'));
 
-    /* Every other panel is still there. */
+    /* Every other panel is still there. 'builder' is deliberately NOT in this
+       list any more: the Page Builder became the Content area of Pages, so
+       there is one page selector and one body-content editor. The assertion
+       that nothing ELSE was lost is what matters here, and it is unchanged --
+       plus the merge is asserted directly, so this cannot pass by a panel
+       quietly disappearing. */
     const panels = await p.$$eval('.adm-panel', e => e.map(x => x.id));
     check('every pre-existing panel is still present',
       ['themes', 'branding', 'colors', 'typography', 'text', 'auth', 'images', 'home',
-       'seo', 'pages', 'sportstable', 'presets', 'data', 'reset', 'builder', 'design']
+       'seo', 'pages', 'sportstable', 'presets', 'data', 'reset', 'design']
         .every(x => panels.includes('panel-' + x)), panels);
+    check('and the Page Builder is now an area of Pages, not a panel',
+      !panels.includes('panel-builder') &&
+      (await p.$('#pageArea-content')) !== null &&
+      (await p.$('#pageArea-settings')) !== null, panels);
 
     const shape = await p.evaluate(() => ({
       cols: document.querySelectorAll('#footerCols .ft-col').length,

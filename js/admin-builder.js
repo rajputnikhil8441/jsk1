@@ -14,10 +14,16 @@
      $        querySelector helper
      esc      HTML escaping for the admin's own markup
      toast    the admin's notification strip
-     commit   the admin's save path. commit(true) saves locally and
-              skips CMS.remote.publish(); commit() publishes. That
-              distinction is what keeps a draft off the live site, so it
-              is deliberately NOT reimplemented here.
+     commitLocal
+              writes to this device and NOTHING else. There is deliberately
+              no generic commit here and no way to reach Supabase from this
+              file: every edit below -- autosave, drag, template, recovery,
+              migration -- is local by construction, not by remembering to
+              pass a flag.
+     stagePublish
+              describes a publish intent and hands it to the admin's one
+              Review & Publish flow. It does not mutate state and does not
+              itself touch the network.
      download the admin's file-save helper, used by the reusable-section
               export so there is one download path, not two.
 
@@ -57,7 +63,9 @@ window.PBAdmin = function (host) {
     var $ = host.$;
     var esc = host.esc;
     var toast = host.toast;
-    var commit = host.commit;
+    /* No generic commit. See the header: this file cannot publish. */
+    var commitLocal = host.commitLocal;
+    var stagePublish = host.stagePublish;
     /* Fifth, added for milestone A: the admin's file-save helper, so the
        reusable-section export reuses the same download path the sitemap
        and the image exports already use. */
@@ -66,10 +74,10 @@ window.PBAdmin = function (host) {
     /* ========================================================
        PAGE BUILDER
        Sections are edited as a draft and only reach visitors when the
-       admin presses Publish. Every draft write goes through commit(true),
-       which saves locally and deliberately skips remote publishing, so
-       saving a draft cannot change the live site. Publish is the one
-       action here that calls commit() normally.
+       admin presses Publish. Every draft write goes through commitLocal(),
+       which cannot reach the network at all, so saving a draft cannot change
+       the live site. Publish and Unpublish do not write anything either --
+       they stage an intent for the admin's Review & Publish flow.
 
        The other panels are untouched: nothing below writes anything
        except builderDrafts[slug] and pages[slug].builder.
@@ -150,14 +158,36 @@ window.PBAdmin = function (host) {
         el.className = 'pb-savestate ' + cls;
         el.hidden = !text;
         el.setAttribute('data-state', text ? pbSaveState : 'idle');
+
+        /* Offered only when a write was refused. Autosave covers every other
+           case, so a permanent button here would be the third kind of "save"
+           this work exists to remove. */
+        var retry = $('#pbRetrySave');
+        if (pbSaveState === 'failed') {
+            if (!retry) {
+                retry = document.createElement('button');
+                retry.type = 'button';
+                retry.id = 'pbRetrySave';
+                retry.className = 'adm-btn ghost';
+                retry.innerHTML = '<i class="fas fa-rotate"></i> Try again';
+                retry.addEventListener('click', function () {
+                    if (pbPersist()) { buildBuilder(); toast('Draft saved on this device.'); }
+                    else toast('Still could not save. Your changes are still here.', true);
+                });
+                el.parentNode.insertBefore(retry, el.nextSibling);
+            }
+            retry.hidden = false;
+        } else if (retry) {
+            retry.hidden = true;
+        }
     }
 
-    /* Local save only. commit(true) skips CMS.remote.publish(), which is
+    /* Local save only -- commitLocal() has no network path at all, which is
        what keeps a draft off the live site. Returns whether the draft
        actually reached storage, and says so either way. */
     function pbPersist() {
         var ok = CMS.sections.saveDraft(pbSlug, pbDraft);
-        if (ok) ok = commit(true);
+        if (ok) ok = commitLocal();
         if (ok) {
             pbSetSaveState('saved');
         } else {
@@ -165,7 +195,7 @@ window.PBAdmin = function (host) {
                in memory, and the next save may well succeed. */
             pbSetSaveState('failed',
                 'Not saved \u2014 this browser refused to store it. Your changes are ' +
-                'still here; free some space and press Save draft.');
+                'still here; free some space and press Try again.');
         }
         return ok;
     }
@@ -877,7 +907,7 @@ window.PBAdmin = function (host) {
         drop.addEventListener('click', function () {
             if (!window.confirm('Forget the kept draft? This cannot be undone.')) return;
             CMS.sections.recovery.clear(pbSlug);
-            commit(true);
+            commitLocal();
             pbPaintRecovery();
             toast('Kept draft discarded.');
         });
@@ -942,7 +972,7 @@ window.PBAdmin = function (host) {
         if (name === null) return;
         var libId = CMS.sections.library.save(name, pbDraft[i]);
         if (!libId) { toast('That section could not be saved.', true); return; }
-        commit(true);
+        commitLocal();
         pbPaintLibrary();
         toast('Saved to reusable sections, in this browser only.');
     }
@@ -1009,17 +1039,17 @@ window.PBAdmin = function (host) {
                  var n = window.prompt('Rename this reusable section:', it.name);
                  if (n === null) return;
                  CMS.sections.library.rename(it.id, n);
-                 commit(true); pbPaintLibrary();
+                 commitLocal(); pbPaintLibrary();
              }],
              ['duplicate', 'Duplicate', 'fa-clone', function () {
                  CMS.sections.library.duplicate(it.id);
-                 commit(true); pbPaintLibrary();
+                 commitLocal(); pbPaintLibrary();
              }],
              ['delete', 'Delete', 'fa-trash', function () {
                  if (!window.confirm('Delete "' + it.name + '" from your reusable sections? ' +
                      'Pages that already use it are not affected.')) return;
                  CMS.sections.library.remove(it.id);
-                 commit(true); pbPaintLibrary();
+                 commitLocal(); pbPaintLibrary();
              }]].forEach(function (b) {
                 var btn = document.createElement('button');
                 btn.type = 'button';
@@ -1054,7 +1084,7 @@ window.PBAdmin = function (host) {
                 fr.onload = function () {
                     var res = CMS.sections.library.importJSON(fr.result);
                     if (res.error) { toast(res.error, true); return; }
-                    commit(true);
+                    commitLocal();
                     pbPaintLibrary();
                     toast(res.added + ' imported' +
                           (res.skipped ? ', ' + res.skipped + ' skipped as unreadable' : '') + '.');
@@ -1065,41 +1095,27 @@ window.PBAdmin = function (host) {
         }
     }
 
+    /* The page being edited is chosen by the Pages panel's page picker, which
+       is now the ONE page selector in the admin. This used to build its own
+       tab strip immediately below that one, listing the same pages -- two
+       selectors for one choice, which is exactly the confusion this work is
+       about. js/admin.js calls select() instead.
+
+       The guard is on #pbList, the panel's own body, rather than on the tab
+       strip that no longer exists. */
     function buildBuilder() {
-        var tabs = $('#pbTabs');
-        if (!tabs) return;
+        var listHost = $('#pbList');
+        if (!listHost) return;
 
         var slugs = CMS.sections.pages();
         if (!slugs.length) {
-            tabs.innerHTML = '';
-            $('#pbList').innerHTML = '<p class="hint">No page in this site has a builder mount yet.</p>';
+            listHost.innerHTML = '<p class="hint">No page in this site has a builder mount yet.</p>';
             return;
         }
         if (slugs.indexOf(pbSlug) === -1) {
             pbSlug = slugs[0];
             pbDraft = CMS.sections.draft(pbSlug).sections;
         }
-
-        /* page tabs */
-        tabs.innerHTML = '';
-        slugs.forEach(function (s) {
-            var page = CMS.data().pages[s] || {};
-            var st = CMS.sections.status(s);
-            var b = document.createElement('button');
-            b.type = 'button';
-            b.className = 'pagetab' + (s === pbSlug ? ' active' : '');
-            b.setAttribute('data-slug', s);
-            if (s === pbSlug) b.setAttribute('aria-current', 'page');
-            b.textContent = page.label || s;
-            if (st.live) {
-                var dot = document.createElement('span');
-                dot.className = 'pb-dot' + (st.dirty ? ' dirty' : '');
-                dot.title = st.dirty ? 'Published, with unpublished changes' : 'Published';
-                b.appendChild(dot);
-            }
-            b.addEventListener('click', function () { pbSelect(s); });
-            tabs.appendChild(b);
-        });
 
         /* A full rebuild may be a different page, so the two cards that
            skip their own repaint when nothing changed are told to forget
@@ -1850,10 +1866,17 @@ window.PBAdmin = function (host) {
     var pbDesignOpen = {};
 
     function pbFlush() {
-        if (!pbSaveTimer) return;
-        clearTimeout(pbSaveTimer);
-        pbSaveTimer = null;
-        pbPersist();
+        if (pbSaveTimer) {
+            clearTimeout(pbSaveTimer);
+            pbSaveTimer = null;
+            pbPersist();
+            return;
+        }
+        /* A REFUSED write left the edit in memory only, and there is no Save
+           draft button to press any more. Flushing therefore has to be able to
+           retry it, or a full-storage failure would be unrecoverable until the
+           author happened to make another edit. */
+        if (pbSaveState === 'failed') pbPersist();
     }
 
     function pbEdited(live) {
@@ -2288,9 +2311,10 @@ window.PBAdmin = function (host) {
             pbAssetState.selected = entry.url;
             pbAssetUploadNote('Uploaded. Press <strong>Use this image</strong>.', 'ok');
             pbAssetPaint();
-            /* The bytes are in the bucket; the row that remembers them has
-               to reach the server too, or another device will never see it. */
-            commit();
+            /* The bytes are in the bucket. The row that remembers them is
+               CMS content and reaches other devices through Review &
+               Publish -- an upload is not a publishing path. */
+            commitLocal();
         }).catch(function (err) {
             pbAssetState.busy = false;
             if (btn) btn.disabled = false;
@@ -3581,23 +3605,22 @@ window.PBAdmin = function (host) {
     function wireBuilder() {
         var b;
         pbWireLibrary();
-        if ((b = $('#pbSaveDraft'))) b.addEventListener('click', function () {
-            pbFlush();
-            /* Reports what actually happened. A refused write already said
-               so through the save-state line, so this only speaks on
-               success -- it must never claim a save that did not happen. */
-            if (pbPersist()) {
-                buildBuilder();
-                toast('Draft saved on this device. The live site is unchanged.');
-            } else {
-                buildBuilder();
-                toast('Could not save the draft. Your changes are still here.', true);
-            }
-        });
+        /* There is no Save draft button. Every edit here already persists --
+           250ms after a keystroke, immediately for anything else -- and the
+           state line says "Draft saved on this device" when it lands and says
+           so plainly when storage refuses. A button that repeated an autosave
+           read as a third kind of saving next to Save and Publish.
 
-        /* Publish reaches the network, so a second click while the first is
-           in flight would publish twice. The button is held until the round
-           trip finishes, whichever way it goes. */
+           window.ADMIN_BUILDER.flush() remains the way to force a pending
+           write, which is what the button did. */
+
+        /* Publish STAGES an intent and hands it to the admin's one Review &
+           Publish flow. Nothing here mutates pages[slug].builder and nothing
+           here reaches the network -- if the review is cancelled, the page is
+           exactly as it was, because nothing was done.
+
+           The draft itself IS saved first: that is local, it is what the
+           author just typed, and it is what the intent refers to. */
         var publishing = false;
         if ((b = $('#pbPublish'))) b.addEventListener('click', function () {
             if (publishing) return;
@@ -3612,17 +3635,17 @@ window.PBAdmin = function (host) {
             try {
                 pbFlush();
                 CMS.sections.saveDraft(pbSlug, pbDraft);
-                CMS.sections.publish(pbSlug);
-                res = commit();       /* the one action here that goes live */
-                buildBuilder();
-                if (!CMS.remote.enabled) toast('Published. This page now shows your sections.');
+                commitLocal();
+                var intent = {};
+                intent[pbSlug] = 'publish';
+                res = stagePublish(intent);
             } catch (e) {
                 release();
                 throw e;
             }
-            /* Held until the network round trip finishes, not just until
-               this handler returns -- otherwise a second click lands while
-               the first is still in flight and publishes twice. */
+            /* Held until the round trip finishes, not just until this handler
+               returns -- otherwise a second click lands while the first is
+               still in flight and publishes twice. */
             if (res && typeof res.then === 'function') res.then(release, release);
             else release();
         });
@@ -3635,16 +3658,20 @@ window.PBAdmin = function (host) {
             CMS.sections.discard(pbSlug);
             pbDraft = CMS.sections.draft(pbSlug).sections;
             pbOpen = null;
-            commit(true);
+            commitLocal();
             buildBuilder();
             toast('Draft discarded. You can still restore it above.');
         });
 
+        /* Unpublish stages too. It changes what visitors see, so it is a
+           publish like any other and goes through the same review. */
         if ((b = $('#pbUnpublish'))) b.addEventListener('click', function () {
             if (!window.confirm('Take these sections off the live page? It goes back to the content in its HTML file. The draft is kept.')) return;
-            CMS.sections.unpublish(pbSlug);
-            commit();
-            buildBuilder();
+            var intent = {};
+            intent[pbSlug] = 'unpublish';
+            var res = stagePublish(intent);
+            if (res && typeof res.then === 'function') res.then(buildBuilder, buildBuilder);
+            else buildBuilder();
         });
     }
 
@@ -3652,6 +3679,31 @@ window.PBAdmin = function (host) {
         build: buildBuilder,
         wire:  wireBuilder,
         flush: pbFlush,
+        /* Driven by the Pages panel's page picker, the admin's one page
+           selector. Returns the slug actually selected.
+
+           Re-reads the draft from the record even when the slug has not
+           changed. This is called every time the Content area is opened, and
+           the record can have moved underneath it since it was last read -- a
+           restore from backup, a remote pull, another tab. Holding a stale
+           in-memory copy would silently publish the wrong thing.
+
+           pbFlush() first, so a pending keystroke is written before it is
+           re-read rather than thrown away. */
+        select: function (slug) {
+            var slugs = CMS.sections.pages();
+            if (slugs.indexOf(slug) === -1) return pbSlug;
+            if (slug !== pbSlug) { pbSelect(slug); return pbSlug; }
+            pbFlush();
+            var fresh = CMS.sections.draft(pbSlug).sections;
+            if (JSON.stringify(fresh) !== JSON.stringify(pbDraft)) {
+                pbDraft.length = 0;
+                fresh.forEach(function (x) { pbDraft.push(x); });
+                pbOpen = null;
+            }
+            return pbSlug;
+        },
+        slug: function () { return pbSlug; },
         fit:   pbFitPreview,
         /* The Pages panel needs an image chooser for the Open Graph and
            X/Twitter fields. It is THIS picker -- same manifest, same

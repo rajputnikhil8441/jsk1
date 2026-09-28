@@ -39,7 +39,17 @@ async function page(b, opts) {
       if (r.request().method() === 'POST') { sent.push(r.request().postData() || '');
         return r.fulfill({ status: 201, body: '' }); }
       var body = '[]';
-      if (opts.rowJson) body = '[{"data":' + opts.rowJson + ',"updated_at":"2026-01-01"}]';
+      /* Once something has been written, the row has to read back as THAT
+         write: publish() confirms itself by comparing updated_at, so a fixed
+         timestamp here would report every publish as unconfirmed. Echoed in
+         Postgres's offset format, as the real server does. */
+      if (sent.length) {
+        var w = JSON.parse(sent[sent.length - 1] || '{}');
+        body = JSON.stringify([{ data: w.data,
+          updated_at: new Date(w.updated_at).toISOString()
+                        .replace(/\.000Z$/, '+00:00').replace(/Z$/, '+00:00') }]);
+      }
+      else if (opts.rowJson) body = '[{"data":' + opts.rowJson + ',"updated_at":"2026-01-01"}]';
       else if (opts.row) body = JSON.stringify([{ data: opts.row, updated_at: '2026-01-01' }]);
       return r.fulfill({ status: 200, contentType: 'application/json', body: body }); }
     if (!/localhost:/.test(u)) seen.push('external:' + u.replace(/^https?:\/\//, '').split('/')[0]);
