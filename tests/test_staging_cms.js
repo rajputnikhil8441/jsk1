@@ -408,7 +408,18 @@ function serveAtOrigin(ctx, dir, log) {
   const aerrs = [];
   admin.on('pageerror', e => aerrs.push(e.message));
   const resp = await admin.goto(ORIGIN + '/admin/', { waitUntil: 'domcontentloaded' });
-  await admin.waitForTimeout(1200);
+  /* The admin boots asynchronously: it pulls the row, seeds the Theme
+     Manager and paints fourteen panels. This was a fixed 1200ms sleep,
+     which made the snapshot below a race -- on a loaded machine the seed
+     had not run yet and `themes` read 0, failing an assertion about the
+     CMS because of a stopwatch. Waiting for the condition instead, with a
+     ceiling so a genuine failure still surfaces as one. */
+  await admin.waitForFunction(() =>
+    !!(window.CMS && CMS.themes && typeof CMS.themes.list === 'function' &&
+       CMS.themes.list().length > 0 &&
+       document.querySelectorAll('.adm-panel').length > 0),
+    null, { timeout: 20000 }).catch(() => {});
+  await admin.waitForTimeout(200);
 
   check('/admin/ is reachable at the staging hostname', resp.status() === 200, resp.status());
   check('the admin loaded with no script errors', aerrs.length === 0, aerrs);

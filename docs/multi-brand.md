@@ -125,6 +125,60 @@ its own storage namespace, and publishes to its own row. Nothing in
 `js/cms.js`, `js/admin.js`, `admin/index.html` or `css/admin.css` mentions a
 brand, and `tests/test_cms_brands.js` asserts that.
 
+## Adding a WHITE LABEL — the whole checklist
+
+The three steps above give a brand a CMS. These give it a website. **No CMS
+code is copied at any point**, and there is no second Page Builder, SEO engine
+or admin to maintain: every brand is served the same `js/`, `css/`, `admin/`
+and `assets/` bytes, which `tests/test_whitelabel.js` asserts by hashing them
+in two real brands' builds.
+
+| # | What | Where |
+| --- | --- | --- |
+| 1 | Brand configuration | `brands/<host>/brand.json` — `id`, `name`, `domain`, `siteId`, `mediaBucket`, `output`, and any `environments` |
+| 2 | Brand layer | `brands/<host>/brand.js` — exported from that brand's own `/admin` once it has published |
+| 3 | SEO configuration | `brands/<host>/seo-config.json` — copy `tools/seo-config.json`, set `seo.baseUrl` |
+| 4 | Registry entry | `js/cms-config.js` → `CMS_BRANDS['<host>'] = { siteId, bucket }`, both **its own** |
+| 5 | CMS record | a `site_brand` row keyed by that `siteId` |
+| 6 | Media bucket | a Supabase storage bucket with that `bucket` name |
+| 7 | Overrides, only if it needs them | `brands/<host>/slots/`, `static/`, `static-<env>/`, `pages/` |
+| 8 | Build | `node tools/build-site.js <host> [--env NAME] --out _site` — already works at this point |
+| 9 | Deployment target | a repository (or host) serving that domain, and a workflow that publishes the assembled directory to it |
+
+Step 9 is the only one that needs infrastructure, and only because **GitHub
+Pages allows one custom domain per repository**. This repository's Pages site
+is `jsk-1.com`; every other brand needs a target of its own.
+
+### The two deployment shapes
+
+| Brand | Workflow | Target |
+| --- | --- | --- |
+| JSK1 | `.github/workflows/static.yml` | this repository's Pages site, via `upload-pages-artifact` |
+| Playzone9 | `.github/workflows/deploy-playzone9.yml` | pushes `_site/playzones9.com` to the repository serving that domain |
+
+Both run `tools/build-site.js` on a push to `main`, from this source. A third
+brand copies the second shape: duplicate `deploy-playzone9.yml`, change the
+brand id, the output directory and the secret name.
+
+The second shape needs one secret per target — a fine-grained token scoped to
+that repository alone, with *Contents: read and write*, named in the workflow
+(`PLAYZONE9_DEPLOY_TOKEN` for Playzone9). Without it the workflow still builds
+and says in the log that it published nothing, because a missing token is a
+configuration gap rather than a broken build. Optional repository variables
+`PLAYZONE9_DEPLOY_REPO` and `PLAYZONE9_DEPLOY_BRANCH` override the defaults.
+
+### What a white label does NOT get its own copy of
+
+`js/cms.js`, `js/admin.js`, `js/admin-builder.js`, `js/admin-media.js`,
+`js/seo-files.js`, `js/cms-config.js`, `admin/index.html`, `css/`, `assets/`,
+`templates/pages/`, `tools/`. One copy exists, in this repository, and a fix to
+any of them reaches every brand on its next build. The Page Builder bake and
+the SEO generation are part of that shared set, so a brand gets crawler-visible
+published content without doing anything for it.
+
+A brand directory that ever grew an engine file would break that promise
+silently, so `tests/test_whitelabel.js` fails if one appears.
+
 ## The branding settings, and where each one lives
 
 All of them are per brand, in that brand's row, edited in the existing panels:

@@ -1,0 +1,134 @@
+# Build Playzone9 from the shared source and publish it to its own site
+# repository.
+#
+# WHY THIS EXISTS
+#
+# jsk-1.com is built by static.yml and deployed to THIS repository's Pages
+# site. Playzone9 cannot be: GitHub Pages allows one custom domain per
+# repository, and this one's is jsk-1.com. So playzones9.com has a
+# repository of its own, serving a branch.
+#
+# That repository used to be filled by hand -- a copy of the assembled
+# directory, pushed once. A copy freezes: every shared CMS fix after it
+# reached JSK1 and never reached Playzone9, because nothing rebuilt it.
+# This workflow is the difference between a copy and a deploy. The site
+# repository stops being a source of anything and becomes only a place the
+# assembled artifact is published to.
+#
+# WHAT IT DOES NOT DO
+#
+# It never touches this repository's Pages site. It holds `contents: read`
+# and no `pages:`/`id-token:` permission, and calls no Pages action, so it
+# cannot repoint jsk-1.com even by mistake. It writes only to the target
+# repository, and only with the token below.
+#
+# It publishes the ASSEMBLED site -- the same four layers, the same Page
+# Builder bake, the same SEO step that jsk-1.com gets, from the same
+# tools/build-site.js. Brand data stays where it always was: Playzone9's
+# own Supabase row, its own media bucket, its own brands/playzone9.app/.
+#
+# CONFIGURATION
+#
+#   secrets.PLAYZONE9_DEPLOY_TOKEN   required to publish. A fine-grained
+#       personal access token, or a deploy key's equivalent, scoped to the
+#       target repository ONLY, with Contents: read and write. Nothing
+#       else -- it does not need access to this repository.
+#
+#   vars.PLAYZONE9_DEPLOY_REPO       optional, default below. owner/name of
+#       the repository serving playzones9.com.
+#   vars.PLAYZONE9_DEPLOY_BRANCH     optional, default `main`.
+#
+# WITHOUT THE SECRET the job still runs and still builds, and says in the
+# log that it published nothing. A missing token is a configuration gap,
+# not a broken build, and a red X on every push would teach people to
+# ignore this workflow.
+
+name: Deploy Playzone9
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+# Read this repository. Write nothing here. The token for the target
+# repository is supplied per-step, below.
+permissions:
+  contents: read
+
+# Its own group: a Playzone9 deploy must never queue behind, cancel, or
+# delay the JSK1 Pages deploy, which uses the group "pages".
+concurrency:
+  group: "playzone9-deploy"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the shared source
+        uses: actions/checkout@v4
+
+      - name: Is a deploy target configured?
+        id: target
+        env:
+          DEPLOY_TOKEN: ${{ secrets.PLAYZONE9_DEPLOY_TOKEN }}
+        run: |
+          set -eu
+          if [ -z "${DEPLOY_TOKEN}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::PLAYZONE9_DEPLOY_TOKEN is not set. Building Playzone9 to prove the shared source still assembles it, and publishing nothing."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The same command a developer runs, and the same one static.yml runs
+      # for JSK1 with a different brand id. It verifies the build source
+      # against its recorded export, bakes the published Page Builder
+      # content into the HTML, generates robots.txt, and checks its own
+      # output -- so a broken assembly fails here rather than being
+      # published.
+      - name: Assemble the Playzone9 site
+        run: node tools/build-site.js playzone9.app --env staging --out _site
+
+      - name: Publish to the Playzone9 site repository
+        if: steps.target.outputs.configured == 'true'
+        env:
+          DEPLOY_TOKEN: ${{ secrets.PLAYZONE9_DEPLOY_TOKEN }}
+          TARGET_REPO: ${{ vars.PLAYZONE9_DEPLOY_REPO }}
+          TARGET_BRANCH: ${{ vars.PLAYZONE9_DEPLOY_BRANCH }}
+        run: |
+          set -eu
+          repo="${TARGET_REPO:-rajputnikhil8441/playzone9-staging}"
+          branch="${TARGET_BRANCH:-main}"
+          src="_site/playzones9.com"
+
+          # Refuse to publish something that is not a site. Pushing an empty
+          # or half-written tree would take the domain down.
+          test -f "$src/index.html"
+          test -f "$src/admin/index.html"
+          test -f "$src/js/cms.js"
+
+          # The token travels in the remote URL, which Actions masks in the
+          # log. It is never echoed, and the clone is shallow and thrown
+          # away with the runner.
+          git clone --depth 1 --branch "$branch" \
+            "https://x-access-token:${DEPLOY_TOKEN}@github.com/${repo}.git" target
+
+          # Replace the published tree wholesale: a file the build stopped
+          # emitting must stop being served, and copying over the top would
+          # leave it there forever. Only tracked files are removed, so the
+          # target's .git is untouched.
+          ( cd target && git ls-files -z | xargs -0 -r rm -f )
+          cp -R "$src"/. target/
+
+          cd target
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "The assembled site is identical to what is published. Nothing to do."
+            exit 0
+          fi
+          git commit -m "Playzone9 site built from ${GITHUB_REPOSITORY}@${GITHUB_SHA}"
+          git push origin "HEAD:${branch}"
+          echo "::notice::Published $(git ls-files | wc -l) file(s) to ${repo}@${branch}."
