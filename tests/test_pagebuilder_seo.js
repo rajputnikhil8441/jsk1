@@ -106,7 +106,9 @@ async function adminPage(b, seed, size) {
   await p.waitForTimeout(450);
   return { ctx, p, errs, st };
 }
-const openBuilder = async p => { await p.click('.adm-nav-item[data-panel="builder"]'); await p.waitForTimeout(800); };
+const openBuilder = async p => { await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(800);
+ await p.click('#pageTabs .pagetab[data-page-key="about"]'); await p.waitForTimeout(300);
+ await p.click('#pageSubtabContent'); await p.waitForTimeout(800); };
 const openSec = async (p, i) => {
   await p.evaluate(n => {
     const r = document.querySelectorAll('#pbList > .pb-sec')[n];
@@ -275,7 +277,7 @@ const openSec = async (p, i) => {
       /About/.test(await p.$eval('#pbWhere', n => n.textContent)));
     check('and its address', /about\.html/.test(await p.$eval('#pbWhere', n => n.textContent)));
     check('the active page tab says so to a screen reader too',
-      (await p.$eval('#pbTabs .pagetab.active', n => n.getAttribute('aria-current'))) === 'page');
+      (await p.$eval('#pageTabs .pagetab.active', n => n.getAttribute('aria-current'))) === 'page');
 
     const words = () => p.$eval('#pbHeadings', n => n.textContent);
     check('it says where the visible H1 comes from',
@@ -889,22 +891,32 @@ const openSec = async (p, i) => {
     check('and once written it says saved', /saved\|/.test(await save()), await save());
     check('nothing has been published by any of that', st.posts === 0, st.posts);
 
-    await p.click('#pbPublish'); await p.waitForTimeout(1300);
+    await p.click('#pbPublish'); await p.waitForTimeout(400);
+    await p.click('#pubConfirm'); await p.waitForTimeout(1300);
     check('publishing reports live and up to date', /^live\|/.test(await state()), await state());
     check('and sends exactly one write', st.posts === 1, st.posts);
 
-    /* page switching keeps the auto-save behaviour and confirms nothing */
-    const slugs = await p.$$eval('#pbTabs .pagetab', n => n.map(x => x.getAttribute('data-slug')));
-    check('every mounted page is offered', slugs.length >= 2, slugs);
-    await p.click(`#pbTabs .pagetab[data-slug="${slugs[1]}"]`);
+    /* page switching keeps the auto-save behaviour and confirms nothing.
+
+       The page selector lists EVERY page now, not only the buildable ones, so
+       "another page" has to mean another page whose content can be built --
+       otherwise this would switch to login, which has no content mount. */
+    const allTabs = await p.$$eval('#pageTabs .pagetab', n => n.map(x => x.getAttribute('data-page-key')));
+    const mounted = await p.evaluate(() => window.CMS.sections.pages());
+    const slugs = allTabs.filter(k => mounted.indexOf(k) > -1);
+    check('every page is offered in the one selector', allTabs.length >= 2, allTabs);
+    check('and at least two of them can have content built', slugs.length >= 2, slugs);
+    check('a page with no content mount is still listed, just not buildable',
+      allTabs.indexOf('login') > -1 && mounted.indexOf('login') === -1, { allTabs, mounted });
+    await p.click(`#pageTabs .pagetab[data-page-key="${slugs[1]}"]`);
     await p.waitForTimeout(800);
     check('switching page needs no confirmation', true);
     check('the builder now names the other page',
       (await p.$eval('#pbWhere', n => n.textContent)).indexOf(slugs[1].slice(0, 4)) > -1 ||
-      (await p.$eval('#pbTabs .pagetab.active', n => n.getAttribute('data-slug'))) === slugs[1]);
+      (await p.$eval('#pageTabs .pagetab.active', n => n.getAttribute('data-page-key'))) === slugs[1]);
     check('and the first page kept its published content',
       (await p.evaluate(() => CMS.data().pages.about.builder.sections.length)) === 1);
-    await p.click('#pbTabs .pagetab[data-slug="about"]');
+    await p.click('#pageTabs .pagetab[data-page-key="about"]');
     await p.waitForTimeout(800);
     check('coming back finds the draft where it was',
       (await p.evaluate(() => CMS.sections.draft('about').sections[0].elements[0].content.text)) === 'typed');
@@ -954,7 +966,7 @@ const openSec = async (p, i) => {
     await openSec(a.p, 0);
     const named = await a.p.evaluate(() => {
       const bad = [];
-      document.querySelectorAll('#panel-builder button, #panel-builder a[href], #panel-builder select, #panel-builder input, #panel-builder textarea').forEach(n => {
+      document.querySelectorAll('#pageArea-content button, #pageArea-content a[href], #pageArea-content select, #pageArea-content input, #pageArea-content textarea').forEach(n => {
         const r = n.getBoundingClientRect();
         if (n.hidden || (r.width === 0 && r.height === 0)) return;
         const name = (n.getAttribute('aria-label') || '').trim() || (n.textContent || '').trim() ||
@@ -966,7 +978,7 @@ const openSec = async (p, i) => {
     });
     check('every visible builder control has an accessible name', named.length === 0, named);
     const tabless = await a.p.evaluate(() =>
-      [...document.querySelectorAll('#panel-builder button:not([disabled]), #panel-builder select, #panel-builder input')]
+      [...document.querySelectorAll('#pageArea-content button:not([disabled]), #pageArea-content select, #pageArea-content input')]
         .filter(n => { const r = n.getBoundingClientRect(); return r.width > 0 && n.tabIndex < 0; }).length);
     check('and none of them is taken out of the tab order', tabless === 0, tabless);
     check('the open section reports its state',

@@ -1,0 +1,10 @@
+{
+  "_comment": "Synthetic. Replaces login.html outright — a different form arrangement.",
+  "id": "zeta.test",
+  "name": "ZETAWIN",
+  "domain": "zeta.test",
+  "siteId": "zetawin",
+  "mediaBucket": "cms-media-zeta",
+  "output": "zeta.test",
+  "pages": ["index.html", "login.html", "404.html"]
+}

@@ -313,7 +313,9 @@ const fingerprint = (p, sel) => p.$eval(sel, (root, props) => {
     await p.goto(`${BASE}/admin/index.html`, { waitUntil: 'networkidle' });
     await p.fill('#authEmail', 'a@b.c'); await p.fill('#authPass', 'x'); await p.click('#authBtn');
     await p.waitForTimeout(400);
-    await p.click('.adm-nav-item[data-panel="builder"]'); await p.waitForTimeout(500);
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(500);
+    await p.click('#pageTabs .pagetab[data-page-key="about"]'); await p.waitForTimeout(300);
+    await p.click('#pageSubtabContent'); await p.waitForTimeout(500);
     await p.click('#pbAdd .pb-addbtn[data-type="text"]'); await p.waitForTimeout(400);
     const sid = await p.$eval('#pbList .pb-sec', e => e.getAttribute('data-sec-id'));
     const SEC = `#pbList .pb-sec[data-sec-id="${sid}"]`;
@@ -496,7 +498,9 @@ const fingerprint = (p, sel) => p.$eval(sel, (root, props) => {
     /* Reloaded rather than re-rendered: the admin holds its state in memory,
        so a value poked into storage only counts once it is read back. */
     await p.reload({ waitUntil: 'networkidle' });
-    await p.click('.adm-nav-item[data-panel="builder"]'); await p.waitForTimeout(700);
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(700);
+    await p.click('#pageTabs .pagetab[data-page-key="about"]'); await p.waitForTimeout(300);
+    await p.click('#pageSubtabContent'); await p.waitForTimeout(700);
     /* A reload collapses the section, so open it again the way a person
        would before reaching for anything inside it. */
     if (!(await p.$(`${SEC}.open`))) {

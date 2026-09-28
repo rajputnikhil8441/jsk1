@@ -1,6 +1,6 @@
 =================================================================
  LIVE PUBLISHING SETUP  —  15 minutes, one time only
- After this: Save changes in /admin = live on every device.
+ After this: Review & Publish in /admin = live on every device.
 =================================================================
 
 WHY
@@ -113,7 +113,7 @@ STEP 6  TEST LOCALLY                                (2 min)
 1. Live Server on index.html, let it load.
 2. Go to /admin/  ->  you now get a sign in box.
 3. Sign in with the email + password from Step 3.
-4. Apply a theme, change something, click "Save changes".
+4. Apply a theme, change something, click "Review & Publish", then confirm.
 5. You should see "Published. Every device sees this now."
 6. Open the site in Incognito -> your change is there.
 
@@ -125,7 +125,9 @@ Drag the project folder onto Netlify one final time.
 
 From now on you never redeploy for a branding change:
 
-    /admin  ->  edit  ->  Save changes  ->  done, everywhere.
+    /admin  ->  edit  ->  Review & Publish  ->  confirm  ->  done, everywhere.
+    Published only after the write is read back and confirmed.
+    See docs/publishing.md.
 
 
 =================================================================
@@ -144,7 +146,7 @@ Two sites, two brands, one database, one admin login.
 =================================================================
  TROUBLESHOOTING
 =================================================================
-"Live publishing: error" in Export / Import
+"Live publishing: error" in Backup & Restore
     -> url or anonKey is wrong, or the table name does not match.
 
 Sign in fails with "Invalid login credentials"

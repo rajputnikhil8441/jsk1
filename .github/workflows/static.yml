@@ -42,6 +42,50 @@ jobs:
       # in the log, rather than deploying a sitemap that describes nothing.
       - name: Generate sitemap.xml and robots.txt
         run: node tools/build-seo-files.js
+      # The published site is the SITE, not the repository that builds it.
+      # Four directories exist only to BUILD it and must not be served from
+      # the production domain:
+      #
+      #   templates/  the un-rendered source pages. They carry the literal
+      #               brand-name and brand-domain placeholders, including in
+      #               <link rel="canonical"> -- a crawlable page claiming to
+      #               be a page that does not exist. (Spelled out rather
+      #               than quoted here on purpose: tests/test_deploy_surface.js
+      #               asserts that NO published file contains a placeholder,
+      #               and this file is published.)
+      #   tests/      fixtures/golden-jsk1/ holds byte copies of the eight
+      #               real pages: duplicate content on the live domain.
+      #   brands/     one brand's configuration and fallback content.
+      #   tools/      the generators themselves.
+      #
+      # Why deletion and not something gentler: a robots.txt Disallow stops
+      # crawling, not serving; upload-pages-artifact has no exclude input;
+      # and this is not a Jekyll build, so a _config.yml exclude and the
+      # underscore-directory convention both do nothing here. Removing the
+      # paths before the artifact is packed is the only mechanism available.
+      #
+      # This step runs AFTER the sitemap/robots step, which needs tools/, and
+      # it touches only the runner's throwaway checkout -- the job holds
+      # `contents: read` and cannot write to the repository.
+      #
+      # It then CHECKS itself, in both directions. A bare `rm -rf` succeeds
+      # silently on a path that no longer exists or was renamed, so a typo
+      # here would quietly publish the sources again; and an over-broad
+      # prune would quietly publish a broken site. Either one fails the
+      # deploy instead.
+      - name: Remove build-only sources from the published site
+        run: |
+          rm -rf templates brands tools tests
+          for d in templates brands tools tests; do
+            if [ -e "$d" ]; then echo "::error::$d survived the prune"; exit 1; fi
+          done
+          for f in index.html about.html contact.html login.html register.html \
+                   privacy-policy.html responsible-gaming.html 404.html \
+                   admin/index.html js/cms.js js/brand.js css/style.css \
+                   assets/asset-manifest.json sitemap.xml robots.txt; do
+            if [ ! -f "$f" ]; then echo "::error::$f is missing after the prune"; exit 1; fi
+          done
+          echo "Published surface: $(find . -name '*.html' -not -path './.git/*' | wc -l) HTML file(s)"
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

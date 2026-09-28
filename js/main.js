@@ -1,21 +1,37 @@
 /* ============================================================
-   PLAYZONE9 - main.js
-   Handles all frontend interactions
+   main.js — frontend interactions
+   Brand-neutral: every brand-specific value below comes from the
+   CMS, so this file is shared by every brand unchanged.
    ============================================================ */
 
 /* ============================================================
    CONFIGURATION
    Edit these values to customise the site quickly
    ============================================================ */
+/* Read through the CMS so nothing here names a brand. The keys are
+   read directly off data().text rather than through get(), because
+   'support.whatsappMessage' contains a dot in the key itself and a
+   dotted path would be walked as three levels. */
+function cmsText(key, fallback) {
+  try {
+    var v = window.CMS && window.CMS.data().text[key];
+    return (typeof v === 'string' && v) ? v : fallback;
+  } catch (e) { return fallback; }
+}
+
 var CONFIG = {
   /* WhatsApp support number — managed in /admin (Branding > Footer) */
   whatsappNumber: (window.CMS && CMS.get('branding.whatsapp')) || '91xxxxxx',
 
-  /* WhatsApp message (URL encoded) */
-  whatsappMessage: 'Hello%2C%20I%20need%20support%20on%20JSK1.',
+  /* WhatsApp message (URL encoded) — managed in /admin (Text).
+     The fallback carries no brand name on purpose: a brand that has not
+     set this should ask for support without claiming to be someone else. */
+  whatsappMessage: cmsText('support.whatsappMessage', 'Hello%2C%20I%20need%20support.'),
 
-  /* Site name */
-  siteName: 'JSK1'
+  /* Site name. Nothing in this file reads it today; it is kept because
+     it is part of CONFIG's shape, and sourced from the CMS so it cannot
+     go stale or name the wrong brand. */
+  siteName: (window.CMS && CMS.get('branding.siteName')) || ''
 };
 
 /* ============================================================
@@ -313,7 +329,15 @@ document.addEventListener('DOMContentLoaded', function() {
    2nd click onwards   -> straight to login page
 ============================================================ */
 (function () {
-    var KEY = 'gateSeen';
+    /* Scoped like the rest. This one is only presentation state -- whether
+       this visitor has already been shown the toast once -- so leaking it
+       between brands would cost a missing toast rather than anything
+       serious. It is scoped anyway: one unscoped key among scoped ones is
+       the kind of exception that later gets copied by someone who assumes
+       it was reasoned about. The gate's behaviour is untouched. */
+    var KEY = (window.CMS_STORAGE && typeof window.CMS_STORAGE.key === 'function')
+        ? window.CMS_STORAGE.key('gateSeen')
+        : 'gateSeen';
     var LOGIN_URL = 'login.html';
     var hideTimer = null;
 

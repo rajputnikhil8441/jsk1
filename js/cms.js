@@ -1,5 +1,5 @@
 /* ============================================================
-   JSK1 — WHITE LABEL CMS + SEO ENGINE  (js/cms.js)
+   WHITE LABEL CMS + SEO ENGINE  (js/cms.js)
    ------------------------------------------------------------
    Loaded by index.html, login.html and /admin/index.html.
    Owns one master object in localStorage under CMS.KEY:
@@ -12,17 +12,32 @@
 (function (window, document) {
     'use strict';
 
-    var KEY = 'whiteLabelCMS';
+    /* The master record's localStorage name, scoped to this brand.
+
+       js/cms-config.js resolves the suffix: '' for the brand whose data
+       already lives under the bare name, ':<siteId>' for every other, so
+       two brands sharing an origin cannot read each other's cache. The
+       fallback keeps the historical name when CMS_STORAGE is absent --
+       a page that loads this file without the config, or a test that
+       stubs the config -- which is exactly the behaviour that existed
+       before brands did.
+
+       Everything downstream follows automatically: CMS.KEY, the storage
+       meter in /admin, and the `storage` event listener at the bottom of
+       this file all read this one variable. */
+    var KEY = (window.CMS_STORAGE && typeof window.CMS_STORAGE.key === 'function')
+        ? window.CMS_STORAGE.key('whiteLabelCMS')
+        : 'whiteLabelCMS';
 
     /* ========================================================
-       DEFAULTS — the JSK1 brand as shipped
+       DEFAULTS — the SHAPE of a brand, with no brand in it
     ======================================================== */
     var DEFAULTS = {
 
         branding: {
-            siteName: 'JSK1',
-            browserTitle: 'JSK1 — Official Site | JSK1 Login & Online Gaming',
-            loginTitle: 'Login — JSK1',
+            siteName: '',
+            browserTitle: '',
+            loginTitle: '',
             whatsapp: '91xxxxxx',
             telegram: '',
             email: '',
@@ -148,8 +163,10 @@
             'nav.crash': 'CRASH',
             'support.title': '24X7 Support',
             'support.link': 'WhatsApp Support',
-            'footer.about': 'The official JSK1 website. Create an account, sign in and reach support any time.',
-            'footer.copyright': '© Copyright 2026 JSK1. All Rights Reserved.',
+            'footer.about': '',
+            'footer.copyright': '',
+            /* URL-encoded. Read by js/main.js for the WhatsApp links. */
+            'support.whatsappMessage': '',
             /* login page */
             'login.heading': 'LOGIN',
             'login.userPh': 'name',
@@ -216,16 +233,16 @@
         ---------------------------------------------------------- */
         seo: {
 
-            baseUrl: 'https://jsk-1.com',
-            siteName: 'JSK1',
+            baseUrl: '',
+            siteName: '',
 
             /* %s is replaced by the page title. It is only applied when
                the page title does not already contain the site name, so
                a title you write in full is never doubled up. */
-            titleTemplate: '%s | JSK1',
+            titleTemplate: '',
 
-            defaultTitle: 'JSK1 — Official Site | JSK1 Login & Online Gaming',
-            defaultDescription: 'JSK1 is the official JSK1 online gaming site. Access your JSK1 account, log in, and get 24x7 support at jsk-1.com.',
+            defaultTitle: '',
+            defaultDescription: '',
 
             /* Social defaults. Leave the image blank until a real
                1200x630 share image exists — an empty tag is better
@@ -242,7 +259,7 @@
 
             /* Only emitted into Organization schema when filled in. */
             organization: {
-                name: 'JSK1',
+                name: '',
                 legalName: '',
                 logo: '',
                 sameAs: [],
@@ -290,6 +307,27 @@
            actions that would otherwise throw work away for good. Device-
            local for the same reasons as the two above. */
         builderRecovery: {},
+
+        /* PUBLISHING BOOKKEEPING. Device-local like the three above, and
+           stripped from the publish payload AND from an export for the same
+           reason: it describes THIS browser's relationship to the published
+           row, not the brand's content.
+
+             publishIndex   area -> short hash of what was last confirmed
+                            published, so the review sheet can say exactly
+                            what differs without keeping a second copy of
+                            the whole record. A full snapshot would double a
+                            payload that already carries base64 images, and
+                            this record is already large enough to hit the
+                            localStorage quota.
+
+             lastPublished  { serverUpdatedAt, at } -- the row's own
+                            updated_at exactly as the server returned it,
+                            and when this browser last CONFIRMED a write.
+                            Written only after read-back succeeds, so its
+                            presence means the server agreed. */
+        publishIndex: {},
+        lastPublished: {},
 
         /* ----------------------------------------------------------
            GLOBAL FOOTER — the navigation/topic columns only.
@@ -344,9 +382,6 @@
 
         pages: {
 
-            /* The homepage is part of the SEO system too — its title is
-               no longer taken from branding.browserTitle, which is what
-               used to overwrite it with the shipped white label name. */
             home: {
                 label: 'Home',
                 url: '',
@@ -358,10 +393,10 @@
                 breadcrumb: { label: 'Home', show: false },
                 schema: { webPage: true, breadcrumb: false, contactPage: false },
                 inSitemap: true,
-                updatedAt: '2026-09-17',
-                title: 'JSK1 — Official Site | JSK1 Login & Online Gaming',
-                metaDescription: 'JSK1 is the official JSK1 online gaming site. Access your JSK1 account, log in, and get 24x7 support. Visit the official JSK1 website at jsk-1.com.',
-                heading: 'JSK1 — Official Online Gaming Site',
+                updatedAt: '',
+                title: '',
+                metaDescription: '',
+                heading: '',
                 lead: '',
                 body: ''
             },
@@ -377,9 +412,9 @@
                 breadcrumb: { label: '', show: false },
                 schema: { webPage: false, breadcrumb: false, contactPage: false },
                 inSitemap: false,
-                updatedAt: '2026-09-17',
-                title: 'Login — JSK1',
-                metaDescription: 'Sign in to your JSK1 account on the official JSK1 website.',
+                updatedAt: '',
+                title: '',
+                metaDescription: '',
                 heading: '',
                 lead: '',
                 body: ''
@@ -396,9 +431,9 @@
                 breadcrumb: { label: '', show: false },
                 schema: { webPage: false, breadcrumb: false, contactPage: false },
                 inSitemap: false,
-                updatedAt: '2026-09-17',
-                title: 'Register — JSK1',
-                metaDescription: 'Create a JSK1 account on the official JSK1 website.',
+                updatedAt: '',
+                title: '',
+                metaDescription: '',
                 heading: '',
                 lead: '',
                 body: ''
@@ -414,25 +449,13 @@
                 breadcrumb: { label: 'About', show: true },
                 schema: { webPage: true, breadcrumb: true, contactPage: false },
                 inSitemap: true,
-                updatedAt: '2026-09-17',
+                updatedAt: '',
                 url: 'about.html',
-                title: 'About JSK1 — About the Official JSK1 Website',
-                metaDescription: 'Learn about JSK1, the official JSK1 online gaming website. Find out what JSK1 offers and how to get started at jsk-1.com.',
-                heading: 'About JSK1',
-                lead: 'The official JSK1 website — jsk-1.com.',
-                body:
-                    '<p>JSK1 is an online gaming site. This page is where you tell visitors who you are, ' +
-                    'what the site offers and how to get started. Edit all of it in /admin &gt; Pages &gt; About.</p>\n' +
-                    '<h2>What JSK1 offers</h2>\n' +
-                    '<p class="page-note">Editable placeholder — describe the games and features you actually offer, ' +
-                    'in your own words. Nothing here has been written for you, because only you know what is true of your site.</p>\n' +
-                    '<h2>Getting started with JSK1</h2>\n' +
-                    '<p>To use JSK1, create an account on the <a href="register.html">Register</a> page, then sign in ' +
-                    'from the <a href="login.html">Login</a> page. If you need help, the ways to reach us are listed on ' +
-                    'the <a href="contact.html">Contact</a> page.</p>\n' +
-                    '<h2>Play responsibly</h2>\n' +
-                    '<p>JSK1 is intended for adults aged 18 and over. Please read our ' +
-                    '<a href="responsible-gaming.html">Responsible Gaming</a> page before you play.</p>'
+                title: '',
+                metaDescription: '',
+                heading: '',
+                lead: '',
+                body: ''
             },
 
             contact: {
@@ -445,26 +468,13 @@
                 breadcrumb: { label: 'Contact', show: true },
                 schema: { webPage: true, breadcrumb: true, contactPage: true },
                 inSitemap: true,
-                updatedAt: '2026-09-17',
+                updatedAt: '',
                 url: 'contact.html',
-                title: 'Contact JSK1 — JSK1 Support & Help',
-                metaDescription: 'Contact JSK1 support. Reach the official JSK1 team for help with your JSK1 account at jsk-1.com.',
-                heading: 'Contact JSK1',
-                lead: 'Get in touch with the JSK1 support team.',
-                body:
-                    '<p>Use any of the channels below to reach us about your account, signing in, or a general question.</p>\n' +
-                    '<ul class="contact-list">\n' +
-                    '  <li><i class="fab fa-whatsapp"></i> <span>WhatsApp: ' +
-                    '<span class="page-note">add your real WhatsApp number here</span></span></li>\n' +
-                    '  <li><i class="fas fa-envelope"></i> <span>Email: ' +
-                    '<span class="page-note">add your real support email here</span></span></li>\n' +
-                    '  <li><i class="fas fa-clock"></i> <span>Support hours: ' +
-                    '<span class="page-note">add your real support hours here</span></span></li>\n' +
-                    '</ul>\n' +
-                    '<h2>Before you contact us</h2>\n' +
-                    '<p>If you are trying to sign in, go to the <a href="login.html">JSK1 Login</a> page. ' +
-                    'New here? Create an account on the <a href="register.html">JSK1 Register</a> page. ' +
-                    'You can read more about the site on the <a href="about.html">About JSK1</a> page.</p>'
+                title: '',
+                metaDescription: '',
+                heading: '',
+                lead: '',
+                body: ''
             },
 
             'responsible-gaming': {
@@ -477,51 +487,15 @@
                 breadcrumb: { label: 'Responsible Gaming', show: true },
                 schema: { webPage: true, breadcrumb: true, contactPage: false },
                 inSitemap: true,
-                updatedAt: '2026-09-17',
+                updatedAt: '',
                 url: 'responsible-gaming.html',
-                title: 'Responsible Gaming — JSK1',
-                metaDescription: 'JSK1 responsible gaming information: 18+ only, setting limits, spotting warning signs and where to get help. Official JSK1 site, jsk-1.com.',
-                heading: 'Responsible Gaming',
-                lead: 'Keeping play safe, and knowing where to get help.',
-                body:
-                    '<p>Gaming should stay fun and under control. This page explains how to keep your play responsible ' +
-                    'and where to find help if it stops feeling that way.</p>\n' +
-                    '<h2>18+ only</h2>\n' +
-                    '<p>JSK1 is strictly for adults aged 18 and over. Underage gaming is not permitted. ' +
-                    'If you are under 18, please do not create an account or play.</p>\n' +
-                    '<h2>Play within your limits</h2>\n' +
-                    '<p>A few simple habits keep gaming healthy:</p>\n' +
-                    '<ul>\n' +
-                    '  <li>Set a budget before you play and treat it as entertainment, not a way to make money.</li>\n' +
-                    '  <li>Never play with money you cannot afford to lose.</li>\n' +
-                    '  <li>Set time limits and take regular breaks.</li>\n' +
-                    '  <li>Do not try to win back losses by playing more.</li>\n' +
-                    '  <li>Do not play when stressed, upset, or under the influence of alcohol.</li>\n' +
-                    '</ul>\n' +
-                    '<h2>Warning signs</h2>\n' +
-                    '<p>It may be time to step back if you notice yourself:</p>\n' +
-                    '<ul>\n' +
-                    '  <li>Spending more time or money than you intended.</li>\n' +
-                    '  <li>Chasing losses or borrowing money to play.</li>\n' +
-                    '  <li>Neglecting work, studies, or relationships because of gaming.</li>\n' +
-                    '  <li>Feeling anxious, guilty, or unable to stop.</li>\n' +
-                    '</ul>\n' +
-                    '<h2>Getting help</h2>\n' +
-                    '<p>If gaming is no longer under control, help is available. Support organisations such as ' +
-                    '<a href="https://www.begambleaware.org/" rel="noopener nofollow" target="_blank">BeGambleAware</a> and ' +
-                    '<a href="https://www.gamcare.org.uk/" rel="noopener nofollow" target="_blank">GamCare</a> ' +
-                    'offer free, confidential advice.</p>\n' +
-                    '<p class="page-note">Editable placeholder — add a helpline for your own country or region here.</p>\n' +
-                    '<h2>Talk to us</h2>\n' +
-                    '<p>If you have a question about your account or want to limit your play, reach us through the ' +
-                    '<a href="contact.html">Contact</a> page.</p>'
+                title: '',
+                metaDescription: '',
+                heading: '',
+                lead: '',
+                body: ''
             },
 
-            /* Registered so the page is editable, appears in the sitemap and
-               can carry builder sections like any other. The body is left
-               empty on purpose: a privacy policy is a statement about what
-               this site actually does with data, and only its operator can
-               write that. Nothing is invented here. */
             'privacy-policy': {
                 label: 'Privacy Policy',
                 slug: 'privacy-policy',
@@ -532,18 +506,14 @@
                 breadcrumb: { label: 'Privacy Policy', show: true },
                 schema: { webPage: true, breadcrumb: true, contactPage: false },
                 inSitemap: true,
-                updatedAt: '2026-09-21',
+                updatedAt: '',
                 url: 'privacy-policy.html',
                 builderMount: true,
-                title: 'Privacy Policy | JSK1',
-                metaDescription: 'Read the JSK1 Privacy Policy to understand how information is handled when you use the JSK1 website and services.',
-                heading: 'Privacy Policy',
-                lead: 'This Privacy Policy explains how JSK1 handles information when you use this website and its services.',
-                body:
-                    '<p class="page-note">Editable placeholder — write your own privacy policy here, in ' +
-                    '/admin &gt; Pages &gt; Privacy Policy. It should describe what this site actually ' +
-                    'collects, why, how long it is kept and who to contact about it. Nothing has been ' +
-                    'written for you, because only you know what is true of your site.</p>'
+                title: '',
+                metaDescription: '',
+                heading: '',
+                lead: '',
+                body: ''
             }
         },
 
@@ -642,9 +612,176 @@
     };
 
     /* ========================================================
+       DEVICE-LOCAL KEYS — ONE LIST, TWO CONSUMERS
+       ------------------------------------------------------
+       These five keys never leave this browser. Remote.publish() deletes
+       them from the payload because every visitor downloads the published
+       row with the anon key, and an export deletes them because a backup
+       is the brand's content, not one machine's working state.
+
+       It is ONE list on purpose. The two consumers used to disagree --
+       publish() stripped three keys and exportJSON() stripped none -- so a
+       downloaded file carried unpublished drafts and the section library
+       that the admin panel promises never leave the device. A single
+       constant makes that drift impossible.
+
+       Remote.pull() reads the same list to decide what an incoming row
+       must not overwrite.
+    ======================================================== */
+    var LOCAL_ONLY_KEYS = ['builderDrafts', 'builderLibrary', 'builderRecovery',
+                           'publishIndex', 'lastPublished'];
+
+    /* ========================================================
        STORAGE
     ======================================================== */
     function clone(o) { return JSON.parse(JSON.stringify(o)); }
+
+    /* A copy with every device-local key removed. Used for the publish
+       payload and for an export, so the two can never diverge. */
+    function withoutLocalKeys(obj) {
+        var out = clone(obj), i;
+        for (i = 0; i < LOCAL_ONLY_KEYS.length; i++) delete out[LOCAL_ONLY_KEYS[i]];
+        return out;
+    }
+
+    /* ========================================================
+       WHAT WOULD THIS PUBLISH CHANGE?
+       ------------------------------------------------------
+       A map of area -> short hash, taken at the last confirmed publish (and
+       seeded from the row on every pull, because the row IS what is
+       published). Comparing today's hashes against it says which areas
+       differ, without storing a second copy of the record.
+
+       WHY NOT A FULL SNAPSHOT. This record already carries base64 images and
+       is already close enough to the localStorage quota that the admin has a
+       storage meter and a quota handler. Doubling it to answer "what
+       changed?" would break saving to answer a question about saving.
+
+       WHY IT OVER-REPORTS RATHER THAN UNDER-REPORTS. A hash is compared, not
+       a value, so reordered keys read as a change. That is the safe
+       direction: telling someone a colour will be published when it is
+       identical costs them a glance, and the opposite costs them a
+       surprise. An area missing from the index is likewise treated as
+       changed, which is why the first publish from a browser lists
+       everything -- nothing has been confirmed from here.
+
+       updatedAt IS DELIBERATELY NOT HASHED. It moves whenever anything else
+       in the page moves, so including it would report every page as changed
+       every time and drown the real answer.
+    ======================================================== */
+    function shortHash(v) {
+        var s = JSON.stringify(v === undefined ? null : v), h = 5381, i;
+        for (i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+        /* Length alongside the hash: two cheap signals beat one. */
+        return h.toString(16) + ':' + s.length;
+    }
+
+    /* The addressable areas of a record, at the granularity the review sheet
+       reads out. Everything above `pages` is one area per top-level key;
+       `pages` is split per page and per concern, because "About changed" is
+       not a useful thing to tell someone who edited a meta description. */
+    function indexAreas(data) {
+        var out = {}, k;
+        for (k in data) {
+            if (!Object.prototype.hasOwnProperty.call(data, k)) continue;
+            if (LOCAL_ONLY_KEYS.indexOf(k) > -1) continue;
+            if (k === 'pages') continue;
+            out[k] = data[k];
+        }
+        var pages = data.pages || {}, slug;
+        for (slug in pages) {
+            if (!Object.prototype.hasOwnProperty.call(pages, slug)) continue;
+            var p = pages[slug] || {};
+            out['pages.' + slug + '.builder'] = p.builder || null;
+            ['title', 'metaDescription', 'heading', 'lead', 'body'].forEach(function (f) {
+                out['pages.' + slug + '.' + f] = p[f] === undefined ? null : p[f];
+            });
+            out['pages.' + slug + '.settings'] = {
+                canonical: p.canonical, robots: p.robots, og: p.og, twitter: p.twitter,
+                breadcrumb: p.breadcrumb, schema: p.schema, inSitemap: p.inSitemap,
+                url: p.url, slug: p.slug, label: p.label, builderMount: p.builderMount
+            };
+        }
+        return out;
+    }
+
+    function changeIndex(data) {
+        var areas = indexAreas(data || load()), out = {}, k;
+        for (k in areas) {
+            if (Object.prototype.hasOwnProperty.call(areas, k)) out[k] = shortHash(areas[k]);
+        }
+        return out;
+    }
+
+    /* { everPublished, areas: [area, ...] } — derived from the SAME record
+       that withoutLocalKeys(load()) would send, so the sheet cannot describe
+       one thing while the payload carries another. */
+    function changedAreas() {
+        var st = load();
+        var cur = changeIndex(st);
+        var prev = st.publishIndex || {};
+        var everPublished = Object.keys(prev).length > 0;
+        var list = [], k;
+        for (k in cur) {
+            if (!Object.prototype.hasOwnProperty.call(cur, k)) continue;
+            if (!everPublished || prev[k] !== cur[k]) list.push(k);
+        }
+        /* An area that existed at the last publish and is gone now is also a
+           change -- a deleted page, for instance. */
+        for (k in prev) {
+            if (!Object.prototype.hasOwnProperty.call(prev, k)) continue;
+            if (!Object.prototype.hasOwnProperty.call(cur, k)) list.push(k);
+        }
+        list.sort();
+        return { everPublished: everPublished, areas: list };
+    }
+
+    /* ========================================================
+       BUILD-SOURCE FINGERPRINT
+       ------------------------------------------------------
+       One published builder block -> one short string, using the SAME
+       shortHash() the publish index uses. There is deliberately no second
+       hashing system: the admin records these when it exports a brand's
+       committed layer, the build recomputes them before baking, and
+       tools/check-published.js recomputes them from the live row. Three
+       callers, one algorithm.
+
+       WHAT IS HASHED is exactly what the bake consumes: the schema version
+       and the sections. Not `status` (a block only gets a fingerprint when it
+       is published) and not `updatedAt` (a client-set date that moves without
+       the content changing, which would make every export look different).
+
+       WHAT A MATCH PROVES, and no more: the committed sections are the ones
+       the export recorded. INTEGRITY. It says nothing about whether the row
+       has been published again since -- that fact lives only in Supabase, and
+       tools/check-published.js is the only thing that can ask.
+    ======================================================== */
+    function builderFingerprint(block) {
+        if (!block || !isArr(block.sections)) return '';
+        return shortHash({ schemaVersion: pbSchemaOf(block), sections: block.sections });
+    }
+
+    /* { slug: fingerprint } for every PUBLISHED block in a record. The same
+       test publishedSections() and the baker apply, so the set of slugs here
+       is the set the build will bake. */
+    function builderFingerprints(data) {
+        var st = data || load();
+        var pages = (st && st.pages) || {};
+        var out = {}, slug;
+        for (slug in pages) {
+            if (!Object.prototype.hasOwnProperty.call(pages, slug)) continue;
+            var b = (pages[slug] || {}).builder;
+            if (!b || b.status !== 'published' || !isArr(b.sections)) continue;
+            out[slug] = builderFingerprint(b);
+        }
+        return out;
+    }
+
+    function refreshPublishIndex() {
+        var st = load();
+        st.publishIndex = changeIndex(st);
+        return save();
+    }
 
     /* Keys that are not data, whatever a JSON payload calls them.
 
@@ -1015,6 +1152,23 @@
     }
 
     function robotsValue(page) {
+        /* A deployment that must never be indexed says so once, here, and
+           nothing downstream can undo it.
+
+           This is not the same thing as a PAGE being noindex. It is the
+           whole deployment: a staging or review host serving a copy of a
+           real brand. Without it, noindex would have to live in the data,
+           and the data is layered -- DEFAULTS < brand.js < the Supabase
+           row < local edits -- so any layer above the one that set it
+           could hand a review host back to the crawlers. A review copy
+           being indexed is not a cosmetic bug: it competes with the real
+           site for the real site's own terms.
+
+           The flag is set by the generated brand.js of an environment
+           build (see envPatched in tools/lib/brandkit.js) and is undefined
+           everywhere else, so no existing deployment changes behaviour. */
+        if (window.CMS_NOINDEX === true) return 'noindex,nofollow';
+
         if (!page || !page.robots) return '';
         var r = page.robots;
         if (r.index === undefined && r.follow === undefined) return '';
@@ -2862,7 +3016,24 @@
                                                            : bodyIsBuilderManaged(slug);
             }
 
-            if (!sections) continue;                  /* leave the static markup alone */
+            /* BAKED CONTENT THAT IS NO LONGER PUBLISHED.
+               The build writes the published sections into the mount, marked
+               with data-cms-baked, so a crawler without JavaScript reads the
+               same page a visitor does. If the row has since been unpublished,
+               that markup is stale: leaving it would show the sections AND the
+               restored fallback copy at once. So it is cleared here -- the one
+               case where "no published sections" is not "leave the page alone".
+
+               When sections ARE published, renderSectionsInto() below replaces
+               the mount's contents wholesale, which is why baking cannot
+               produce a second copy of anything. */
+            if (!sections) {
+                if (host.hasAttribute('data-cms-baked')) {
+                    host.textContent = '';
+                    host.removeAttribute('data-cms-baked');
+                }
+                continue;                             /* leave the static markup alone */
+            }
             renderSectionsInto(host, sections);
             css += builderCSS(sections);
             painted++;
@@ -2998,12 +3169,29 @@
         return JSON.stringify(draftBlock(slug).sections) !== JSON.stringify(liveSections(slug));
     }
 
+    /* ONE definition of "published", shared with the renderer.
+
+       This used to require a NON-EMPTY sections array while
+       bodyIsBuilderManaged() did not, and the two disagreeing produced a trap:
+       a published EMPTY canvas hid the page's shipped copy (so the body went
+       blank, which is the documented intent -- see the comment on
+       bodyIsBuilderManaged) while `live` read false, so Unpublish was disabled
+       with "Nothing is published for this page" and the state line claimed the
+       page was showing its shipped content. It was not, and the control that
+       would have brought it back was greyed out.
+
+       The renderer's definition wins, because it is the one the visitor
+       experiences. An empty published canvas IS published, and can therefore
+       be unpublished. */
     function builderStatus(slug) {
         var pub = builderBlock(slug);
-        var isLive = !!(pub && pub.status === 'published' &&
-                        isArr(pub.sections) && pub.sections.length);
+        var isLive = bodyIsBuilderManaged(slug);
         return { live: isLive, dirty: draftDiffers(slug),
                  sections: draftBlock(slug).sections.length,
+                 /* How many sections are actually live, which is not the same
+                    question as whether anything is -- an empty canvas is live
+                    with none. */
+                 liveSections: (pub && isArr(pub.sections)) ? pub.sections.length : 0,
                  updatedAt: (pub && str(pub.updatedAt)) || '' };
     }
 
@@ -4047,7 +4235,15 @@
     }
 
     var REMOTE_ON = !!(RC.enabled && RC.url && RC.anonKey) && !SECRET_KEY_CONFIGURED;
-    var TOKEN_KEY = 'cmsAdminToken';
+    /* Scoped for the same reason, and more sharply: an admin signed in to
+       one brand must not appear signed in to another served from the same
+       origin. The token is only ever accepted by the project it came
+       from, so this is about not presenting a stale session as a live
+       one rather than about privilege -- but a sign-in box that lies is
+       its own kind of bug. */
+    var TOKEN_KEY = (window.CMS_STORAGE && typeof window.CMS_STORAGE.key === 'function')
+        ? window.CMS_STORAGE.key('cmsAdminToken')
+        : 'cmsAdminToken';
 
     function rurl(path) {
         return String(RC.url).replace(/\/+$/, '') + path;
@@ -4064,6 +4260,158 @@
 
     function token() {
         try { return window.sessionStorage.getItem(TOKEN_KEY) || ''; } catch (e) { return ''; }
+    }
+
+    /* ============================================================
+       WHICH BRAND IS THIS?
+       ------------------------------------------------------------
+       js/cms-config.js already answers that on every page load: it
+       turns the hostname into a siteId, a media bucket and a
+       storage suffix. Nothing here re-derives any of it -- a second
+       answer to "which brand is this?" is a second thing to keep in
+       step, and the two would eventually disagree.
+
+       This exposes the answer so the admin can SAY which brand it
+       is editing instead of leaving it to be inferred from the URL,
+       and so a test can assert it. It adds no data and no defaults;
+       every field is something the resolution block already
+       published on `window`.
+
+       There are no brand names anywhere in here on purpose. A
+       fourth brand is a registry entry, not an edit to this file.
+       ============================================================ */
+
+    /* The row the REGISTRY says this hostname should write. Empty when
+       a deployment declares no registry at all -- an older or minimal
+       js/cms-config.js that sets CMS_REMOTE and nothing else. That is
+       not a gap: with no registry there is exactly one brand, so there
+       is nothing a write could cross. */
+    function registrySiteId() {
+        var brands = window.CMS_BRANDS;
+        if (!brands || typeof brands !== 'object') return '';
+        var resolved = window.CMS_BRAND_RESOLVED || {};
+        var host = String(resolved.host || '');
+        if (Object.prototype.hasOwnProperty.call(brands, host) && brands[host]) {
+            return String(brands[host].siteId || '');
+        }
+        var dflt = String(window.CMS_BRAND_DEFAULT || '');
+        if (Object.prototype.hasOwnProperty.call(brands, dflt) && brands[dflt]) {
+            return String(brands[dflt].siteId || '');
+        }
+        return '';
+    }
+
+    var Brand = {
+
+        /* The hostname this page was served from, normalised by
+           cms-config.js (lower-cased, one trailing dot removed). */
+        host: function () { return String((window.CMS_BRAND_RESOLVED || {}).host || ''); },
+
+        /* True when that hostname is a registered brand. False on
+           localhost, a CI run, a preview URL or a file:// open, which all
+           fall back to CMS_BRAND_DEFAULT and are NOT that brand -- they
+           merely render it. The admin says so rather than letting someone
+           believe they are editing the live site. */
+        matched: function () { return (window.CMS_BRAND_RESOLVED || {}).matched === true; },
+
+        /* The Supabase row this brand's content lives in. The single thing
+           that keeps two brands apart. */
+        siteId: function () { return String((window.CMS_REMOTE || {}).siteId || ''); },
+
+        bucket: function () { return String((window.CMS_MEDIA || {}).bucket || ''); },
+
+        /* The browser-storage namespace. '' for the one brand whose keys
+           predate brand scoping. */
+        storageSuffix: function () { return String((window.CMS_STORAGE || {}).suffix || ''); },
+
+        /* A deployment that must never be indexed -- a staging or review
+           host. Set by an environment build, undefined otherwise. */
+        noindex: function () { return window.CMS_NOINDEX === true; },
+
+        /* Every brand this deployment knows, from the registry. Read-only,
+           and deliberately not editable from the CMS: the registry is
+           committed code reviewed in a diff, not content. */
+        all: function () {
+            var brands = window.CMS_BRANDS || {}, out = [], k;
+            for (k in brands) {
+                if (!Object.prototype.hasOwnProperty.call(brands, k) || !brands[k]) continue;
+                out.push({
+                    host: k,
+                    siteId: String(brands[k].siteId || ''),
+                    bucket: String(brands[k].bucket || ''),
+                    current: k === Brand.host()
+                });
+            }
+            out.sort(function (a, b) { return a.host < b.host ? -1 : a.host > b.host ? 1 : 0; });
+            return out;
+        },
+
+        /* What the registry expects this host to write, for the guard in
+           publish() and for anything that wants to check agreement. */
+        expectedSiteId: registrySiteId,
+
+        /* Does the row we are about to write belong to this hostname? */
+        agrees: function () {
+            var want = registrySiteId();
+            return !want || want === Brand.siteId();
+        }
+    };
+
+    /* ========================================================
+       PUBLISH READ-BACK
+       ------------------------------------------------------
+       Reads the row straight back and checks that its updated_at is the
+       one we just sent. Only then has a publish happened.
+
+       WHY NOT COMPARE THE STRINGS. We send an ISO string from JavaScript:
+
+           2026-09-27T12:00:00.000Z
+
+       updated_at is a timestamptz, and Postgres renders it its own way:
+
+           2026-09-27T12:00:00+00:00
+
+       Those are the same instant and different strings, so a string
+       comparison would fail EVERY time and report every successful publish
+       as a failure. Compare the instants.
+
+       A value that parses but differs means the row moved under us -- some
+       other browser published after our POST -- so this is not "published",
+       and saying so is the point.
+    ======================================================== */
+    function sameInstant(a, b) {
+        var x = Date.parse(a), y = Date.parse(b);
+        return !isNaN(x) && !isNaN(y) && x === y;
+    }
+
+    function confirmWrite(sentStamp) {
+        var url = rurl('/rest/v1/' + RC.table + '?id=eq.' +
+                       encodeURIComponent(RC.siteId) + '&select=updated_at');
+        return fetch(url, { headers: baseHeaders(), cache: 'no-store' })
+            .then(function (r) {
+                if (!r.ok) throw new Error('Written, but the check failed: HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function (rows) {
+                var got = rows && rows.length ? rows[0].updated_at : null;
+                if (!got) {
+                    throw new Error('The server accepted the write but the row ' +
+                                    'could not be read back, so it is not confirmed.');
+                }
+                if (!sameInstant(got, sentStamp)) {
+                    throw new Error('The server did not confirm this write: the row ' +
+                                    'now reads ' + String(got) + ', not what was just sent. ' +
+                                    'Nothing is confirmed published.');
+                }
+                /* Confirmed. Record it -- device-local, so it is stripped from
+                   the next payload and from an export. The index moves with
+                   it: from here on, "changed" means changed since THIS. */
+                var st = load();
+                st.lastPublished = { serverUpdatedAt: str(got), at: new Date().toISOString() };
+                st.publishIndex = changeIndex(st);
+                save();
+                return true;
+            });
     }
 
     var Remote = {
@@ -4107,6 +4455,26 @@
                     if (localRecovery && Object.keys(localRecovery).length) {
                         state.builderRecovery = localRecovery;
                     }
+                    /* The publish bookkeeping is this browser's own and the
+                       row never carries it, so it survives a pull for exactly
+                       the same reason the three above do. */
+                    if (local.publishIndex && Object.keys(local.publishIndex).length) {
+                        state.publishIndex = local.publishIndex;
+                    }
+                    /* The row's own updated_at, kept as the server spelled
+                       it. Discarded until now -- publish() needs it to say
+                       when this brand was last published, and a read-back
+                       has nothing to compare against without it. */
+                    state.lastPublished = merge(local.lastPublished || {}, {
+                        serverUpdatedAt: str(rows[0].updated_at)
+                    });
+                    /* And the index is re-seeded from what just arrived,
+                       because the row IS the published state. Without this the
+                       review sheet would report every area as changed on a
+                       browser that had merely loaded the admin. Note this runs
+                       AFTER the local drafts are restored above, and the index
+                       never covers them. */
+                    state.publishIndex = changeIndex(state);
                     try {
                         window.localStorage.setItem(KEY, JSON.stringify(state));
                     } catch (e) { /* cache is optional */ }
@@ -4120,6 +4488,101 @@
                     console.warn('[CMS] Remote unavailable, using cached brand.', err);
                     return null;
                 });
+        },
+
+        /* ------------------------------------------------------
+           RELOAD vs DISCARD — two different questions
+           ------------------------------------------------------
+           baseline()     What is published right now? Updates only this
+                          browser's idea of the published state -- the change
+                          index and the row's timestamp -- and leaves local
+                          edits alone. Safe to press with unsaved work.
+
+           discardLocal() Throw this browser's unpublished work away and go
+                          back to what is published. Destructive, and the
+                          caller confirms first.
+
+           They used to be one button called Revert, which did neither: it
+           re-read localStorage, so it reverted to the last LOCAL save rather
+           than to anything the server had.
+           ------------------------------------------------------ */
+
+        /* Non-destructive. Answers "what is published?" without touching what
+           is being edited, so pressing it can never lose work. */
+        baseline: function () {
+            if (!REMOTE_ON) return Promise.resolve({ found: false, remote: false });
+            var url = rurl('/rest/v1/' + RC.table + '?id=eq.' +
+                           encodeURIComponent(RC.siteId) + '&select=data,updated_at');
+            return fetch(url, { headers: baseHeaders(), cache: 'no-store' })
+                .then(function (r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json();
+                })
+                .then(function (rows) {
+                    var st = load();
+                    if (!rows || !rows.length || !rows[0].data) {
+                        /* No row yet: nothing is published, so nothing is a
+                           baseline. Saying so is the point -- an empty index
+                           means the review sheet lists everything, which is
+                           true. */
+                        st.publishIndex = {};
+                        st.lastPublished = { serverUpdatedAt: '' };
+                        save();
+                        return { found: false, remote: true };
+                    }
+                    /* The published state is DEFAULTS + brand.js + the row,
+                       which is what a visitor assembles and what a publish
+                       would send. Hashed without disturbing `state`. */
+                    var published = merge(merge(DEFAULTS, window.CMS_BRAND || null), rows[0].data);
+                    st.publishIndex = changeIndex(published);
+                    st.lastPublished = merge(st.lastPublished || {},
+                                             { serverUpdatedAt: str(rows[0].updated_at) });
+                    save();
+                    return { found: true, remote: true, updatedAt: str(rows[0].updated_at) };
+                });
+        },
+
+        /* Destructive, by request. Goes back to what is published -- or, when
+           nothing has ever been published for this brand, to the defaults the
+           repository ships.
+
+           Page Builder drafts, the section library and the recovery snapshots
+           are KEPT: they are page-level work, not brand-level settings, and
+           each page can already discard its own draft. */
+        discardLocal: function () {
+            var keep = {}, i;
+            var before = load();
+            for (i = 0; i < LOCAL_ONLY_KEYS.length; i++) {
+                keep[LOCAL_ONLY_KEYS[i]] = before[LOCAL_ONLY_KEYS[i]];
+            }
+            function finish(source, index) {
+                for (i = 0; i < LOCAL_ONLY_KEYS.length; i++) {
+                    if (keep[LOCAL_ONLY_KEYS[i]] !== undefined) {
+                        state[LOCAL_ONLY_KEYS[i]] = keep[LOCAL_ONLY_KEYS[i]];
+                    }
+                }
+                state.publishIndex = index;
+                save();
+                apply();
+                return { source: source };
+            }
+            if (!REMOTE_ON) {
+                state = merge(DEFAULTS, window.CMS_BRAND || null);
+                return Promise.resolve(finish('defaults', {}));
+            }
+            return Remote.pull().then(function (remoteData) {
+                if (remoteData) {
+                    /* pull() already replaced state with the server's version
+                       and preserved the device-local keys; the index it seeded
+                       is the published one. */
+                    return { source: 'server' };
+                }
+                /* Nothing published for this brand. Falling back to the shipped
+                   defaults, and the caller says so in those words rather than
+                   claiming a server restore that did not happen. */
+                state = merge(DEFAULTS, window.CMS_BRAND || null);
+                return finish('defaults', {});
+            });
         },
 
         /* Sign the admin in. Returns a promise for the access token. */
@@ -4153,20 +4616,41 @@
             var t = token();
             if (!t) return Promise.reject(new Error('Not signed in'));
 
+            /* The row being written must be the row this hostname resolves
+               to. Today that is structurally true -- RC.siteId comes from
+               the same resolution block -- and this makes it an asserted
+               invariant rather than a property of the current shape, so a
+               later refactor cannot quietly make one brand's admin write
+               another brand's content. That mistake is unrecoverable
+               without a backup: the row is overwritten wholesale.
+
+               Generic on purpose. It names no brand; it compares what the
+               registry says to what is configured. */
+            if (!Brand.agrees()) {
+                return Promise.reject(new Error(
+                    'Refusing to publish: this page is served from "' + Brand.host() +
+                    '", which the brand registry maps to row "' + Brand.expectedSiteId() +
+                    '", but the CMS is configured to write row "' + Brand.siteId() +
+                    '". One brand must never overwrite another\'s content.'));
+            }
+
             /* Drafts are working state, not published content. Sending them
                would put unpublished copy in the public row, which every
-               visitor downloads with the anon key. */
-            var payload = clone(load());
-            delete payload.builderDrafts;
-            /* Local-only by decision: the library is a workbench, not
-               content, and every visitor downloads this row. */
-            delete payload.builderLibrary;
-            delete payload.builderRecovery;
+               visitor downloads with the anon key. The library and the
+               recovery snapshots are local by the same decision, and the
+               publish bookkeeping describes this browser rather than the
+               brand. One list, shared with exportJSON(). */
+            var payload = withoutLocalKeys(load());
+
+            /* Held in a variable because the read-back below compares
+               against it. Inlining it, as this did, left nothing to check
+               the server's answer against. */
+            var sentStamp = new Date().toISOString();
 
             var body = JSON.stringify({
                 id: RC.siteId,
                 data: payload,
-                updated_at: new Date().toISOString()
+                updated_at: sentStamp
             });
 
             var headers = {
@@ -4191,8 +4675,11 @@
                         throw new Error('HTTP ' + r.status + ' ' + txt.slice(0, 160));
                     });
                 }
-                save();   /* refresh the local cache too */
-                return true;
+                /* A 2xx says the request was accepted. It does NOT say the
+                   row now holds what we sent, and this used to be the whole
+                   proof -- so the admin reported "Published" on the strength
+                   of a status code. Read the row back instead. */
+                return confirmWrite(sentStamp);
             });
         },
 
@@ -4426,8 +4913,27 @@
             else { st[section] = clone(DEFAULTS[section]); }
             return save();
         },
-        exportJSON: function () { return JSON.stringify(load(), null, 2); },
+        /* A backup of the brand's content. The device-local keys are removed
+           for the same reason Remote.publish() removes them: a backup is the
+           brand, not one machine's working state. This used to strip
+           nothing, so a downloaded file carried unpublished Page Builder
+           drafts and the reusable-section library that /admin promises never
+           leaves the device.
+
+           Published content is untouched -- pages.<slug>.builder is content
+           and stays in. */
+        exportJSON: function () { return JSON.stringify(withoutLocalKeys(load()), null, 2); },
+
+        /* The one list, readable so a test can assert the two consumers
+           agree rather than restating the names and drifting from them. */
+        localOnlyKeys: function () { return LOCAL_ONLY_KEYS.slice(); },
+
+        /* What a publish would change, for the review sheet. */
+        changeIndex: changeIndex,
+        changedAreas: changedAreas,
+        refreshPublishIndex: refreshPublishIndex,
         themes: Themes,
+        brand: Brand,
         /* Page Builder surface for the admin. `paint` with an override
            renders draft sections for preview without publishing them. */
         sections: {
@@ -4511,6 +5017,12 @@
             templates: templateList,
             templateVersion: PB_TEMPLATE_VERSION,
             fromTemplate: templateSections,
+
+            /* Build-source fingerprints. One algorithm, three callers: the
+               admin's export, the build's integrity guard, and the networked
+               freshness check. */
+            fingerprint: builderFingerprint,
+            fingerprints: builderFingerprints,
 
             /* the body-migration path (milestone: builder-managed pages) */
             fromPageBody: pbSectionsFromBody,

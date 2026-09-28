@@ -30,85 +30,68 @@
    USAGE
      node tools/build-seo-files.js            write the files
      node tools/build-seo-files.js --check    print, write nothing
+
+   THE THREE OPTIONS BELOW EXIST FOR THE ASSEMBLER
+
+   tools/build-site.js assembles a brand's deployable directory
+   and needs this same generator pointed somewhere else. Rather
+   than reimplement sitemap and robots generation there -- two
+   code paths producing two slightly different sitemaps is
+   exactly the bug a white-label platform cannot afford -- it
+   invokes this script with:
+
+     --brand <hostname>   resolve the siteId for THAT brand
+     --config <path>      the committed fallback to read
+     --out <dir>          where to write the two files
+
+   With none of them given every default is what it has always
+   been, so the deploy step's behaviour is unchanged.
    ============================================================ */
 
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
-const https = require('https');
-const vm = require('vm');
 
 const ROOT = path.resolve(__dirname, '..');
 const SEOFiles = require(path.join(ROOT, 'js', 'seo-files.js'));
 
 const CHECK = process.argv.indexOf('--check') > -1;
 
+function opt(name, dflt) {
+    const i = process.argv.indexOf(name);
+    return i > -1 && process.argv[i + 1] ? process.argv[i + 1] : dflt;
+}
+
+/* A brand id is a hostname and becomes part of a path, so it is checked
+   before it is used as either -- the generator's rule, kept the same. */
+const BRAND = opt('--brand', '');
+const FALLBACK_FILE = path.resolve(ROOT, opt('--config', path.join('tools', 'seo-config.json')));
+const OUT_DIR = path.resolve(ROOT, opt('--out', '.'));
+
 function log(msg) { process.stdout.write(msg + '\n'); }
+function rel(p) { return path.relative(ROOT, p).split(path.sep).join('/'); }
 function warn(msg) { process.stdout.write('::warning::' + msg + '\n'); }
 
 /* ---------- the deployment's own configuration ----------
    js/cms-config.js is plain assignments to `window`, so it is read the
    same way the browser reads it rather than by pattern-matching text. */
-function readConfig() {
-    const sandbox = { window: {} };
-    try {
-        vm.runInNewContext(fs.readFileSync(path.join(ROOT, 'js', 'cms-config.js'), 'utf8'), sandbox,
-                           { timeout: 2000 });
-    } catch (e) {
-        warn('js/cms-config.js could not be read: ' + e.message);
-        return {};
-    }
-    return sandbox.window.CMS_REMOTE || {};
-}
-
-function fetchRow(cfg) {
-    return new Promise(resolve => {
-        if (!cfg.enabled || !cfg.url || !cfg.anonKey || !cfg.table || !cfg.siteId) {
-            return resolve({ data: null, why: 'remote storage is not configured' });
-        }
-        let u;
-        try {
-            u = new URL(cfg.url.replace(/\/+$/, '') + '/rest/v1/' + cfg.table +
-                        '?id=eq.' + encodeURIComponent(cfg.siteId) + '&select=data,updated_at');
-        } catch (e) { return resolve({ data: null, why: 'the configured URL is not valid' }); }
-        if (u.protocol !== 'https:') return resolve({ data: null, why: 'the configured URL is not https' });
-
-        /* Same rule as js/cms.js: a legacy anon key is a JWT and goes in
-           both headers, a publishable key (sb_publishable_...) is not a JWT
-           and goes in `apikey` alone. Kept in step with baseHeaders() there
-           -- two callers of the same API must not disagree about how it is
-           authenticated. */
-        const headers = { apikey: cfg.anonKey, Accept: 'application/json' };
-        if (!/^sb_/.test(String(cfg.anonKey))) headers.Authorization = 'Bearer ' + cfg.anonKey;
-
-        const req = https.request(u, { method: 'GET', headers: headers }, res => {
-            let body = '';
-            res.setEncoding('utf8');
-            res.on('data', c => { body += c; if (body.length > 8e6) req.destroy(); });
-            res.on('end', () => {
-                if (res.statusCode !== 200) return resolve({ data: null, why: 'HTTP ' + res.statusCode });
-                let rows;
-                try { rows = JSON.parse(body); } catch (e) { return resolve({ data: null, why: 'the response was not JSON' }); }
-                if (!Array.isArray(rows) || !rows.length || !rows[0] || !rows[0].data) {
-                    return resolve({ data: null, why: 'no row for siteId "' + cfg.siteId + '"' });
-                }
-                resolve({ data: rows[0].data, updatedAt: rows[0].updated_at, why: '' });
-            });
-        });
-        req.setTimeout(15000, () => { req.destroy(); resolve({ data: null, why: 'the request timed out' }); });
-        req.on('error', e => resolve({ data: null, why: e.message }));
-        req.end();
-    });
-}
+/* ---------- the deployment's own configuration, and the row ----------
+   Both moved to tools/lib/cmsrow.js unchanged, because
+   tools/check-published.js needs the same reader and a second Supabase
+   client with its own idea of how the key travels is exactly the kind of
+   duplication that drifts. This file's behaviour is identical. */
+const cmsrow = require(path.join(__dirname, 'lib', 'cmsrow.js'));
+const readConfig = () => cmsrow.readConfig({ root: ROOT, brand: BRAND, warn: warn });
+const fetchRow = cfg => cmsrow.fetchRow(cfg);
 
 /* The committed fallback. It exists so a deploy never ships a sitemap that
    is missing or wrong just because the database was briefly unreachable --
    and so a fork with remote storage switched off still gets correct files. */
 function readFallback() {
-    const p = path.join(ROOT, 'tools', 'seo-config.json');
+    const p = FALLBACK_FILE;
     try { return JSON.parse(fs.readFileSync(p, 'utf8')); }
-    catch (e) { warn('tools/seo-config.json could not be read: ' + e.message); return null; }
+    catch (e) { warn(rel(p) + ' could not be read: ' + e.message); return null; }
 }
 
 /* Only the parts these two files are built from. Taking a subset rather
@@ -147,6 +130,10 @@ function withProvenanceXml(xml, source, when) {
 }
 
 (async function main() {
+    if (BRAND && !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/.test(BRAND)) {
+        log('--brand "' + BRAND + '" is not a valid hostname. Refusing.');
+        process.exit(2);
+    }
     const cfg = readConfig();
     const row = await fetchRow(cfg);
 
@@ -155,9 +142,9 @@ function withProvenanceXml(xml, source, when) {
     let when = row.updatedAt ? String(row.updatedAt).slice(0, 10) : '';
 
     if (!data || !SEOFiles.baseUrl(data)) {
-        if (row.why) warn('Could not use the live CMS record (' + row.why + '). Falling back to tools/seo-config.json.');
+        if (row.why) warn('Could not use the live CMS record (' + row.why + '). Falling back to ' + rel(FALLBACK_FILE) + '.');
         data = seoSubset(readFallback());
-        source = 'tools/seo-config.json (committed fallback)';
+        source = rel(FALLBACK_FILE) + ' (committed fallback)';
         when = '';
     }
 
@@ -175,6 +162,11 @@ function withProvenanceXml(xml, source, when) {
                                               provenance(source, when));
 
     const urls = SEOFiles.sitemapPages(data).map(p => base + '/' + p.file);
+    /* Which brand's row was consulted, and under which id. Printed because
+       it is the one thing a deploy operator cannot otherwise see and the one
+       thing that would be catastrophic to get wrong: two brands sharing a
+       siteId means two sites publishing over each other. */
+    log('Brand:   ' + (BRAND || '(default, no --brand given)') + '   siteId: ' + (cfg.siteId || '(none)'));
     log('Source:  ' + source);
     log('Base:    ' + base);
     log('Sitemap: ' + urls.length + ' URL(s)');
@@ -182,7 +174,9 @@ function withProvenanceXml(xml, source, when) {
 
     if (CHECK) { log('\n--check: nothing written.'); return; }
 
-    fs.writeFileSync(path.join(ROOT, 'sitemap.xml'), xml, 'utf8');
-    fs.writeFileSync(path.join(ROOT, 'robots.txt'), txt, 'utf8');
-    log('\nWrote sitemap.xml and robots.txt.');
+    fs.mkdirSync(OUT_DIR, { recursive: true });
+    fs.writeFileSync(path.join(OUT_DIR, 'sitemap.xml'), xml, 'utf8');
+    fs.writeFileSync(path.join(OUT_DIR, 'robots.txt'), txt, 'utf8');
+    log('\nWrote sitemap.xml and robots.txt' +
+        (OUT_DIR === path.resolve(ROOT) ? '.' : ' to ' + rel(OUT_DIR) + '/.'));
 })();

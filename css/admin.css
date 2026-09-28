@@ -228,6 +228,100 @@ body {
     opacity: 1;
 }
 
+/* ------------------------------------------------------------
+   PUBLISH STATE
+   Separate from .adm-saved on purpose: that one answers "is it on
+   this disk", this one answers "does the server have it". A failed
+   publish must stay readable, so .failed does not fade and wraps
+   rather than truncating -- the reason is the useful part.
+   ------------------------------------------------------------ */
+.pubstate {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+
+.pubstate.clean { color: var(--a-dim); border-color: var(--a-line); }
+.pubstate.local { color: #ffb020; border-color: rgba(255, 176, 32, .45); background: rgba(255, 176, 32, .10); }
+.pubstate.publishing { color: #6fb3ff; border-color: rgba(111, 179, 255, .45); background: rgba(111, 179, 255, .10); }
+.pubstate.published { color: #29c46a; border-color: rgba(41, 196, 106, .45); background: rgba(41, 196, 106, .10); }
+
+.pubstate.failed {
+    color: #ff6b6b;
+    border-color: rgba(255, 107, 107, .5);
+    background: rgba(255, 107, 107, .10);
+    white-space: normal;
+    max-width: 38ch;
+    line-height: 1.35;
+    text-align: left;
+}
+
+/* Which site this admin publishes to. Shown wherever it fits: the cost of
+   getting it wrong is overwriting another brand's content. It is a
+   convenience here -- the review sheet names the brand, host and row again at
+   the moment it matters -- so it is the first thing to give way when the bar
+   is crowded, ahead of any control. */
+.adm-target {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    margin-left: auto;
+    padding-right: 14px;
+    font-size: 11px;
+    line-height: 1.35;
+    text-align: right;
+    min-width: 0;
+    flex: 0 1 auto;
+}
+
+.adm-target strong { font-size: 12.5px; color: var(--a-text); }
+.adm-target span { color: var(--a-dim); }
+.adm-target .chk-warn { color: #ff6b6b; }
+
+/* Each line ellipsises rather than widening the bar. */
+.adm-target strong,
+.adm-target span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+/* The bar grew by a state pill and a three-line target block, and the two
+   buttons stopped fitting on a tablet. Wrapping is what keeps every control
+   reachable instead of pushing Publish off the right edge. */
+.adm-top-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    /* The base rule sets flex: none, which is what stopped this group
+       shrinking -- so it sized to its content and its own flex-wrap could
+       never engage. It has to be allowed to shrink before wrapping means
+       anything. */
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+/* The state pill is the last thing that should force a horizontal scroll. */
+.pubstate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    max-width: 100%;
+}
+
+@media (max-width: 1100px) {
+    .adm-target { max-width: 190px; }
+}
+
+@media (max-width: 860px) {
+    .adm-target { display: none; }
+    .pubstate { max-width: 100%; }
+    .pubstate.failed { max-width: 24ch; }
+}
+
 .adm-body {
     padding: 22px;
     max-width: 1080px;
@@ -1088,6 +1182,56 @@ input[type="checkbox"] {
     border-top: 1px solid var(--a-line);
 }
 
+/* ------------------------------------------------------------
+   REVIEW & PUBLISH SHEET
+   ------------------------------------------------------------ */
+.pubtarget-card {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 12px 14px;
+    border: 1px solid var(--a-line);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, .02);
+    margin-bottom: 4px;
+}
+
+.pubtarget-card strong { font-size: 15px; color: var(--a-text); }
+.pubtarget-card span { font-size: 12px; color: var(--a-dim); }
+.pubtarget-card code { font-size: 12px; color: var(--a-text); }
+.pubtarget-card .chk-warn { color: #ff6b6b; }
+
+.publist { display: flex; flex-direction: column; gap: 12px; }
+
+.publist-group h5 {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    color: var(--a-text);
+}
+
+.publist-group .publist-url {
+    font-weight: 400;
+    font-size: 11.5px;
+    color: var(--a-dim);
+    margin-left: 6px;
+}
+
+.publist-group ul,
+.publist-not {
+    margin: 0;
+    padding-left: 18px;
+}
+
+.publist-group li { font-size: 12.5px; color: var(--a-dim); line-height: 1.6; }
+
+.publist-not li {
+    font-size: 12.5px;
+    color: var(--a-dim);
+    line-height: 1.6;
+    opacity: .75;
+}
+
 .modal-sub {
     font-size: 13px;
     font-weight: 600;
@@ -1333,6 +1477,62 @@ input[type="password"]:focus {
 }
 
 /* Rendered preview of the page content */
+
+/* ------------------------------------------------------------
+   PAGES: the two areas of one page
+   Content (the Page Builder) and Settings & SEO. One page selector
+   above, one pair of sub-tabs below it.
+   ------------------------------------------------------------ */
+.subtabs {
+    display: flex;
+    gap: 6px;
+    margin-top: 12px;
+    border-bottom: 1px solid var(--a-line);
+    flex-wrap: wrap;
+}
+
+.subtab {
+    appearance: none;
+    background: none;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    color: var(--a-dim);
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 9px 14px;
+    margin-bottom: -1px;
+}
+
+.subtab:hover:not(:disabled) { color: var(--a-text); }
+
+.subtab.active {
+    color: var(--a-text);
+    border-color: var(--a-line);
+    background: var(--a-side);
+}
+
+.subtab:disabled { opacity: .45; cursor: not-allowed; }
+
+/* A page whose body is hand-built in its HTML file. */
+.pagenomount {
+    margin: 0 0 14px;
+    padding: 12px 14px;
+    border: 1px dashed var(--a-line);
+    border-radius: 10px;
+}
+
+/* The shipped fallback copy, shown as the read-only thing it is. The page-body
+   typography comes from .pagepreview, which this is used alongside. */
+.pagefallback {
+    opacity: .82;
+    border-left: 3px solid var(--a-line);
+    cursor: default;
+}
+
+.pagefallback a { pointer-events: none; }
 
 .pagepreview {
     margin-top: 8px;
@@ -2968,3 +3168,31 @@ body.pb-dragging #pbList iframe {
 /* ---------- sitemap / robots publishing state ---------- */
 .seopub-state { margin-top: 10px; }
 .seopub-state ul.seochecks { margin-top: 6px; }
+
+/* ---------- brands panel ----------
+   One CMS, one brand per hostname. These two tables answer "which brand
+   am I editing?" and "what else is there?", and both are read-only: the
+   registry is committed code, not content. */
+.adm-brand-host {
+    display: block;
+    opacity: .72;
+    font-size: 11px;
+    letter-spacing: .02em;
+    word-break: break-all;
+}
+.adm-brand-host.chk-warn { opacity: 1; font-weight: 600; }
+
+.brandtable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.brandtable th,
+.brandtable td { padding: 7px 10px; text-align: left; vertical-align: top; }
+.brandtable thead th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; opacity: .7; }
+.brandtable tbody tr + tr th,
+.brandtable tbody tr + tr td,
+.brandtable tbody tr td,
+.brandtable tbody tr th { border-top: 1px solid rgba(0, 0, 0, .07); }
+.brandtable tbody th { width: 34%; font-weight: 600; }
+.brandtable code { word-break: break-all; }
+/* The row you are editing. Marked rather than merely labelled, because
+   this is the one line on the screen it is expensive to misread. */
+.brandtable tr.is-current { background: rgba(0, 136, 204, .07); }
+.brandtable tr.is-current strong { color: #0088cc; }

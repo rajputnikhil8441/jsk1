@@ -1,0 +1,79 @@
+/* =========================================================
+   PLAYZONE9 — the brand layer over the shared stylesheets
+   ---------------------------------------------------------
+   Loaded LAST, after css/style.css, css/menu.css and
+   css/responsive.css, through the head-extra slot. Everything
+   here is a custom property on :root, so it re-tints the
+   shared engine rather than restyling it. No layout, no
+   selectors of its own: a brand that forks the stylesheet
+   stops getting shared fixes.
+
+   WHERE THESE VALUES COME FROM
+
+   Not invented. This project already ships a Playzone9 theme
+   preset -- "Playzone Blue", in the SEEDS table in js/admin.js,
+   whose brand label is literally PLAYZONE9:
+
+       primary   #0088cc     accent  #ff8800
+       secondary #2c3e50     bg      #eef0f3
+       text      #222222
+
+   The preset's full palette is CMS.DEFAULTS.colors, which
+   Phase 3b proved is an exact duplicate of the :root block in
+   css/style.css. So Playzone Blue IS what the shared
+   stylesheet already renders, and restating the five seed
+   values here changes nothing visually today.
+
+   That is the point. The values are now stated in the BRAND
+   rather than inherited by accident from a stylesheet shared
+   with every other site, so changing them changes this brand
+   and nothing else. A real redesign belongs in a later phase
+   with visual review; this is the seam it will happen at.
+   ========================================================= */
+
+:root {
+    /* The five Playzone Blue seed values, stated explicitly. */
+    --pz9-primary: #0088cc;
+    --pz9-secondary: #2c3e50;
+    --pz9-accent: #ff8800;
+    --pz9-bg: #eef0f3;
+    --pz9-text: #222222;
+
+    /* NOTE, and it matters: the four mappings below are INERT today.
+
+       js/cms.js paints every colour key from the CMS data into a
+       <style id="cmsVars"> block that is parsed after this file, and
+       DEFAULTS.colors supplies a value for every one of them. So the
+       CMS always wins here -- which is correct, and is the cascade the
+       data layering asks for:
+
+           shared stylesheet  <  this file  <  what the CMS saved
+
+       They are kept because they document the mapping and because they
+       DO take effect for any variable the CMS has no value for. But a
+       brand that wants its own DEFAULT palette should put it in
+       brands/<id>/brand.js under `colors`, which sits above
+       DEFAULTS.colors and below the published row -- the data layer,
+       not the stylesheet.
+
+       (This file was briefly loaded AFTER cmsVars, which silently
+       overrode every colour changed in the admin. Fixed by moving the
+       head-extra slot ahead of the scripts; tests/test_staging_cms.js
+       asserts the order and that a saved colour renders.) */
+    --hdr-bg: var(--pz9-primary);
+    --btn-register-bg: var(--pz9-accent);
+    --nav-active: var(--pz9-accent);
+    --login-btn-bg: var(--pz9-primary);
+}
+
+/* TYPOGRAPHY
+   The shared stylesheet sets the families. A brand that needs its own
+   declares them here -- and adds the @font-face or the Google Fonts
+   <link> to its own slots/head-extra.html, so the shared templates stay
+   shared. Playzone9 keeps the shared families for now; the seam exists
+   and is deliberately empty rather than filled with a guess.
+
+   :root {
+       --pz9-font-heading: 'Some Family', sans-serif;
+   }
+*/

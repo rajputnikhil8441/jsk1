@@ -11,7 +11,7 @@ const check=(n,c,e)=>{c?(pass++,console.log('  PASS  '+n)):(fail++,fails.push(n)
     const q=route.request(), u=q.url();
     if(u.includes('/auth/v1/token')) return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({access_token:'stub'})});
     if(q.method()==='POST'){ published=JSON.parse(q.postData()||'{}'); serverRow=published; return route.fulfill({status:201,body:''}); }
-    return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(serverRow?[{data:serverRow.data,updated_at:serverRow.updated_at}]:[])});
+    return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(serverRow?[{data:serverRow.data,updated_at:new Date(serverRow.updated_at).toISOString().replace(/\.000Z$/,'+00:00').replace(/Z$/,'+00:00')}]:[])});
   });
   const errs=[];
   const p=await ctx.newPage();
@@ -126,7 +126,8 @@ const check=(n,c,e)=>{c?(pass++,console.log('  PASS  '+n)):(fail++,fails.push(n)
   await ti.fill('JSK1 — Published Title Test'); await p.waitForTimeout(200);
   const di=(await p.$$('#pageEditor .f textarea'))[0];
   await di.fill('A published meta description written from the admin SEO panel for testing.'); await p.waitForTimeout(200);
-  await p.click('#btnSave'); await p.waitForTimeout(800);
+  await p.click('#btnReview'); await p.waitForTimeout(400);
+    await p.click('#pubConfirm'); await p.waitForTimeout(900);
   check('published to Supabase', !!published && published.id==='playzone9');
   check('published payload carries seo{}', !!(published&&published.data.seo&&published.data.seo.baseUrl==='https://jsk-1.com'));
   check('published payload carries pages.home SEO', !!(published&&published.data.pages.home.title.includes('Published Title Test')));
@@ -158,7 +159,8 @@ const check=(n,c,e)=>{c?(pass++,console.log('  PASS  '+n)):(fail++,fails.push(n)
   console.log('\n===== EMPTY CMS VALUE MUST NOT BLANK A PAGE =====');
   await p.bringToFront();
   await ti.fill(''); await di.fill(''); await p.waitForTimeout(200);
-  await p.click('#btnSave'); await p.waitForTimeout(700);
+  await p.click('#btnReview'); await p.waitForTimeout(400);
+  await p.click('#pubConfirm'); await p.waitForTimeout(800);
   const pub2=await ctx.newPage();
   await pub2.goto(`${BASE}/index.html`,{waitUntil:'networkidle'}); await pub2.waitForTimeout(500);
   const fb=await pub2.evaluate(()=>({t:document.title,d:document.head.querySelector('meta[name=description]').getAttribute('content')}));

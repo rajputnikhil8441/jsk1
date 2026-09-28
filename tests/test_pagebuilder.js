@@ -808,13 +808,42 @@ const el  = (id, type, content, style, responsive) =>
     check('every pre-existing panel is still there',
       ['themes','branding','colors','typography','text','auth','images','home','seo','pages','sportstable','presets','data','reset']
         .every(x => panels.includes('panel-' + x)), panels);
-    check('the Page Builder panel exists', panels.includes('panel-builder'));
-    await p.click('.adm-nav-item[data-panel="builder"]'); await p.waitForTimeout(500);
-    check('the panel opens', await p.isVisible('#panel-builder'));
-    check('one tab per buildable page',
-      JSON.stringify(await p.$$eval('#pbTabs .pagetab', e => e.map(x => x.getAttribute('data-slug')))) ===
-      JSON.stringify(['about', 'contact', 'privacy-policy', 'responsible-gaming']),
-      await p.$$eval('#pbTabs .pagetab', e => e.map(x => x.getAttribute('data-slug'))));
+    /* Page Builder is no longer its own panel: it is the Content area of
+       Pages, so there is one page selector and one body-content editor. */
+    check('Page Builder is no longer a separate panel', !panels.includes('panel-builder'));
+    check('and it has no navigation item of its own',
+      (await p.$('.adm-nav-item[data-panel="builder"]')) === null);
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(500);
+    await p.click('#pageTabs .pagetab[data-page-key="about"]'); await p.waitForTimeout(300);
+    await p.click('#pageSubtabContent'); await p.waitForTimeout(500);
+    check('the Content area opens inside Pages', await p.isVisible('#pageArea-content'));
+    /* The selector lists EVERY page now -- that is what Pages is -- so
+       buildability is expressed by whether the Content tab is available, not by
+       whether the page is in the list. Both halves are asserted, so a page
+       silently losing its builder would still fail here. */
+    const pageKeys = await p.$$eval('#pageTabs .pagetab', e => e.map(x => x.getAttribute('data-page-key')));
+    check('the ONE page selector lists every page',
+      JSON.stringify(pageKeys) ===
+      JSON.stringify(['home', 'login', 'register', 'about', 'contact',
+                      'responsible-gaming', 'privacy-policy']), pageKeys);
+    for (const slug of ['about', 'contact', 'privacy-policy', 'responsible-gaming']) {
+      await p.click(`#pageTabs .pagetab[data-page-key="${slug}"]`);
+      await p.waitForTimeout(300);
+      check(`  ${slug} can have its content built`,
+        !(await p.$eval('#pageSubtabContent', n => n.disabled)));
+    }
+    for (const slug of ['home', 'login', 'register']) {
+      await p.click(`#pageTabs .pagetab[data-page-key="${slug}"]`);
+      await p.waitForTimeout(300);
+      check(`  ${slug} has no content mount, so Content is not offered`,
+        await p.$eval('#pageSubtabContent', n => n.disabled));
+      check(`  and ${slug} says where its body actually lives`,
+        !(await p.$eval('#pageNoMount', n => n.hidden)) &&
+        /hand-built/i.test(await p.textContent('#pageNoMount')),
+        await p.textContent('#pageNoMount'));
+    }
+    await p.click('#pageTabs .pagetab[data-page-key="about"]'); await p.waitForTimeout(300);
+    await p.click('#pageSubtabContent'); await p.waitForTimeout(400);
     check('all seven section types can be added',
       JSON.stringify(await p.$$eval('#pbAdd .pb-addbtn', e => e.map(x => x.getAttribute('data-type')))) ===
       JSON.stringify(['hero','text','image','imageText','cards','columns','banner']));
@@ -858,14 +887,17 @@ const el  = (id, type, content, style, responsive) =>
       await p.evaluate(id => CMS.sections.draft('about').sections.find(s => s.id === id).enabled === false, ids[0]));
 
     st.posts = 0;
-    await p.click('#pbSaveDraft'); await p.waitForTimeout(400);
+    await p.evaluate(() => window.ADMIN_BUILDER.flush()); await p.waitForTimeout(400);
     check('Save draft sends nothing to the server', st.posts === 0, st.posts);
     await visitor.reload({ waitUntil: 'networkidle' });
     check('the live page is still unchanged',
       (await visitor.evaluate(() => document.querySelectorAll('.pb-section').length)) === 0);
 
     st.posts = 0;
-    await p.click('#pbPublish'); await p.waitForTimeout(900);
+    await p.click('#pbPublish'); await p.waitForTimeout(400);
+    /* Publish stages an intent and opens Review & Publish; the confirm is
+       what reaches the server. */
+    await p.click('#pubConfirm'); await p.waitForTimeout(1000);
     check('Publish sends exactly one write', st.posts === 1, st.posts);
     check('the published row carries the sections',
       !!(st.row && st.row.data && st.row.data.pages.about.builder &&
@@ -877,7 +909,8 @@ const el  = (id, type, content, style, responsive) =>
       (await visitor.evaluate(() => document.querySelectorAll('.pb-section').length)) === 2);
 
     st.posts = 0;
-    await p.click('#pbUnpublish'); await p.waitForTimeout(900);
+    await p.click('#pbUnpublish'); await p.waitForTimeout(400);
+    await p.click('#pubConfirm'); await p.waitForTimeout(1000);
     await visitor.reload({ waitUntil: 'networkidle' });
     check('Unpublish returns the page to its shipped content',
       (await visitor.evaluate(() => document.querySelectorAll('.pb-section').length)) === 0);
@@ -1004,14 +1037,14 @@ const el  = (id, type, content, style, responsive) =>
     console.log('\n===== DRAFT DURABILITY =====');
     await p.click(`${SEC} .pb-subtab[data-view="content"]`); await p.waitForTimeout(350);
     await p.fill(`${TOP} > .pb-els > .pb-elcard:first-child .pb-field:has(> span:text-is("Text")) .pb-in`, 'Before switching');
-    await p.click('#pbTabs .pagetab[data-slug="contact"]'); await p.waitForTimeout(600);
+    await p.click('#pageTabs .pagetab[data-page-key="contact"]'); await p.waitForTimeout(600);
     const afterSwitch = await p.evaluate(id => {
       const s = CMS.sections.draft('about').sections.find(x => x.id === id);
       return s ? s.elements.map(e => e.type + ':' + JSON.stringify((e.content || {}).text)) : null;
     }, secId);
     check('switching page flushes the pending edit rather than losing it',
       !!afterSwitch && afterSwitch[0] === 'heading:"Before switching"', afterSwitch);
-    await p.click('#pbTabs .pagetab[data-slug="about"]'); await p.waitForTimeout(600);
+    await p.click('#pageTabs .pagetab[data-page-key="about"]'); await p.waitForTimeout(600);
     check('switching back restores the about draft',
       (await p.$$('#pbList .pb-sec')).length === 3);
 
@@ -1022,7 +1055,9 @@ const el  = (id, type, content, style, responsive) =>
       await p.fill('#authEmail', 'a@b.c'); await p.fill('#authPass', 'x'); await p.click('#authBtn');
     }
     await p.waitForTimeout(500);
-    await p.click('.adm-nav-item[data-panel="builder"]'); await p.waitForTimeout(600);
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(600);
+    await p.click('#pageTabs .pagetab[data-page-key="about"]'); await p.waitForTimeout(300);
+    await p.click('#pageSubtabContent'); await p.waitForTimeout(600);
     check('the draft survives an admin reload',
       (await p.evaluate(() => JSON.stringify(CMS.sections.draft('about').sections))) === beforeReload);
     check('and the section list is rebuilt from it',

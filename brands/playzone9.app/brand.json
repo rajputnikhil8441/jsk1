@@ -1,0 +1,45 @@
+{
+  "_comment": [
+    "The directory name is the PRODUCTION HOSTNAME, because that is what",
+    "js/cms-config.js resolves a visitor's location.hostname against.",
+    "",
+    "siteId is 'playzone9app', NOT 'playzone9'. That is not a typo and it",
+    "matters more than it looks: 'playzone9' is JSK1's row -- the name",
+    "predates the JSK1 rename -- so a brand using it would read and write",
+    "JSK1's live content. The two must never share a row, and the awkward",
+    "name is the price of not migrating live data.",
+    "",
+    "mediaBucket is separate for the same reason: separate buckets are what",
+    "make one brand's media URLs invalid for another."
+  ],
+  "id": "playzone9.app",
+  "name": "Playzone9",
+  "domain": "playzone9.app",
+  "siteId": "playzone9app",
+  "mediaBucket": "cms-media-pz9",
+  "output": "playzone9.app",
+
+  "_environments_comment": [
+    "The brand is Playzone9. playzone9.app is the domain it will LAUNCH on",
+    "and is reserved: no deployment, no DNS, nothing points at it yet.",
+    "playzones9.com is where it is reviewed first.",
+    "",
+    "The staging host is declared HERE rather than by renaming this brand,",
+    "because the brand and the hostname are different things. Renaming would",
+    "mean renaming back at launch -- directory, id, Supabase row, every test",
+    "that names it -- to change nothing about the brand.",
+    "",
+    "siteId is its own: a review copy sharing the production row would",
+    "publish over production. NEITHER row exists yet; both render from",
+    "brand.js. noindex makes every staging page noindex,nofollow and",
+    "replaces the sitemap with a robots.txt that blocks everything."
+  ],
+  "environments": {
+    "staging": {
+      "host": "playzones9.com",
+      "siteId": "playzone9staging",
+      "bucket": "cms-media-pz9-staging",
+      "noindex": true
+    }
+  }
+}

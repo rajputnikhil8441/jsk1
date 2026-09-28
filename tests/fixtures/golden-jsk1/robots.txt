@@ -1,0 +1,19 @@
+# GENERATED FILE - do not edit by hand.
+# Written by tools/build-seo-files.js during the GitHub Pages deploy.
+# To change it, edit /admin > SEO > Robots.txt and deploy.
+# source: tools/seo-config.json (committed fallback)
+
+# robots.txt for https://jsk-1.com/
+
+User-agent: *
+Allow: /
+
+# The admin panel is not a search landing page. This stops crawling;
+# admin/index.html also carries <meta name="robots" content="noindex,nofollow">,
+# because a Disallow alone cannot keep a linked URL out of the index.
+Disallow: /admin/
+
+# CSS, JavaScript and images are deliberately left crawlable - search
+# engines need them to render the pages correctly.
+
+Sitemap: https://jsk-1.com/sitemap.xml

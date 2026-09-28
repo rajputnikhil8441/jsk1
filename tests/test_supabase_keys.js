@@ -39,6 +39,7 @@ async function withKey(b, key, opts) {
   opts = opts || {};
   const ctx = await b.newContext({ viewport: { width: 1200, height: 900 } });
   const seen = [];
+  let lastWrite = null;
   await ctx.route('**/js/cms-config.js', r => r.fulfill({
     status: 200, contentType: 'application/javascript',
     body: 'window.CMS_REMOTE = ' + JSON.stringify({
@@ -54,7 +55,19 @@ async function withKey(b, key, opts) {
       return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ access_token: 'stub' }) });
     if (q.url().includes('/storage/v1/object/'))
       return r.fulfill({ status: 200, contentType: 'application/json', body: '{"Key":"ok"}' });
-    if (q.method() === 'POST') return r.fulfill({ status: 201, body: '' });
+    if (q.method() === 'POST') {
+      /* Remembered so the read-back below can confirm it. publish() is not
+         finished at a 201 any more: it reads the row and checks updated_at. */
+      lastWrite = JSON.parse(q.postData() || '{}');
+      return r.fulfill({ status: 201, body: '' });
+    }
+    if (lastWrite) {
+      /* Postgres's own format -- an offset, not the Z we sent. */
+      return r.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify([{ data: lastWrite.data,
+          updated_at: new Date(lastWrite.updated_at).toISOString()
+                        .replace(/\.000Z$/, '+00:00').replace(/Z$/, '+00:00') }]) });
+    }
     return r.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
   });
   const p = await ctx.newPage();
@@ -152,10 +165,23 @@ const reads = seen => seen.filter(r => r.url.includes('/rest/v1/') && r.method =
      ================================================================== */
   console.log('\n===== THE DEPLOY STEP AGREES WITH THE BROWSER =====');
   {
+    /* The row reader the build uses now lives in tools/lib/cmsrow.js, shared
+       by tools/build-seo-files.js and tools/check-published.js, so there is ONE
+       place a key rule could be got wrong. The rule is asserted where the code
+       is, and both callers are asserted to go through it -- a check pointed at
+       a file that no longer sends the request would pass while proving
+       nothing. */
     const tool = fs.readFileSync(path.join(ROOT, 'tools', 'build-seo-files.js'), 'utf8');
+    const reader = fs.readFileSync(path.join(ROOT, 'tools', 'lib', 'cmsrow.js'), 'utf8');
     check('the generator only adds Authorization for a non-sb_ key',
-      /if \(!\/\^sb_\/\.test\(String\(cfg\.anonKey\)\)\) headers\.Authorization/.test(tool), null);
-    check('and always sends apikey', /apikey: cfg\.anonKey/.test(tool));
+      /if \(!\/\^sb_\/\.test\(String\(cfg\.anonKey\)\)\) headers\.Authorization/.test(reader), null);
+    check('and always sends apikey', /apikey: cfg\.anonKey/.test(reader));
+    check('the generator sends no request of its own',
+      !/require\(['"](https?|node:https?)['"]\)/.test(tool) && /cmsrow/.test(tool));
+    check('  and the freshness check uses the same reader',
+      /cmsrow/.test(fs.readFileSync(path.join(ROOT, 'tools', 'check-published.js'), 'utf8')));
+    check('  so there is exactly one place the key rule is applied',
+      (reader.match(/headers\.Authorization/g) || []).length === 1);
     const cms = fs.readFileSync(path.join(ROOT, 'js', 'cms.js'), 'utf8');
     check('js/cms.js uses the same sb_ test', /function opaqueKey\(k\) \{ return \/\^sb_\/\.test/.test(cms));
   }

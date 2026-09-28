@@ -119,7 +119,14 @@ async function adminPage(b, seed, opts) {
   await p.goto(`${BASE}/admin/index.html`, { waitUntil: 'networkidle' });
   await p.fill('#authEmail', 'a@b.c'); await p.fill('#authPass', 'x'); await p.click('#authBtn');
   await p.waitForTimeout(400);
-  await p.click('.adm-nav-item[data-panel="builder"]');
+  /* Page Builder is the Content area of Pages now, and Content is only
+     offered for a page that has a content mount -- so a buildable page is
+     selected first. 'about' is where the builder used to open. */
+  await p.click('.adm-nav-item[data-panel="pages"]');
+  await p.waitForTimeout(400);
+  await p.click('#pageTabs .pagetab[data-page-key="about"]');
+  await p.waitForTimeout(300);
+  await p.click('#pageSubtabContent');
   await p.waitForTimeout(700);
   return { ctx, p, errs, st };
 }
@@ -705,7 +712,12 @@ async function dragTo(p, handleSel, targetSel, where) {
     check('switching panels ends it', (await p.evaluate(() => window.ADMIN_BUILDER.drag.active())) === false);
     await p.mouse.up(); await p.waitForTimeout(300);
     check('with the draft unchanged', (await draftJSON(p)) === before);
-    await p.click('.adm-nav-item[data-panel="builder"]');
+    /* Leaving and re-entering the panel, which is what this is testing. */
+    await p.click('.adm-nav-item[data-panel="colors"]');
+    await p.waitForTimeout(200);
+    await p.click('.adm-nav-item[data-panel="pages"]');
+    await p.waitForTimeout(400);
+    await p.click('#pageSubtabContent');
     await p.waitForTimeout(600);
 
     /* switching the preview viewport underneath a drag */
@@ -775,7 +787,7 @@ async function dragTo(p, handleSel, targetSel, where) {
     await p.keyboard.press('Escape');
     await p.mouse.up();
     await p.waitForTimeout(250);
-    await p.click('#pbSaveDraft');
+    await p.evaluate(() => window.ADMIN_BUILDER.flush());
     await p.waitForTimeout(500);
     check('saving after an Escape writes the draft unchanged', (await draftJSON(p)) === before);
 
@@ -783,7 +795,7 @@ async function dragTo(p, handleSel, targetSel, where) {
     await p.evaluate(() => window.ADMIN_BUILDER.drag.cancel());
     await p.mouse.up();
     await p.waitForTimeout(250);
-    await p.click('#pbSaveDraft');
+    await p.evaluate(() => window.ADMIN_BUILDER.flush());
     await p.waitForTimeout(500);
     check('and so does saving after a cancelled drag', (await draftJSON(p)) === before);
     check('the builder still knows the same order it started with',
@@ -834,7 +846,7 @@ async function dragTo(p, handleSel, targetSel, where) {
     check('and the move is still there in memory, not rolled back',
       (await order(p)).join(',') === 'secB,secC,secA', await order(p));
     await p.evaluate(() => { localStorage.setItem = window.__realSet; });
-    await p.click('#pbSaveDraft'); await p.waitForTimeout(500);
+    await p.evaluate(() => window.ADMIN_BUILDER.flush()); await p.waitForTimeout(500);
     check('saving again recovers', /saved/.test(await p.$eval('#pbSaveState', n => n.className)));
     check('still nothing published', st.posts === posts0, st.posts);
     check('no page errors', errs.length === 0, errs);
@@ -929,7 +941,9 @@ async function dragTo(p, handleSel, targetSel, where) {
     await p.goto(`${BASE}/admin/index.html`, { waitUntil: 'networkidle' });
     await p.fill('#authEmail', 'a@b.c'); await p.fill('#authPass', 'x'); await p.click('#authBtn');
     await p.waitForTimeout(400);
-    await p.click('.adm-nav-item[data-panel="builder"]'); await p.waitForTimeout(700);
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(700);
+    await p.click('#pageTabs .pagetab[data-page-key="about"]'); await p.waitForTimeout(300);
+    await p.click('#pageSubtabContent'); await p.waitForTimeout(700);
 
     check('the move buttons are there and usable',
       (await p.$$eval('#pbList > .pb-sec [data-act="up"]', n => n.length)) === 3);

@@ -673,7 +673,9 @@ const RICH = {
     await p.goto(`${BASE}/admin/index.html`, { waitUntil: 'networkidle' });
     await p.fill('#authEmail', 'a@b.c'); await p.fill('#authPass', 'x'); await p.click('#authBtn');
     await p.waitForTimeout(400);
-    await p.click('.adm-nav-item[data-panel="builder"]'); await p.waitForTimeout(600);
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(600);
+    await p.click('#pageTabs .pagetab[data-page-key="about"]'); await p.waitForTimeout(300);
+    await p.click('#pageSubtabContent'); await p.waitForTimeout(600);
 
     const tids = await p.$$eval('#pbTemplates .pb-template', n => n.map(x => x.getAttribute('data-template')));
     const want = await p.evaluate(() => CMS.sections.templates().map(t => t.id));
@@ -780,9 +782,12 @@ const RICH = {
       (await p.$$eval('#pbLibrary .pb-lib-item', n => n.length)) === 1);
 
     /* publish, reload, and check the public page */
-    await p.click('#pbPublish'); await p.waitForTimeout(900);
+    await p.click('#pbPublish'); await p.waitForTimeout(400);
+    await p.click('#pubConfirm'); await p.waitForTimeout(1000);
     await p.reload({ waitUntil: 'networkidle' });
-    await p.click('.adm-nav-item[data-panel="builder"]'); await p.waitForTimeout(800);
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(800);
+    await p.click('#pageTabs .pagetab[data-page-key="about"]'); await p.waitForTimeout(300);
+    await p.click('#pageSubtabContent'); await p.waitForTimeout(800);
     check('the library survives a reload',
       (await p.$$eval('#pbLibrary .pb-lib-item', n => n.length)) === 1);
     check('and so does the draft',

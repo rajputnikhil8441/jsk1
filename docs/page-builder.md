@@ -6,8 +6,50 @@ when it is ready. Until then visitors keep seeing exactly what they see today.
 
 - Public renderer: `js/cms.js` (`CMS.sections`)
 - Public styles: `css/sections.css`
-- Admin UI: `admin/index.html` (`#panel-builder`), `js/admin.js`, `css/admin.css`
+- Admin UI: `admin/index.html` (`#panel-pages` → `#pageArea-content`),
+  `js/admin-builder.js`, `js/admin.js`, `css/admin.css`
 - Tests: `tests/test_pagebuilder.js`
+
+**It is not a separate panel.** The builder is the **Content** area of the
+**Pages** panel, beside **Settings & SEO**. One page selector (`#pageTabs`), one
+body-content editor. It had its own navigation item and its own page tab strip,
+which made it look like a second system editing the same pages — see
+`docs/publishing.md`.
+
+---
+
+## Where the published content lives on a real page
+
+Published sections are **in the HTML the server sends**. The build fills the
+page's mount with markup produced by this file's own renderer, so a crawler
+reads the same content with or without JavaScript, and JavaScript redraws it
+once rather than adding a second copy. See *Page Builder content in the HTML we
+serve* in `docs/publishing.md` for the mechanism, the source the build reads and
+the rule for when the published row and the committed brand layer disagree. In
+short:
+
+> The published Supabase row is authoritative **at runtime**, for live visitors
+> running JavaScript.
+> The committed `brands/<id>/brand.js` is authoritative **for the build**, so a
+> static site stays a deterministic artifact of its commit.
+
+Which means a publish is live immediately in the browser and reaches the static
+HTML on the next deploy — after *Backup & Restore → Download brand defaults* and
+a commit of `brands/<id>/brand.js`. Two guards watch that hand-off, and they
+answer different questions:
+
+- **Integrity, offline, in every build.** The export writes a
+  `window.CMS_BRAND_PROVENANCE` declaration next to `window.CMS_BRAND` holding a
+  fingerprint of each published page. The build re-fingerprints the file and
+  fails if anything was edited, dropped, added or copied in from another brand.
+  A `brand.js` with no provenance — every export made before this existed —
+  **warns and proceeds**. This proves the build source is the exported artifact.
+  It **cannot** prove the export is current: a publish that happened afterwards
+  leaves no trace in the repository.
+- **Freshness, networked, on demand.** `node tools/check-published.js <brand-id>`
+  fingerprints the committed source against the live row and exits non-zero if
+  they differ. It is the **only** part of this that contacts Supabase; normal
+  builds never require it and never call it.
 
 ---
 
@@ -34,6 +76,10 @@ Two new places:
 | --- | --- | --- |
 | `builderDrafts[slug]` | the admin's working copy | the admin panel only |
 | `pages[slug].builder` | what is live | the public renderer |
+
+`builderDrafts` is one of five device-local keys stripped from both the publish
+payload and an export — `LOCAL_ONLY_KEYS` in `js/cms.js`, listed in
+`docs/publishing.md`. `pages[slug].builder` is content and is in both.
 
 The public renderer **never** looks at `builderDrafts`. That one fact is what
 makes a draft safe: saving one cannot change the live site, even though both
@@ -413,6 +459,20 @@ about the site.
 link** — the copy is what holds pages still.
 
 ### Draft and publish
+
+**There is no Save draft button.** Every edit persists on its own — 250ms after
+a keystroke, immediately for anything else — and the state line says *"Draft
+saved on this device"* when it lands, or says plainly that storage refused and
+offers **Try again**. A button that repeated an autosave read as a third kind of
+saving next to Save and Publish. `window.ADMIN_BUILDER.flush()` forces a pending
+write, and retries a refused one.
+
+**Publish and Unpublish stage an intent.** They do not write anything when
+pressed: they describe what they want and hand it to the admin's one Review &
+Publish flow, which applies it only if the publish is confirmed. Cancelling
+leaves the page exactly as it was, because nothing was done. The builder cannot
+reach the network at all — it is handed `commitLocal` and `stagePublish`, never a
+generic commit.
 
 Applying a template or inserting a reusable section writes to the **draft**
 only, through the same `saveDraft()` the rest of the builder uses. Nothing
@@ -1413,9 +1473,15 @@ that is not in `PB_MOUNTED` in `js/cms.js`, set `builderMount: true` on its
 
 ## SEO
 
-- Sections are painted into the DOM by JavaScript. With JavaScript disabled the
-  page still shows the content in its HTML file, which is why unpublishing is
-  non-destructive rather than a delete.
+- Published sections are **in the HTML the server sends**: the build renders them
+  with this file's own renderer and JavaScript redraws them once. With JavaScript
+  disabled a visitor reads the published content, not a placeholder. A page with
+  nothing published still ships its own copy in its HTML file, which is why
+  unpublishing is non-destructive rather than a delete — the build clears the
+  baked markup, JavaScript clears it at runtime, and the file's copy comes back.
+  The sections the build reads come from the committed `brands/<id>/brand.js`, so
+  a publish reaches the static HTML on the next deploy; see *Where the published
+  content lives on a real page* above.
 - The static-first rule is untouched: an empty CMS value never blanks a static
   meta tag.
 - Headings keep their level, so a section can carry a real `h2`/`h3` outline.
@@ -1489,6 +1555,37 @@ responsive overrides and assets; hostile builder input on a page with SEO set;
 the admin's own state, saving, page switching and disabled reasons; and the
 admin at 1440, 900 and 390px with accessible names, tab order and a visible
 keyboard focus ring.
+
+`tests/test_pb_bake.js` — 91 assertions. The claim under test is that the
+published builder content is in the **initial HTML response**, produced by the
+runtime renderer and not by a second one.
+
+Covered: our HTML serialisation asserted **byte-identical** to a real browser's
+`innerHTML` for a fixture covering all thirteen element types, escaping, void and
+boolean attributes and nested columns; the content present in the delivered file;
+two brands built through one pipeline with neither leaking into the other;
+nothing published, draft-only and a published empty canvas; every SEO tag,
+sitemap and `robots.txt` identical with and without builder content; two builds
+of one commit byte-identical; the generated page stubs; and the runtime drawing
+exactly one copy over baked markup — with the row agreeing, absent, unpublished
+and publishing something newer — including with JavaScript off.
+
+`tests/test_pb_sync.js` — 98 assertions. The claim under test is that the two
+synchronization guards each prove what they claim and **nothing more**.
+
+Covered: a synchronized source building; a `changed`, `missing` or `extra`
+fingerprint failing the build; a `brand.js` physically swapped in from another
+brand failing on its recorded row; a brand with no builder content neither
+failing nor warning; missing provenance emitting `::warning::` and still
+building; `tools/check-published.js` in sync, stale, server-only, nothing
+published and with no provenance, asserted to write nothing; the explicit
+**integrity ≠ freshness** claim, including that Part 1 passes on a source whose
+row has moved on; the bake making no network call, asserted by building with the
+Supabase reader replaced by one that reports failure, by no file on the bake path
+requiring `http`/`https`/the reader or calling `fetch`, and by two builds of one
+commit producing identical HTML; and every SEO tag, the baked markup and the
+`cmsBuilder` styles identical with and without a provenance declaration, which is
+also asserted never to reach a visitor's page.
 
 `tests/test_pagebuilder_hardening.js` — 203 assertions, milestone F. Aimed at
 the public render path, because that is the one place the whole-tree sanitiser

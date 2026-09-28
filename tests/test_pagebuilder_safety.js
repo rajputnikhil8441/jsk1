@@ -381,7 +381,9 @@ const el = (id, type, content, style, responsive) =>
     await p.goto(`${BASE}/admin/index.html`, { waitUntil: 'networkidle' });
     await p.fill('#authEmail', 'a@b.c'); await p.fill('#authPass', 'x'); await p.click('#authBtn');
     await p.waitForTimeout(400);
-    await p.click('.adm-nav-item[data-panel="builder"]'); await p.waitForTimeout(700);
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(700);
+    await p.click('#pageTabs .pagetab[data-page-key="about"]'); await p.waitForTimeout(300);
+    await p.click('#pageSubtabContent'); await p.waitForTimeout(700);
     await p.click('#pbAdd .pb-addbtn[data-type="text"]'); await p.waitForTimeout(600);
 
     const SEC = '#pbList .pb-sec:first-child';
@@ -415,13 +417,13 @@ const el = (id, type, content, style, responsive) =>
         n => n.value === 'Typed while storage is full'));
 
     /* pressing Save draft must not claim success either */
-    await p.click('#pbSaveDraft'); await p.waitForTimeout(500);
+    await p.evaluate(() => window.ADMIN_BUILDER.flush()); await p.waitForTimeout(500);
     check('pressing Save draft while storage refuses still reports failure',
       /failed/.test(await state()), await state());
 
     /* and it recovers once storage works again */
     await p.evaluate(() => { localStorage.setItem = window.__realSet; });
-    await p.click('#pbSaveDraft'); await p.waitForTimeout(600);
+    await p.evaluate(() => window.ADMIN_BUILDER.flush()); await p.waitForTimeout(600);
     check('retrying after the failure succeeds', /saved/.test(await state()), await state());
     check('and the edit made it to disk',
       /Typed while storage is full/.test(
@@ -429,12 +431,23 @@ const el = (id, type, content, style, responsive) =>
 
     console.log('\n===== PUBLISH FIRES ONCE PER CLICK =====');
     const postsBefore = st.posts;
+    /* Publish now stages an intent and opens Review & Publish. Three clicks in
+       one tick must still mean ONE publish: one sheet, and one write when it is
+       confirmed. The guard that makes that true is the reason this test
+       exists -- it caught a version where the button released itself
+       synchronously and published three times. */
     await p.evaluate(() => {
       const btn = document.getElementById('pbPublish');
       btn.click(); btn.click(); btn.click();
     });
+    await p.waitForTimeout(600);
+    check('three clicks in one tick send nothing on their own',
+      st.posts - postsBefore === 0, { before: postsBefore, after: st.posts });
+    check('and they opened exactly one review sheet',
+      (await p.$$eval('#pubModal', ns => ns.filter(n => !n.hidden).length)) === 1);
+    await p.click('#pubConfirm');
     await p.waitForTimeout(1200);
-    check('three clicks in one tick publish once', st.posts - postsBefore === 1,
+    check('confirming publishes once', st.posts - postsBefore === 1,
       { before: postsBefore, after: st.posts });
     check('and the page is live', await p.evaluate(() => CMS.sections.status('about').live));
 
@@ -444,7 +457,7 @@ const el = (id, type, content, style, responsive) =>
     await p.fill(`${SEC} .pb-elcard:first-child .pb-field:has(> span:text-is("Text")) .pb-in`,
                  'Draft only change');
     await p.waitForTimeout(600);
-    await p.click('#pbSaveDraft'); await p.waitForTimeout(600);
+    await p.evaluate(() => window.ADMIN_BUILDER.flush()); await p.waitForTimeout(600);
     for (const v of ['tablet', 'mobile', 'desktop']) {
       await p.click(`#pbDevices .pb-devtab[data-viewport="${v}"]`); await p.waitForTimeout(300);
     }
@@ -572,8 +585,8 @@ const el = (id, type, content, style, responsive) =>
     check('and the panel still renders', (await p.$$('#pbList')).length === 1);
 
     /* page switching clears per-node UI state */
-    await p.click('#pbTabs .pagetab[data-slug="contact"]'); await p.waitForTimeout(700);
-    await p.click('#pbTabs .pagetab[data-slug="about"]'); await p.waitForTimeout(700);
+    await p.click('#pageTabs .pagetab[data-page-key="contact"]'); await p.waitForTimeout(700);
+    await p.click('#pageTabs .pagetab[data-page-key="about"]'); await p.waitForTimeout(700);
     check('switching pages and back leaves the builder working',
       (await p.$$('#pbList')).length === 1);
     check('the admin ran without console or page errors', errs.length === 0, errs.slice(0, 3));

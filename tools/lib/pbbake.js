@@ -1,0 +1,293 @@
+/* ============================================================
+   PBBAKE — the published Page Builder content, in the HTML we serve
+   ------------------------------------------------------------
+   THE PROBLEM. A builder-managed page shipped an empty mount:
+
+       <div data-cms-sections="about"></div>
+
+   so the published headings, paragraphs, links and images existed only
+   after JavaScript ran. A crawler that executes JavaScript read the builder
+   content; one that does not read the static fallback copy instead, which is
+   placeholder prose. Two different documents at one URL.
+
+   WHAT THIS DOES. It fills that div at build time with the same markup the
+   browser would produce, by running THE SAME RENDERER. js/cms.js is loaded
+   in a vm against tools/lib/minidom.js and its own CMS.sections.renderInto
+   is called. There is no second renderer and therefore nothing to drift:
+   the only thing written twice is HTML serialisation, and
+   tests/test_pb_bake.js asserts ours matches a real browser's innerHTML for
+   every element type.
+
+   WHERE THE SECTIONS COME FROM: brands/<id>/brand.js -- the brand's
+   committed CMS layer, which every visitor already downloads and which the
+   admin can regenerate (Backup & Restore > Download brand defaults). It is
+   read, never written.
+
+   WHY NOT READ SUPABASE HERE. The build would stop being deterministic: the
+   same commit would produce different HTML depending on when it ran and
+   whether the network was up, and CI in this repository already cannot
+   reach Supabase (tools/build-seo-files.js warns and falls back for exactly
+   that reason). A static site is a build artifact; its content belongs in
+   the commit that produced it.
+
+   SO THE RULE, and it is the one docs/publishing.md states:
+
+       The published row is authoritative AT RUNTIME.
+       The committed brand layer is authoritative FOR THE BUILD.
+
+   Publishing in /admin is live immediately for anyone running JavaScript.
+   The baked copy -- what a crawler without JavaScript reads -- updates on
+   the next deploy, exactly as every other brand-layer value already does.
+   The build prints what it baked per page so a drift is visible rather than
+   silent, and it never claims to have baked content it did not.
+
+   MULTI-BRAND. Nothing here knows a brand. It is handed a brand directory
+   by the generator, which resolved it from the build's --brand argument
+   through the existing brand system. Brand A's build reads brand A's
+   brand.js; brand B's reads B's. No branching, no special case.
+   ============================================================ */
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+const { MiniDocument, Element } = require('./minidom.js');
+
+/* The shared engine, loaded once per process. */
+let ENGINE = null;
+
+/* js/cms.js is a browser file: it paints on load, listens for events, reads
+   localStorage and fetches a row. None of that can happen here, and none of
+   it needs to -- the renderer is a pure function of a section array. This is
+   the smallest environment in which the file loads and that function works.
+
+   tools/build-seo-files.js already loads js/cms-config.js this way, so
+   evaluating a committed browser file in a vm is an established pattern in
+   this build, not a new liberty. */
+function loadEngine(sharedRoot) {
+    if (ENGINE) return ENGINE;
+
+    const file = path.join(sharedRoot, 'js', 'cms.js');
+    if (!fs.existsSync(file)) {
+        throw new Error('pbbake: cannot find the CMS engine at ' + file);
+    }
+
+    const store = new Map();
+    const storage = {
+        getItem: k => (store.has(String(k)) ? store.get(String(k)) : null),
+        setItem: (k, v) => { store.set(String(k), String(v)); },
+        removeItem: k => { store.delete(String(k)); },
+        clear: () => store.clear()
+    };
+
+    const document = new MiniDocument();
+    const sandbox = {
+        window: null,
+        document: document,
+        console: { log() {}, warn() {}, error() {}, info() {} },
+        setTimeout: () => 0,
+        clearTimeout: () => {},
+        /* Remote storage is off in here, so nothing calls fetch. It exists so
+           a reference to it cannot throw during load. */
+        fetch: () => new Promise(() => {}),
+        localStorage: storage,
+        sessionStorage: storage,
+        /* No CMS_REMOTE and no CMS_MEDIA: the engine sees remote storage as
+           unconfigured, which is exactly right for a build. */
+        location: { hostname: '', href: '', protocol: 'https:' },
+        navigator: { userAgent: 'node' },
+        CustomEvent: class { constructor(t, o) { this.type = t; this.detail = (o || {}).detail; } },
+        addEventListener() {},
+        removeEventListener() {},
+        dispatchEvent() { return true; },
+        matchMedia: () => ({ matches: false, addListener() {}, removeListener() {} }),
+        requestAnimationFrame: () => 0,
+        getComputedStyle: () => ({ getPropertyValue: () => '' })
+    };
+    sandbox.window = sandbox;
+    sandbox.self = sandbox;
+    sandbox.globalThis = sandbox;
+
+    vm.createContext(sandbox);
+    try {
+        vm.runInContext(fs.readFileSync(file, 'utf8'), sandbox,
+                        { filename: 'js/cms.js', timeout: 15000 });
+    } catch (e) {
+        throw new Error('pbbake: the CMS engine did not load in Node: ' + e.message);
+    }
+
+    const CMS = sandbox.window.CMS;
+    if (!CMS || !CMS.sections || typeof CMS.sections.renderInto !== 'function' ||
+        typeof CMS.sections.css !== 'function') {
+        throw new Error('pbbake: js/cms.js loaded but CMS.sections.renderInto / .css are missing. ' +
+                        'The baker calls the runtime renderer directly; it has no copy of its own.');
+    }
+
+    ENGINE = { CMS: CMS, document: document, schema: CMS.sections.schema };
+    return ENGINE;
+}
+
+/* The published sections a brand's committed layer holds, per slug.
+
+   Only `status === "published"` counts, which is the same test the renderer
+   applies -- a draft that found its way into brand.js is still not live and
+   must not be baked. An empty published array IS published (the documented
+   empty canvas) and is returned as []. */
+function publishedSections(brandJsText) {
+    const sandbox = { window: {}, self: null, console: { log() {}, warn() {}, error() {} } };
+    sandbox.self = sandbox.window;
+    vm.createContext(sandbox);
+    try {
+        vm.runInContext(String(brandJsText), sandbox,
+                        { filename: 'brand.js', timeout: 5000 });
+    } catch (e) {
+        throw new Error('pbbake: brand.js could not be read: ' + e.message);
+    }
+    const data = sandbox.window.CMS_BRAND;
+    const out = {};
+    if (!data || typeof data !== 'object' || !data.pages || typeof data.pages !== 'object') return out;
+    Object.keys(data.pages).forEach(slug => {
+        const b = (data.pages[slug] || {}).builder;
+        if (!b || b.status !== 'published' || !Array.isArray(b.sections)) return;
+        out[slug] = { sections: b.sections, schemaVersion: b.schemaVersion };
+    });
+    return out;
+}
+
+/* One section array -> the markup and the scoped CSS the runtime produces.
+
+   Upgraded through the engine's own migration chain first, so a block saved
+   under an older schema bakes as the current renderer would draw it -- the
+   same call publishedSections() makes at runtime. */
+function render(sharedRoot, block) {
+    const eng = loadEngine(sharedRoot);
+    const from = (block && typeof block.schemaVersion === 'number') ? block.schemaVersion : 1;
+    const sections = eng.CMS.sections.upgrade(
+        JSON.parse(JSON.stringify(block.sections || [])), from);
+    const host = new Element('div');
+    eng.CMS.sections.renderInto(host, sections);
+    return { html: host.innerHTML, css: String(eng.CMS.sections.css(sections) || '') };
+}
+
+/* The provenance declaration a brand's committed layer carries, or null.
+
+   Read from the same evaluation brand.js gets everywhere else, so a file that
+   cannot be evaluated fails once, in publishedSections(), rather than twice
+   with two different messages. */
+function readProvenance(brandJsText) {
+    const sandbox = { window: {}, self: null, console: { log() {}, warn() {}, error() {} } };
+    sandbox.self = sandbox.window;
+    vm.createContext(sandbox);
+    try {
+        vm.runInContext(String(brandJsText), sandbox, { filename: 'brand.js', timeout: 5000 });
+    } catch (e) {
+        return null;
+    }
+    const p = sandbox.window.CMS_BRAND_PROVENANCE;
+    if (!p || typeof p !== 'object') return null;
+    return p;
+}
+
+/* The fingerprint of one published block, from the ENGINE's own function --
+   the same one the admin used to record it and the same one
+   tools/check-published.js uses against the live row. Deliberately not
+   reimplemented here: three callers, one algorithm. */
+function fingerprint(sharedRoot, block) {
+    const eng = loadEngine(sharedRoot);
+    return eng.CMS.sections.fingerprint(block);
+}
+
+/* ------------------------------------------------------------
+   PART 1 OF THE SYNCHRONIZATION GUARD: OFFLINE INTEGRITY
+   ------------------------------------------------------------
+   Compares what the committed brand.js holds against what its provenance
+   says it should hold. No network: everything needed is in the commit.
+
+   Returns { status, problems, provenance }:
+     'ok'           provenance present and every fingerprint matches
+     'mismatch'     provenance present and something differs -- problems says
+                    what, per page, and the caller fails the build
+     'not-recorded' no provenance declaration; the caller WARNS and proceeds,
+                    because every brand exported before this existed is in
+                    that state and breaking them would be worse than the
+                    problem this guard solves
+
+   WHAT A CLEAN RESULT MEANS: the build source is the artifact the admin
+   exported, for this brand. It does NOT mean the export is current. Only
+   tools/check-published.js can say that, and only by asking Supabase.
+   ------------------------------------------------------------ */
+function verifyBuildSource(sharedRoot, brandJsText, expect) {
+    const prov = readProvenance(brandJsText);
+    const published = publishedSections(brandJsText);
+    const slugs = Object.keys(published).sort();
+
+    if (!prov) {
+        return { status: 'not-recorded', problems: [], provenance: null, slugs: slugs };
+    }
+
+    const problems = [];
+    const want = (prov.brand && typeof prov.brand === 'object') ? prov.brand : {};
+
+    /* The brand first. A brand.js copied from another brand can hold a
+       perfectly self-consistent set of fingerprints, so the only thing that
+       catches it is checking WHOSE export this is. */
+    if (expect && expect.siteId && String(want.siteId || '') !== String(expect.siteId)) {
+        problems.push({
+            kind: 'brand',
+            page: null,
+            detail: 'this brand.js was exported for row "' + String(want.siteId || '(none)') +
+                    '", but this build is for row "' + expect.siteId + '"'
+        });
+    }
+
+    const recorded = (prov.builder && typeof prov.builder === 'object') ? prov.builder : {};
+    const recordedSlugs = Object.keys(recorded).sort();
+
+    /* Every page the provenance recorded must still be published here, with
+       the same sections. */
+    recordedSlugs.forEach(slug => {
+        if (!Object.prototype.hasOwnProperty.call(published, slug)) {
+            problems.push({
+                kind: 'missing',
+                page: slug,
+                detail: 'the export recorded published Page Builder content for this page, ' +
+                        'but brand.js no longer publishes it'
+            });
+            return;
+        }
+        const got = fingerprint(sharedRoot, published[slug]);
+        if (got !== String(recorded[slug])) {
+            problems.push({
+                kind: 'changed',
+                page: slug,
+                detail: 'the sections in brand.js do not match the export',
+                recorded: String(recorded[slug]),
+                actual: got
+            });
+        }
+    });
+
+    /* And nothing may be published that the export did not record. */
+    slugs.forEach(slug => {
+        if (!Object.prototype.hasOwnProperty.call(recorded, slug)) {
+            problems.push({
+                kind: 'extra',
+                page: slug,
+                detail: 'brand.js publishes Page Builder content for this page that the ' +
+                        'export did not record'
+            });
+        }
+    });
+
+    return { status: problems.length ? 'mismatch' : 'ok',
+             problems: problems, provenance: prov, slugs: slugs };
+}
+
+module.exports = {
+    loadEngine: loadEngine,
+    publishedSections: publishedSections,
+    readProvenance: readProvenance,
+    fingerprint: fingerprint,
+    verifyBuildSource: verifyBuildSource,
+    render: render
+};
