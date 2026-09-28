@@ -27,12 +27,18 @@ const kit = require('./lib/brandkit.js');
 const site = require('./lib/sitekit.js');
 
 const ROOT = path.resolve(__dirname, '..');
-const BRANDS = path.join(ROOT, 'brands');
 const TEMPLATES = path.join(ROOT, 'templates');
 
 const argv = process.argv.slice(2);
 const flag = n => argv.indexOf(n) > -1;
 function opt(n, dflt) { const i = argv.indexOf(n); return i > -1 && argv[i + 1] ? argv[i + 1] : dflt; }
+
+/* brands/ by default. --brands DIR points the same pipeline at another set of
+   brand directories, which is how the build can be exercised for brands that
+   do not exist in this repository -- the multi-brand behaviour is a property
+   of the pipeline, so it has to be testable without inventing production
+   brands to test it with. */
+const BRANDS = path.resolve(ROOT, opt('--brands', 'brands'));
 const rel = p => path.relative(ROOT, p).split(path.sep).join('/');
 
 function main() {
@@ -55,13 +61,21 @@ function main() {
                 }
             } catch (e) { console.log('  ' + b + '  !! ' + e.message); }
         });
-        if (!argv.length) console.log('\nUsage: node tools/build-site.js <brand-id> [--check] [--out DIR]');
+        if (!argv.length) console.log('\nUsage: node tools/build-site.js <brand-id> [--check] [--out DIR] [--brands DIR]');
         return 0;
     }
 
     const env = opt('--env', '');
-    const positional = argv.filter(a => a.charAt(0) !== '-');
-    const id = positional.find(a => a !== env);
+    /* A flag's VALUE is positional-looking, so anything consumed by a flag is
+       excluded before the brand id is chosen. Without this, --brands DIR made
+       DIR the brand id. */
+    const taken = new Set();
+    ['--env', '--out', '--brands'].forEach(f => {
+        const i = argv.indexOf(f);
+        if (i > -1 && argv[i + 1]) taken.add(argv[i + 1]);
+    });
+    const positional = argv.filter(a => a.charAt(0) !== '-' && !taken.has(a));
+    const id = positional[0];
     if (!id) { console.error('No brand id given.'); return 2; }
 
     const s = site.planSite({ brandsDir: BRANDS, templatesDir: TEMPLATES, sharedRoot: ROOT,
@@ -76,13 +90,42 @@ function main() {
     console.log('Row      : ' + s.plan.brand.siteId + '   bucket: ' + (s.plan.brand.bucket || '(none)'));
     console.log('Shared   : ' + s.shared.length + ' file(s) from ' + site.SHARED_DIRS.join('/, ') + '/');
     console.log('Overlay  : ' + (s.overlay.length
-        ? s.overlay.length + ' file(s) from ' + rel(s.overlayDir) + '/' : '(none)'));
+        ? s.overlay.length + ' file(s) from ' + s.overlayDirs.map(rel).join('/, ') + '/'
+        : '(none)'));
     console.log('Generated: ' + s.generated.length + ' file(s)');
     console.log('Slots    : ' + (s.plan.slotsDeclared.length ? s.plan.slotsDeclared.join(', ') : '(none)') +
                 '   filled: ' + (Object.keys(s.plan.brand.slots).length
                     ? Object.keys(s.plan.brand.slots).sort().join(', ') : '(none)'));
     console.log('Override : ' + (Object.keys(s.plan.brand.overrides).length
         ? Object.keys(s.plan.brand.overrides).sort().join(', ') : '(none)'));
+    /* What the published Page Builder content put into the HTML. Printed even
+       when it is nothing, because "no builder content was baked" is the fact a
+       reader needs when a page looks emptier than expected -- and because a
+       drift between the committed brand layer and the live row shows up here
+       rather than silently. */
+    const baked = s.plan.baked || [];
+    /* Whether the committed build source could be verified. Printed next to
+       what was baked, because the two answer one question together: what went
+       into the HTML, and whether it is the artifact that was exported. */
+    const bs = s.plan.brand.buildSource || {};
+    const prov = bs.provenance || {};
+    console.log('Source   : ' + (bs.status === 'ok'
+        ? 'verified against the recorded export' +
+          (prov.exportedAt ? '   exported ' + prov.exportedAt : '') +
+          (prov.publishedRowUpdatedAt ? '   row ' + prov.publishedRowUpdatedAt : '')
+        : bs.status === 'not-recorded'
+            /* A brand that publishes no Page Builder content has nothing whose
+               integrity could be in question, so saying "not verified" there
+               would be noise that trains people to ignore the line. */
+            ? (baked.length ? 'provenance not recorded (integrity not verified)'
+                            : 'no published builder content to verify')
+            : String(bs.status)) +
+        '   [integrity only -- freshness: node tools/check-published.js ' + s.plan.brand.id + ']');
+    console.log('Builder  : ' + (baked.length
+        ? baked.map(x => x.slug + ' (' + x.sections +
+            (x.sections === 1 ? ' section' : ' sections') + ')').join(', ') +
+          '   baked into the HTML from brands/' + s.plan.brand.id + '/brand.js'
+        : '(no published content in brands/' + s.plan.brand.id + '/brand.js)'));
     console.log('SEO      : ' + s.seo.join(', ') +
                 (s.plan.brand.noindex
                     ? '   (staging: blocks everything, no sitemap)'

@@ -88,6 +88,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const pbbake = require('./pbbake.js');
 
 /* Thrown for every refusal, so a caller can tell a brand problem
    from a genuine crash. Every message names what to fix. */
@@ -226,7 +227,19 @@ function loadBrand(brandsDir, id, envName) {
         pages: pages,
         allowScripts: allowScripts,
         slots: readSlots(dir, id, allowScripts),
-        overrides: readOverrides(dir, id)
+        overrides: readOverrides(dir, id),
+        /* The PUBLISHED Page Builder content this brand's committed layer
+           holds, per slug, so the generator can put it in the HTML it serves.
+           Read from brands/<id>/brand.js -- the same file every visitor
+           downloads -- and never written.
+
+           Empty for a brand that has published nothing, which is every brand
+           until someone does. So this changes no existing output. */
+        builder: readBuilder(dir, id),
+        /* Set by planBrand: pbbake needs the repository root to find the
+           engine it runs. Left undefined by a bare loadBrand, which is
+           correct -- nothing bakes without a plan. */
+        sharedRoot: null
     };
 }
 
@@ -293,6 +306,63 @@ function resolveEnv(cfg, id, envName) {
         output: typeof e.output === 'string' && e.output ? assertId(e.output) : assertId(e.host),
         noindex: e.noindex === true
     };
+}
+
+/* The published Page Builder blocks in brands/<id>/brand.js.
+
+   A brand with no brand.js is refused later, by the generator, with a message
+   about the CMS fallback layer; this returns {} rather than duplicating that
+   error in a worse place. */
+function readBuilder(dir, id) {
+    const file = path.join(dir, 'brand.js');
+    if (!fs.existsSync(file)) return {};
+    try {
+        return pbbake.publishedSections(fs.readFileSync(file, 'utf8'));
+    } catch (e) {
+        throw new BrandError('Brand "' + id + '": brand.js could not be read for its published ' +
+            'Page Builder content: ' + e.message);
+    }
+}
+
+/* Runs the offline integrity check for a brand that is about to be built.
+   Kept here rather than in loadBrand() because it needs sharedRoot -- the
+   engine whose fingerprint function it uses -- and only a plan has that. */
+function verifyBuildSource(brand) {
+    const file = path.join(brand.dir, 'brand.js');
+    if (!fs.existsSync(file)) {
+        /* A missing brand.js is refused below with a message about the CMS
+           fallback layer. Not this guard's business. */
+        return { status: 'not-recorded', problems: [], provenance: null };
+    }
+    return pbbake.verifyBuildSource(brand.sharedRoot, fs.readFileSync(file, 'utf8'),
+                                    { siteId: brand.siteId });
+}
+
+/* One message that names the brand, every affected page, and what differs.
+   A guard that says only "mismatch" makes someone go looking; this one tells
+   them what to do about it. */
+function buildSourceError(brand, guard) {
+    const lines = ['Brand "' + brand.id + '": the committed Page Builder build source does not ' +
+                   'match the provenance recorded when it was exported.'];
+    guard.problems.forEach(p => {
+        if (p.kind === 'brand') {
+            lines.push('  - brand: ' + p.detail);
+            return;
+        }
+        lines.push('  - page "' + p.page + '": ' + p.detail +
+            (p.recorded ? '\n      recorded fingerprint ' + p.recorded +
+                          '\n      actual fingerprint   ' + p.actual : ''));
+    });
+    lines.push('');
+    lines.push('Refusing to bake Page Builder HTML nobody exported. Either restore ' +
+               'brands/' + brand.id + '/brand.js from its export, or re-export it from ' +
+               '/admin > Backup & Restore > Download brand defaults and commit both the ' +
+               'content and its provenance together.');
+    lines.push('');
+    lines.push('NOTE: this check proves the build source is the exported artifact. It cannot ' +
+               'tell you whether that export is still current -- run ' +
+               'node tools/check-published.js ' + brand.id + ' for that.');
+    return lines.join('\n');
 }
 
 function listBrands(brandsDir) {
@@ -381,6 +451,30 @@ function readOverrides(dir, id) {
 
 /* ---------- rendering ---------- */
 
+/* The builder mount, exactly as the templates write it. Captured rather than
+   assumed: the slug is what pairs a mount with its published sections. */
+const MOUNT_RE = /<div data-cms-sections="([a-z0-9-]+)"\s*>([\s\S]*?)<\/div>/g;
+
+/* Rendering the same section array twice per page (markup, then CSS) would run
+   the engine twice for no reason, so the result is memoised per brand+slug for
+   the life of the build. */
+const PB_CACHE = new Map();
+function pbrender(brand, slug, block) {
+    const key = brand.dir + '\u0000' + slug;
+    if (PB_CACHE.has(key)) return PB_CACHE.get(key);
+    let r;
+    try {
+        r = pbbake.render(brand.sharedRoot, block);
+    } catch (e) {
+        /* Never emit a page that claims to carry builder content it does not.
+           A baker that cannot run is a build failure, not a silent empty div. */
+        throw new BrandError('Brand "' + brand.id + '": could not render the published Page ' +
+            'Builder content for "' + slug + '": ' + e.message);
+    }
+    PB_CACHE.set(key, r);
+    return r;
+}
+
 const TOKEN_RE = /\{\{\s*([a-z][a-z0-9.]*)\s*\}\}/gi;
 
 function tokenValues(brand) {
@@ -454,7 +548,58 @@ function renderPage(templateHtml, brand, where) {
                 'Refusing to publish a review page whose indexing directive is unknown.');
         }
     }
-    return { html: out, slotsDeclared: declared };
+
+    /* ------------------------------------------------------------
+       THE PUBLISHED PAGE BUILDER CONTENT, INTO THE HTML WE SERVE
+       ------------------------------------------------------------
+       A builder-managed page shipped an empty mount, so its published
+       headings, paragraphs, links and images existed only after JavaScript
+       ran -- and a crawler without JavaScript read the static fallback copy
+       instead, which is placeholder prose. Two documents at one URL.
+
+       The markup below is produced by js/cms.js's OWN renderer, run in Node
+       (tools/lib/pbbake.js). There is no second renderer, so the static HTML
+       and the runtime DOM cannot describe the page differently.
+
+       Nothing brand-specific: the sections come from whichever brand the
+       build resolved, through the brand system that already exists. */
+    const baked = [];
+    out = out.replace(MOUNT_RE, function (whole, slug, inner) {
+        const block = brand.builder[slug];
+        /* No published content for this slug -- including a page nobody has
+           built -- leaves the mount exactly as the template wrote it, which
+           keeps the documented unpublished behaviour: the shipped fallback
+           copy is what renders. */
+        if (!block) return whole;
+        /* A published EMPTY canvas is published. It bakes an empty mount,
+           which is the same thing the renderer does at runtime: an empty
+           page, not a quiet restoration of the shipped copy. */
+        const r = pbrender(brand, slug, block);
+        baked.push({ slug: slug, sections: block.sections.length, bytes: r.html.length });
+        /* data-cms-baked lets the runtime tell "content I baked" from
+           "content a visitor's browser drew", which is what makes clearing it
+           safe when the live record says nothing is published any more. */
+        return '<div data-cms-sections="' + slug + '" data-cms-baked="' +
+               block.sections.length + '">' + r.html + '</div>';
+    });
+
+    /* The scoped custom properties the sections need, so a visitor without
+       JavaScript sees the content styled rather than merely present. The
+       runtime replaces this element's contents wholesale with the value it
+       computes from the same array, so baking it cannot double anything. */
+    if (baked.length) {
+        const css = baked.map(x => pbrender(brand, x.slug, brand.builder[x.slug]).css).join('');
+        if (css) {
+            const tag = '<style id="cmsBuilder">' + css + '</style>';
+            if (out.indexOf('</head>') === -1) {
+                throw new BrandError('Brand "' + brand.id + '": ' + where +
+                    ' has published Page Builder content but no </head> to put its styles in.');
+            }
+            out = out.replace('</head>', tag + '\n</head>');
+        }
+    }
+
+    return { html: out, slotsDeclared: declared, baked: baked };
 }
 
 /* ---------- planning ----------
@@ -488,6 +633,27 @@ function planBrand(opts) {
     const brandsDir = opts.brandsDir;
     const templatesDir = opts.templatesDir;
     const brand = loadBrand(brandsDir, opts.id, opts.env);
+    /* Where the shared engine lives. The baker runs js/cms.js's own renderer
+       and needs to find it; it is the same root the shared files come from. */
+    brand.sharedRoot = opts.sharedRoot || path.resolve(__dirname, '..', '..');
+
+    /* ------------------------------------------------------------
+       PART 1 OF THE SYNCHRONIZATION GUARD -- OFFLINE, NO NETWORK
+       ------------------------------------------------------------
+       Before anything is baked, check the committed build source against the
+       provenance its own export recorded. A mismatch stops the build rather
+       than quietly baking sections nobody exported.
+
+       This proves INTEGRITY, not freshness. A CMS publish made after the
+       export leaves no trace in the repository, so nothing offline can detect
+       it; tools/check-published.js asks Supabase and is the only thing that
+       can. The warning wording below says so rather than implying more.
+       ------------------------------------------------------------ */
+    const guard = verifyBuildSource(brand);
+    brand.buildSource = { status: guard.status, provenance: guard.provenance };
+    if (guard.status === 'mismatch') {
+        throw new BrandError(buildSourceError(brand, guard));
+    }
 
     const available = fs.existsSync(path.join(templatesDir, 'pages'))
         ? fs.readdirSync(path.join(templatesDir, 'pages')).filter(f => PAGE_NAME_RE.test(f)).sort()
@@ -498,6 +664,9 @@ function planBrand(opts) {
 
     const wanted = brand.pages || available.slice();
     const collector = makeCollector(brand.id);
+    /* What the build put into the HTML, per page, so the build can say so and a
+       drift between the committed layer and the live row is visible. */
+    const bakedPages = [];
     const files = collector.files;
     const emit = collector.emit;
     const slotsUsed = new Set();
@@ -519,6 +688,7 @@ function planBrand(opts) {
         }
         const r = renderPage(tpl, brand, tplSource);
         r.slotsDeclared.forEach(s => slotsUsed.add(s));
+        (r.baked || []).forEach(x => bakedPages.push(x));
         emit(page, r.html, tplSource);
     }
 
@@ -552,7 +722,20 @@ function planBrand(opts) {
     /* Sorted so the plan -- and therefore the output -- does not
        depend on directory read order. */
     files.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
-    return { brand: brand, files: files, slotsDeclared: [...slotsUsed].sort() };
+    bakedPages.sort((a, b) => a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0);
+    const warnings = [];
+    if (brand.buildSource && brand.buildSource.status === 'not-recorded' && bakedPages.length) {
+        /* Only when there is something to bake: a brand that publishes no Page
+           Builder content has nothing whose integrity could be in question, and
+           warning about it would train people to ignore the warning. */
+        warnings.push('Builder provenance not recorded; build integrity cannot be verified. ' +
+            'brands/' + brand.id + '/brand.js publishes Page Builder content but carries no ' +
+            'window.CMS_BRAND_PROVENANCE, so the build cannot confirm these sections are the ' +
+            'ones that were exported. Re-export it from /admin > Backup & Restore > Download ' +
+            'brand defaults to record it. Building anyway.');
+    }
+    return { brand: brand, files: files, slotsDeclared: [...slotsUsed].sort(),
+             baked: bakedPages, warnings: warnings };
 }
 
 /* An environment build gets its serving host appended to the brand's data
