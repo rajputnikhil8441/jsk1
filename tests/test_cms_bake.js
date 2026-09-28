@@ -448,6 +448,35 @@ console.log('\n===== THE SERVED HTML IS COMPARED WITH WHAT WAS BUILT =====');
   check('a site with nothing baked passes and says nothing was baked',
     b.code === 0 && /no page in/.test(b.out), b.out.slice(-300));
 
+  /* A SECTION ID CARRYING `>` OR `"`.
+     Both render into a quoted attribute value, which is legal HTML and which
+     a browser reads as one tag -- tests/test_pb_bake.js asserts our
+     serialisation matches a browser's. A regex tag scan does not: it ends the
+     tag at the `>` inside the value and reads the rest of the value as
+     markup, so the mount looks unclosed and a sound deploy fails. Content
+     cannot inject a tag (it is escaped) but it can contain these characters,
+     so the scan has to honour quoting. */
+  const hostilePages = rowFor(A.id, MARK.a);
+  hostilePages.about.builder.sections[0].id = 'sec_x" ><div class="y"><div>';
+  const hostileRow = writeRow(path.join(ROWS, 'hostile.json'), hostilePages);
+  const hDir = path.join(mktmp('hostile'), 'out');
+  const hb = build([A.id, '--row', rel(hostileRow), '--out', hDir]);
+  check('a section id containing > and " still builds', hb.ok, hb.out.slice(-300));
+  const hSite = path.join(hDir, A.out);
+  check('  and the id reaches the HTML escaped, not raw',
+    fs.readFileSync(path.join(hSite, 'about.html'), 'utf8').indexOf('data-sec="sec_x&quot; >') > -1);
+  const hv = verify(['--site', hSite, '--served', hSite]);
+  check('  and the verifier still passes on a page serving what was built',
+    hv.code === 0, hv.out.slice(-300));
+  check('  having parsed the mount rather than calling it unclosed',
+    /Baked\s*:\s*[1-9]/.test(hv.out) && !/not closed/.test(hv.out));
+  const hStale = path.join(mktmp('hstale'), 'served');
+  fs.cpSync(hSite, hStale, { recursive: true });
+  const hp = path.join(hStale, 'about.html');
+  fs.writeFileSync(hp, fs.readFileSync(hp, 'utf8').replace(MARK.a, 'OLD TEXT'));
+  const hs = verify(['--site', hSite, '--served', hStale, '--attempts', '1']);
+  check('  and a stale serve of that same page still FAILS', hs.code === 1, hs.out.slice(-300));
+
   /* It must not need a brand, a domain or a page list of its own. */
   const tool = fs.readFileSync(path.join(ROOT, 'tools', 'verify-deployed.js'), 'utf8');
   check('the verifier hard-codes no brand, domain or page',

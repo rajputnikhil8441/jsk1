@@ -73,32 +73,67 @@ function htmlFiles(dir, base, out) {
     return out;
 }
 
-/* The index just past the </div> that closes the tag opened at `from`.
-   Counted rather than regex-matched, because the baked markup contains divs
-   of its own and the first </div> is not the right one. */
+/* The tag starting at `i`, or null if that is not a tag.
+   Quoted attribute values are honoured, and that is the whole reason this is
+   not a regular expression: `>` is legal inside a quoted value, so a section
+   id of `a>b` renders as data-sec="a>b" and a regex would end the tag early
+   and then read the rest of the value as markup. Content is escaped, so it
+   cannot inject a tag -- but it can contain these two characters, and a
+   perfectly good mount would otherwise be reported as unclosed and fail a
+   deploy that was fine. */
+function tagAt(html, i) {
+    if (html[i] !== '<') return null;
+    let j = i + 1, close = false;
+    if (html[j] === '/') { close = true; j++; }
+    const from = j;
+    while (j < html.length && /[A-Za-z0-9:-]/.test(html[j])) j++;
+    const name = html.slice(from, j).toLowerCase();
+    if (!name) return null;
+    let quote = '';
+    while (j < html.length) {
+        const ch = html[j];
+        if (quote) { if (ch === quote) quote = ''; }
+        else if (ch === '"' || ch === "'") quote = ch;
+        else if (ch === '>') return { name: name, close: close, end: j + 1 };
+        j++;
+    }
+    return null;                                   /* unterminated tag */
+}
+
+/* The index just past the </div> that closes the tag ending at `from`.
+   Counted, because the baked markup contains divs of its own and the first
+   </div> is not the right one. */
 function closeOfDiv(html, from) {
-    const tag = /<(\/?)div\b[^>]*>/g;
-    tag.lastIndex = from;
-    let depth = 1, m;
-    while ((m = tag.exec(html))) {
-        depth += m[1] ? -1 : 1;
-        if (depth === 0) return tag.lastIndex;
+    let depth = 1;
+    for (let i = from; i < html.length; i++) {
+        if (html[i] !== '<') continue;
+        const t = tagAt(html, i);
+        if (!t) continue;
+        if (t.name === 'div') {
+            depth += t.close ? -1 : 1;
+            if (depth === 0) return t.end;
+        }
+        i = t.end - 1;
     }
     return -1;
 }
 
 function bakedMounts(html) {
-    const open = /<div\b[^>]*\bdata-cms-baked="[^"]*"[^>]*>/g;
     const out = [];
-    let m;
-    while ((m = open.exec(html))) {
-        const end = closeOfDiv(html, open.lastIndex);
-        if (end < 0) { out.push({ slug: slugOf(m[0]), markup: null }); break; }
-        out.push({ slug: slugOf(m[0]), markup: html.slice(m.index, end) });
-        open.lastIndex = end;
+    for (let i = 0; i < html.length; i++) {
+        if (html[i] !== '<') continue;
+        const t = tagAt(html, i);
+        if (!t) continue;
+        const tag = html.slice(i, t.end);
+        if (t.close || t.name !== 'div' || !isMount(tag)) { i = t.end - 1; continue; }
+        const end = closeOfDiv(html, t.end);
+        if (end < 0) { out.push({ slug: slugOf(tag), markup: null }); break; }
+        out.push({ slug: slugOf(tag), markup: html.slice(i, end) });
+        i = end - 1;
     }
     return out;
 }
+const isMount = tag => /\bdata-cms-baked="/.test(tag) && /\bdata-cms-sections="/.test(tag);
 const slugOf = tag => (tag.match(/data-cms-sections="([^"]*)"/) || [, '(unknown)'])[1];
 
 /* ---------- what the server returns for that page ---------- */
