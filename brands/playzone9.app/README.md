@@ -9,7 +9,8 @@ The second brand. Everything that makes this site Playzone9 rather than JSK1.
 | `seo-config.json` | what the deploy generates `sitemap.xml` / `robots.txt` from when Supabase is unreachable. **Required** to assemble a site: without it the assembler would fall back to `tools/seo-config.json`, which is JSK1's, and ship a sitemap describing the wrong domain |
 | `slots/` | absent. The shared login and register templates each declare a slot this brand could fill |
 | `pages/` | absent. No page needs a different arrangement yet |
-| `static/` | absent. See "The logo" below |
+| `static/` | its stylesheet and favicon — see "The visual layer" below |
+| `static-staging/` | files that belong to the staging **host** rather than to the brand. Only `CNAME`, containing `playzones9.com`. It is here and not in `static/` because a brand-level CNAME would appear in **every** environment's output, including `playzone9.app`'s — and a CNAME claiming the production domain is the one file that must not exist until that domain is meant to be served |
 
 ## siteId is `playzone9app`, not `playzone9`
 

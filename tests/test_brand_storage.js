@@ -36,14 +36,21 @@ const CONFIG_SRC = fs.readFileSync(path.join(ROOT, 'js', 'cms-config.js'), 'utf8
    into the real config source so the resolution under test is the shipped
    code, not a stand-in. Phase 2 ships ONE brand; this is how the suffixed
    path gets exercised without shipping a second. */
-const ONE_BRAND_BLOCK =
-  "    'jsk-1.com': {\n        siteId: 'playzone9',\n        bucket: 'cms-media'\n    }";
-const TWO_BRAND_BLOCK =
-  "    'jsk-1.com': {\n        siteId: 'playzone9',\n        bucket: 'cms-media'\n    },\n" +
-  "    'playzone9.app': { siteId: 'playzone9app', bucket: 'cms-media-pz9' }";
+/* The WHOLE registry is replaced, not one entry inside it. It used to
+   substitute the single jsk-1.com entry, which matched as a prefix once the
+   registry grew and produced a second, duplicate playzone9.app key -- inert,
+   because the later value wins in a JS object literal, but the suite was
+   then exercising something other than what it said. */
+const REGISTRY_RE = /window\.CMS_BRANDS = \{[\s\S]*?\n\};/;
+const TWO_BRAND_REGISTRY =
+  "window.CMS_BRANDS = {\n" +
+  "    'jsk-1.com': { siteId: 'playzone9', bucket: 'cms-media' },\n" +
+  "    'playzone9.app': { siteId: 'playzone9app', bucket: 'cms-media-pz9' }\n" +
+  "};";
 
 function configFor(defaultBrand) {
-  let src = CONFIG_SRC.replace(ONE_BRAND_BLOCK, TWO_BRAND_BLOCK);
+  if (!REGISTRY_RE.test(CONFIG_SRC)) throw new Error('registry block not found — config shape changed');
+  let src = CONFIG_SRC.replace(REGISTRY_RE, TWO_BRAND_REGISTRY);
   if (src === CONFIG_SRC) throw new Error('two-brand injection failed — config shape changed');
   src = src.replace("window.CMS_BRAND_DEFAULT = 'jsk-1.com';",
                     "window.CMS_BRAND_DEFAULT = '" + defaultBrand + "';");

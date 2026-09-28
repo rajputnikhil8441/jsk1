@@ -39,8 +39,27 @@
     --pz9-bg: #eef0f3;
     --pz9-text: #222222;
 
-    /* Mapped onto the shared engine's own properties. Each line is a
-       place this brand can diverge without touching a shared file. */
+    /* NOTE, and it matters: the four mappings below are INERT today.
+
+       js/cms.js paints every colour key from the CMS data into a
+       <style id="cmsVars"> block that is parsed after this file, and
+       DEFAULTS.colors supplies a value for every one of them. So the
+       CMS always wins here -- which is correct, and is the cascade the
+       data layering asks for:
+
+           shared stylesheet  <  this file  <  what the CMS saved
+
+       They are kept because they document the mapping and because they
+       DO take effect for any variable the CMS has no value for. But a
+       brand that wants its own DEFAULT palette should put it in
+       brands/<id>/brand.js under `colors`, which sits above
+       DEFAULTS.colors and below the published row -- the data layer,
+       not the stylesheet.
+
+       (This file was briefly loaded AFTER cmsVars, which silently
+       overrode every colour changed in the admin. Fixed by moving the
+       head-extra slot ahead of the scripts; tests/test_staging_cms.js
+       asserts the order and that a saved colour renders.) */
     --hdr-bg: var(--pz9-primary);
     --btn-register-bg: var(--pz9-accent);
     --nav-active: var(--pz9-accent);

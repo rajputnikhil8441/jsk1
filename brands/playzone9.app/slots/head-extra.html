@@ -1,5 +1,14 @@
-<!-- Playzone9's own stylesheet, loaded after the shared ones so its
-     custom properties win. Supplied through the head-extra slot rather
-     than by editing the shared templates, which is what keeps every
-     other brand's pages byte-identical. -->
+<!-- Playzone9's own stylesheet. Supplied through the head-extra slot
+     rather than by editing the shared templates, which is what keeps every
+     other brand's pages byte-identical.
+
+     The slot sits AFTER the shared stylesheets and BEFORE js/cms.js, and
+     that order is the whole point. js/cms.js injects a <style id="cmsVars">
+     block when it runs, so anything parsed after it overrides the CMS. The
+     cascade has to mirror the data layering:
+
+         shared stylesheet  <  this brand stylesheet  <  what the CMS saved
+
+     Load this later than cms.js and a colour changed in the admin saves
+     correctly, reports success, and never renders. -->
     <link rel="stylesheet" href="css/brand.css" />

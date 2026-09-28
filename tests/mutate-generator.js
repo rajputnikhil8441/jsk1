@@ -22,11 +22,15 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { execFileSync, spawn } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
 const SUITES = ['test_generator.js', 'test_multibrand.js', 'test_deploy_surface.js',
-  'test_assembly.js', 'test_staging.js'];
+  'test_assembly.js', 'test_staging.js', 'test_cms_brands.js', 'test_staging_cms.js'];
+
+/* Suites that drive a browser against the site over HTTP, so the sandbox
+   needs the static server the real runner would have started. */
+const NEED_SERVER = ['test_cms_brands.js'];
 
 /* Only what the two suites read. node_modules and .git are excluded
    deliberately: neither suite needs a browser. */
@@ -39,6 +43,7 @@ function copyInto(sandbox) {
   fs.mkdirSync(path.join(sandbox, 'tests'), { recursive: true });
   for (const rel of COPY) fs.cpSync(path.join(ROOT, rel), path.join(sandbox, rel), { recursive: true });
   for (const s of SUITES) fs.cpSync(path.join(__dirname, s), path.join(sandbox, 'tests', s));
+  fs.cpSync(path.join(__dirname, 'serve.js'), path.join(sandbox, 'tests', 'serve.js'));
   fs.cpSync(path.join(__dirname, 'fixtures'), path.join(sandbox, 'tests', 'fixtures'), { recursive: true });
   /* test_deploy_surface.js asks git what a fresh checkout contains, which is
      the only honest way to ask -- so the sandbox has to be a repository too.
@@ -226,13 +231,13 @@ const MUTANTS = [
 
   { id: 'P2', desc: 'the brand\'s static/ overlay is ignored',
     file: 'tools/lib/sitekit.js', expect: 'test_assembly.js',
-    find: '    const overlay = walk(overlayDir);', repl: '    const overlay = [];' },
+    find: '    const overlay = [...overlaySource.keys()].sort();', repl: '    const overlay = [];' },
 
   { id: 'P3', desc: 'the overlay is applied BEFORE the shared engine, so shared files win',
     file: 'tools/lib/sitekit.js', expect: 'test_assembly.js',
     find: "    for (const p of site.shared) copyFile(path.join(site.sharedRoot, p), kit.safeJoin(dest, p, 'Shared file'));\n" +
-          "    for (const p of site.overlay) copyFile(path.join(site.overlayDir, p), kit.safeJoin(dest, p, 'Overlay file'));",
-    repl: "    for (const p of site.overlay) copyFile(path.join(site.overlayDir, p), kit.safeJoin(dest, p, 'Overlay file'));\n" +
+          "    for (const p of site.overlay) copyFile(site.overlaySource.get(p), kit.safeJoin(dest, p, 'Overlay file'));",
+    repl: "    for (const p of site.overlay) copyFile(site.overlaySource.get(p), kit.safeJoin(dest, p, 'Overlay file'));\n" +
           "    for (const p of site.shared) copyFile(path.join(site.sharedRoot, p), kit.safeJoin(dest, p, 'Shared file'));" },
 
   { id: 'P4', desc: 'build configuration is published onto the live domain',
@@ -417,16 +422,107 @@ const MUTANTS = [
 
   { id: 'T18', desc: 'the brand overlay is dropped from the staging build',
     file: 'tools/lib/sitekit.js', expect: 'test_staging.js',
-    find: "    for (const p of site.overlay) copyFile(path.join(site.overlayDir, p), kit.safeJoin(dest, p, 'Overlay file'));",
-    repl: '' }
+    find: "    for (const p of site.overlay) copyFile(site.overlaySource.get(p), kit.safeJoin(dest, p, 'Overlay file'));",
+    repl: '' },
+
+  /* ---- the multi-brand CMS. One admin, one row per hostname. The
+     failure these guard against is one brand's admin overwriting
+     another brand's content, which is unrecoverable: the row is
+     replaced whole. ---- */
+  { id: 'C1', desc: 'the publish guard is removed, so a misconfigured admin writes another brand\'s row',
+    file: 'js/cms.js', expect: 'test_cms_brands.js',
+    find: '            if (!Brand.agrees()) {', repl: '            if (false) {' },
+
+  { id: 'C2', desc: 'CMS.brand.agrees() always says yes',
+    file: 'js/cms.js', expect: 'test_cms_brands.js',
+    find: '            return !want || want === Brand.siteId();',
+    repl: '            return true;' },
+
+  { id: 'C3', desc: 'the registry lookup returns nothing, so the guard never fires',
+    file: 'js/cms.js', expect: 'test_cms_brands.js',
+    find: "        var brands = window.CMS_BRANDS;\n        if (!brands || typeof brands !== 'object') return '';",
+    repl: "        var brands = window.CMS_BRANDS;\n        return '';\n        if (!brands || typeof brands !== 'object') return '';" },
+
+  { id: 'C4', desc: 'every hostname reports itself as a registered brand',
+    file: 'js/cms.js', expect: 'test_cms_brands.js',
+    find: '        matched: function () { return (window.CMS_BRAND_RESOLVED || {}).matched === true; },',
+    repl: '        matched: function () { return true; },' },
+
+  { id: 'C5', desc: 'the brand registry reads as empty, so the CMS shows no other brand',
+    file: 'js/cms.js', expect: 'test_cms_brands.js',
+    find: '            var brands = window.CMS_BRANDS || {}, out = [], k;',
+    repl: '            var brands = {}, out = [], k;' },
+
+  { id: 'C6', desc: 'CMS.brand.siteId() reports the default brand rather than the configured row',
+    file: 'js/cms.js', expect: 'test_cms_brands.js',
+    find: "        siteId: function () { return String((window.CMS_REMOTE || {}).siteId || ''); },",
+    repl: "        siteId: function () { return registrySiteId(); }," },
+
+  { id: 'C7', desc: 'the admin stops rendering the Brands panel',
+    file: 'js/admin.js', expect: 'test_cms_brands.js', all: 2,
+    find: '        buildBrands();', repl: '' },
+
+  { id: 'C8', desc: 'the sidebar stops saying which hostname is being edited',
+    file: 'js/admin.js', expect: 'test_cms_brands.js', all: 2,
+    find: "            hostLine.textContent = CMS.brand.host() || 'no hostname';", repl: '' },
+
+  { id: 'C9', desc: 'a brand identity value is added to the shared DEFAULTS',
+    file: 'js/cms.js', expect: 'test_cms_brands.js',
+    find: "        branding: {\n            siteName: '',",
+    repl: "        branding: {\n            siteName: 'Playzone9'," },
+
+  { id: 'C10', desc: 'the shared admin markup is re-branded',
+    file: 'admin/index.html', expect: 'test_cms_brands.js',
+    find: '<title>CMS — Admin</title>', repl: '<title>JSK1 CMS — Admin</title>' },
+
+  { id: 'C11', desc: 'the Brands panel is removed from the shared admin',
+    file: 'admin/index.html', expect: 'test_cms_brands.js',
+    find: 'id="panel-brands"', repl: 'id="panel-brands-disabled"' },
+
+  /* ---- the environment overlay. A CNAME is the file that makes a host
+     start serving a domain, so which build carries one is the whole
+     question. ---- */
+  { id: 'E1', desc: 'the environment overlay is never applied, so staging ships no CNAME',
+    file: 'tools/lib/sitekit.js', expect: 'test_staging_cms.js',
+    find: '    if (plan.brand.env !== kit.CANONICAL_ENV) {', repl: '    if (false) {' },
+
+  { id: 'E2', desc: 'the environment overlay is applied to EVERY build, so the reserved production domain gets a CNAME',
+    file: 'tools/lib/sitekit.js', expect: 'test_staging_cms.js',
+    find: '    if (plan.brand.env !== kit.CANONICAL_ENV) {', repl: '    if (true) {' },
+
+  { id: 'E3', desc: 'the brand overlay wins over the environment overlay, so a host file cannot override a brand file',
+    file: 'tools/lib/sitekit.js', expect: 'test_staging_cms.js',
+    find: '            overlaySource.set(rel, path.join(dir, rel));',
+    repl: '            if (!overlaySource.has(rel)) overlaySource.set(rel, path.join(dir, rel));' },
+
+  { id: 'E4', desc: 'the staging CNAME names the production domain instead',
+    file: 'brands/playzone9.app/static-staging/CNAME', expect: 'test_staging_cms.js',
+    find: 'playzones9.com', repl: 'playzone9.app' }
 ];
 
 function run(sandbox, suite) {
   let out = '', code = 0;
+  /* Its own server process, killed afterwards, so a mutant that wedges one
+     cannot leak into the next mutant's run. */
+  let server = null;
+  if (NEED_SERVER.includes(suite)) {
+    server = spawn(process.execPath, [path.join(sandbox, 'tests', 'serve.js')],
+      { cwd: sandbox, stdio: 'ignore' });
+    const until = Date.now() + 5000;
+    while (Date.now() < until) {
+      try {
+        execFileSync(process.execPath, ['-e',
+          'require("http").get({host:"localhost",port:8777,path:"/index.html"},r=>process.exit(r.statusCode===200?0:1))' +
+          '.on("error",()=>process.exit(1));setTimeout(()=>process.exit(1),800)'], { stdio: 'ignore' });
+        break;
+      } catch (e) { /* not up yet */ }
+    }
+  }
   try {
     out = execFileSync(process.execPath, [path.join(sandbox, 'tests', suite)],
       { encoding: 'utf8', cwd: sandbox });
   } catch (e) { out = (e.stdout || '') + (e.stderr || ''); code = e.status === undefined ? 1 : e.status; }
+  finally { if (server) { try { server.kill(); } catch (e) {} } }
   /* Parsed with a regex, not a substring: "0 failed" is a substring of
      "10 failed", and that mistake reports caught mutants as survivors. */
   const m = out.match(/====\s*(\d+)\s+passed,\s*(\d+)\s+failed\s*====/);

@@ -19,6 +19,16 @@
      2. OVERLAY    brands/<id>/static/**, laid over the shared
                    tree at the same paths. A brand's own logo,
                    stylesheet or icons. Optional.
+
+                   Then brands/<id>/static-<env>/** for an
+                   environment build, laid over that. This is for
+                   files that belong to a HOST rather than to the
+                   brand -- a CNAME being the reason it exists. A
+                   brand's CNAME in static/ would end up in every
+                   environment's output, including the production
+                   domain's, which is precisely the file that must
+                   not appear there before that domain is meant to
+                   be served.
      3. GENERATED  the brand's pages and js/brand.js.
      4. SEO        sitemap.xml and robots.txt, written by
                    tools/build-seo-files.js -- invoked, not
@@ -130,9 +140,21 @@ function planSite(opts) {
             'to https://' + plan.brand.domain + '.');
     }
 
+    /* The brand's overlay, then the environment's on top. Later wins, so an
+       environment can replace a brand file as well as add one. */
     const overlayDir = path.join(plan.brand.dir, 'static');
-    const overlay = walk(overlayDir);
-    for (const p of overlay) kit.safeJoin(overlayDir, p, 'Overlay file');   /* before it is ever joined to a dest */
+    const overlayDirs = [overlayDir];
+    if (plan.brand.env !== kit.CANONICAL_ENV) {
+        overlayDirs.push(path.join(plan.brand.dir, 'static-' + plan.brand.env));
+    }
+    const overlaySource = new Map();
+    for (const dir of overlayDirs) {
+        for (const rel of walk(dir)) {
+            kit.safeJoin(dir, rel, 'Overlay file');   /* before it is ever joined to a dest */
+            overlaySource.set(rel, path.join(dir, rel));
+        }
+    }
+    const overlay = [...overlaySource.keys()].sort();
 
     const generated = plan.files.map(f => f.path).filter(p => NOT_PUBLISHED.indexOf(p) === -1);
 
@@ -144,7 +166,10 @@ function planSite(opts) {
        served on a different hostname and it is that hostname a visitor's
        browser resolves. */
     const registered = registeredBrands(sharedRoot);
-    const warnings = [];
+    /* Whatever the generator already had to say -- currently the build-source
+       provenance warning -- comes through here rather than being printed from
+       inside the generator, so every warning reaches the build's one reporter. */
+    const warnings = (plan.warnings || []).slice();
     if (registered && registered.indexOf(plan.brand.domain) === -1) {
         warnings.push('"' + plan.brand.domain + '" is not in CMS_BRANDS in js/cms-config.js. ' +
             'A visitor on that hostname would resolve to the default brand, not this one. ' +
@@ -154,7 +179,8 @@ function planSite(opts) {
     /* No sitemap for a review host. See the note at the top. */
     const seo = plan.brand.noindex ? ['robots.txt'] : ['sitemap.xml', 'robots.txt'];
 
-    return { plan, shared, overlay, overlayDir, generated, warnings, seo, sharedRoot };
+    return { plan, shared, overlay, overlaySource, overlayDir, overlayDirs,
+             generated, warnings, seo, sharedRoot };
 }
 
 /* A review host's robots.txt. Fixed rather than generated: there is nothing
@@ -193,7 +219,7 @@ function assemble(site, outRoot, opts) {
     fs.mkdirSync(dest, { recursive: true });
 
     for (const p of site.shared) copyFile(path.join(site.sharedRoot, p), kit.safeJoin(dest, p, 'Shared file'));
-    for (const p of site.overlay) copyFile(path.join(site.overlayDir, p), kit.safeJoin(dest, p, 'Overlay file'));
+    for (const p of site.overlay) copyFile(site.overlaySource.get(p), kit.safeJoin(dest, p, 'Overlay file'));
     for (const f of site.plan.files) {
         if (NOT_PUBLISHED.indexOf(f.path) > -1) continue;
         const to = kit.safeJoin(dest, f.path, 'Generated file');
