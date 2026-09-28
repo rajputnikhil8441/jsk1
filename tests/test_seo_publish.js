@@ -142,9 +142,21 @@ const RECORD = {
     check('--check writes nothing', /nothing written/i.test(out));
 
     const wf = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'static.yml'), 'utf8');
-    check('the deploy runs the generator', /node tools\/build-seo-files\.js/.test(wf));
+    /* The workflow no longer calls this generator directly. It assembles the
+       site, and tools/lib/sitekit.js runs the generator as part of that. The
+       claim is the same one it always was -- sitemap.xml and robots.txt are
+       WRITTEN at deploy time, never hand-edited and never committed stale --
+       so it is asserted where the call now lives. The old ordering check
+       compared indexOf('build-seo-files.js') against the upload, which would
+       now be -1 and pass while proving nothing; it is pinned to a string the
+       workflow actually contains. */
+    check('the deploy assembles the site', /run: node tools\/build-site\.js/.test(wf), wf.match(/run: [^\n]*/g));
+    check('and the assembler runs this generator',
+      /build-seo-files\.js/.test(fs.readFileSync(path.join(ROOT, 'tools', 'lib', 'sitekit.js'), 'utf8')));
     check('before the artifact is uploaded',
-      wf.indexOf('build-seo-files.js') < wf.indexOf('upload-pages-artifact'));
+      wf.indexOf('build-site.js') > -1 &&
+      wf.indexOf('build-site.js') < wf.indexOf('upload-pages-artifact'),
+      [wf.indexOf('build-site.js'), wf.indexOf('upload-pages-artifact')]);
     check('the job still cannot write to the repository', /contents: read/.test(wf) && !/contents: write/.test(wf));
     check('no secret was added to the workflow', !/\$\{\{\s*secrets\./.test(wf));
     check('no personal access token appears anywhere in the front end',

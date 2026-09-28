@@ -774,7 +774,12 @@ function serveAtOrigin(ctx, dir, log) {
     }
     check('no workflow deploys Playzone9 or writes a CNAME', true);
     const prod = decomment(fs.readFileSync(path.join(wf, 'static.yml'), 'utf8'));
-    check('the JSK1 deploy still serves the repository root', /path: '\.'/.test(prod));
+    /* It assembles JSK1's site and uploads that, rather than the repository
+       root. The claim this suite makes is the one below it: production is
+       JSK1's deploy and knows nothing about Playzone9. */
+    check('the JSK1 deploy still publishes JSK1 and only JSK1',
+      /run: node tools\/build-site\.js jsk-1\.com/.test(prod) &&
+      /path: '_site\/jsk-1\.com'/.test(prod), prod.match(/(run:|path:)[^\n]*/g));
     check('and still knows nothing about Playzone9', !/playzone9/i.test(prod));
   }
 

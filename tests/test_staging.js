@@ -347,8 +347,13 @@ const TYPES = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascrip
       /must not ship a sitemap/.test(staged) && /not noindex,nofollow/.test(staged));
 
     const prodWf = fs.readFileSync(path.join(wf, 'static.yml'), 'utf8');
-    check('the production deploy still serves the repository root',
-      /path: '\.'/.test(prodWf));
+    /* The production deploy assembles JSK1's site and uploads that, rather
+       than the repository root it used to upload. What this suite cares
+       about is unchanged: whatever production deploys, it is JSK1's and
+       nobody else's. */
+    check('the production deploy still publishes JSK1 and only JSK1',
+      /run: node tools\/build-site\.js jsk-1\.com/.test(prodWf) &&
+      /path: '_site\/jsk-1\.com'/.test(prodWf), prodWf.match(/(run:|path:)[^\n]*/g));
     check('and still knows nothing about Playzone9', !/playzone9/i.test(decomment(prodWf)));
   }
 
