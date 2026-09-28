@@ -23,23 +23,24 @@
    admin can regenerate (Backup & Restore > Download brand defaults). It is
    read, never written.
 
-   WHY NOT READ SUPABASE HERE. The build would stop being deterministic: the
-   same commit would produce different HTML depending on when it ran and
-   whether the network was up, and CI in this repository already cannot
-   reach Supabase (tools/build-seo-files.js warns and falls back for exactly
-   that reason). A static site is a build artifact; its content belongs in
-   the commit that produced it.
+   NOTHING HERE READS SUPABASE, and that is a division of labour rather than
+   a policy: this file renders whatever record it is handed. A local build or
+   a test hands it the committed layer, which keeps those builds offline and
+   deterministic. A deploy passes --from-cms, and tools/build-site.js fetches
+   the brand's published record and hands that in instead -- the same shape,
+   through this same renderer, so there is still one bake and one source of
+   markup. publishedFromRecord() below is the shape conversion, and it is
+   the only thing here that knows a row exists.
 
-   SO THE RULE, and it is the one docs/publishing.md states:
+   EITHER WAY the baked copy is fixed when the build runs, so publishing has
+   to be able to START a build -- see "What starts a deploy" in
+   docs/publishing.md. Without that the served HTML freezes at the row as it
+   was when the last commit landed while the runtime paints the current row
+   over the mount, which looks like a working page with a stale source.
 
-       The published row is authoritative AT RUNTIME.
-       The committed brand layer is authoritative FOR THE BUILD.
-
-   Publishing in /admin is live immediately for anyone running JavaScript.
-   The baked copy -- what a crawler without JavaScript reads -- updates on
-   the next deploy, exactly as every other brand-layer value already does.
-   The build prints what it baked per page so a drift is visible rather than
-   silent, and it never claims to have baked content it did not.
+   The build prints what it baked per page, and which source it came from, so
+   a drift is visible rather than silent, and it never claims to have baked
+   content it did not.
 
    MULTI-BRAND. Nothing here knows a brand. It is handed a brand directory
    by the generator, which resolved it from the build's --brand argument

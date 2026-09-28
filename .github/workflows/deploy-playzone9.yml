@@ -48,6 +48,20 @@ name: Deploy Playzone9
 on:
   push:
     branches: ["main"]
+
+  # A CONTENT CHANGE IS A REASON TO REBUILD, and it does not arrive as a push.
+  # --from-cms bakes the published record at BUILD time, so with `push` alone
+  # the served HTML freezes at the row as it was when the last commit landed
+  # while the runtime paints the current row over it -- the page looks right
+  # and its source is stale. Same two triggers as the other site's deploy,
+  # for the same reason: repository_dispatch for a server-side publish hook
+  # to fire immediately, and a timer so it works with nothing configured.
+  repository_dispatch:
+    types: [cms-published]
+
+  schedule:
+    - cron: "*/30 * * * *"
+
   workflow_dispatch:
 
 # Read this repository. Write nothing here. The token for the target

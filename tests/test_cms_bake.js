@@ -352,6 +352,136 @@ console.log('\n===== BOTH DEPLOYS BAKE FROM THE CMS =====');
     !/--allow-unpublish/.test(prod) && !/--allow-unpublish/.test(pz));
   check('each deploy still names its own brand and no other',
     !/playzone9/i.test(prod) && !/jsk-1\.com/.test(pz));
+
+  /* THE GAP THAT MADE A GREEN DEPLOY LOOK LIKE A BROKEN BAKE.
+     --from-cms reads the row when the build runs, so a publish only reaches
+     the HTML if a publish can START a build. With `push` as the only trigger
+     it never can: the row changes, nothing rebuilds, the served HTML stays
+     at the last commit's snapshot, and the runtime paints over it -- so the
+     page looks right and its source is stale. These assert that both deploys
+     can be started by something other than a code change. */
+  const onBlock = y => y.split(/\npermissions:/)[0];
+  for (const [name, y] of [['the JSK1 deploy', prod], ['the Playzone9 deploy', pz]]) {
+    check(name + ' can be started by a publish hook (repository_dispatch)',
+      /repository_dispatch:/.test(onBlock(y)) && /cms-published/.test(onBlock(y)));
+    check(name + ' also rebuilds on a timer, so a publish reaches the HTML with ' +
+      'nothing configured', /schedule:\s*\n\s*- cron:/.test(onBlock(y)));
+    check(name + ' still rebuilds on a push and can still be run by hand',
+      /push:/.test(onBlock(y)) && /workflow_dispatch:/.test(onBlock(y)));
+  }
+
+  /* And the deploy does not merely assume the bytes arrived. */
+  check('the JSK1 deploy verifies the DEPLOYED HTML after deploying',
+    /verify-deployed\.js/.test(prod) && prod.indexOf('deploy-pages') < prod.indexOf('verify-deployed.js'));
+  check('  and it checks the URL it just deployed to, not a hard-coded one',
+    /--url "\$\{\{ steps\.deployment\.outputs\.page_url \}\}"/.test(prod));
+  check('  against the artifact it just built',
+    /--site _site\/jsk-1\.com/.test(prod));
+}
+
+/* ====================================================================
+   10. THE DEPLOYED HTML IS CHECKED, NOT ASSUMED
+   --------------------------------------------------------------------
+   tools/verify-deployed.js is the step that would have caught this in
+   production: it compares the baked markup the build wrote with the bytes
+   the site actually returns. --served reads the "response" from a directory,
+   so these run with no network.
+   ==================================================================== */
+console.log('\n===== THE SERVED HTML IS COMPARED WITH WHAT WAS BUILT =====');
+{
+  const built = path.join(OUT, A.out);
+  const verify = args => {
+    try {
+      return { code: 0, out: execFileSync(process.execPath,
+        [path.join(ROOT, 'tools', 'verify-deployed.js')].concat(args),
+        { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) };
+    } catch (e) { return { code: e.status, out: (e.stdout || '') + (e.stderr || '') }; }
+  };
+  const copy = tag => {
+    const d = path.join(mktmp('served'), tag);
+    fs.cpSync(built, d, { recursive: true });
+    return d;
+  };
+
+  const good = verify(['--site', built, '--served', built]);
+  check('a site serving what was built passes', good.code === 0, good.out.slice(-300));
+  check('  and says so in terms of the HTML source, not the DOM',
+    /present in the served HTML, before any JavaScript runs/.test(good.out));
+  check('  having actually found this brand\'s content, not just a mount',
+    good.out.indexOf('about.html') > -1 && /Baked\s*:\s*[1-9]/.test(good.out));
+
+  /* The production symptom, exactly: the deploy served the PREVIOUS build,
+     so the mount is there and its content is last week's. */
+  const stale = copy('stale');
+  const sp = path.join(stale, 'about.html');
+  fs.writeFileSync(sp, fs.readFileSync(sp, 'utf8').replace(MARK.a, 'CONTENT FROM AN EARLIER BUILD'));
+  const st = verify(['--site', built, '--served', stale, '--attempts', '1']);
+  check('a stale served page FAILS, even though it has a baked mount', st.code === 1, st.out.slice(-300));
+  check('  and the failure names the page', /about\.html/.test(st.out));
+  check('  and says the served version is not the one built',
+    /not the one that was just built/.test(st.out));
+
+  /* The original bug: the mount is empty and only JavaScript fills it. */
+  const empty = copy('empty');
+  const ep = path.join(empty, 'about.html');
+  fs.writeFileSync(ep, fs.readFileSync(ep, 'utf8')
+    .replace(/<div data-cms-sections="about" data-cms-baked="1">[\s\S]*?<\/section><\/div>/,
+             '<div data-cms-sections="about"></div>'));
+  const em = verify(['--site', built, '--served', empty, '--attempts', '1']);
+  check('a page whose content exists only after JavaScript FAILS', em.code === 1, em.out.slice(-300));
+  check('  and says the served page has no baked mount at all',
+    /no baked mount at all/.test(em.out));
+
+  /* A page that cannot be fetched is "could not check" (2), not "missing"
+     (1): the two need different responses and must not be confused. */
+  const gone = copy('gone');
+  fs.rmSync(path.join(gone, 'about.html'));
+  const g = verify(['--site', built, '--served', gone, '--attempts', '1']);
+  check('a page that cannot be fetched at all exits 2, not 1', g.code === 2, g.out.slice(-300));
+
+  /* Nothing baked is not a failure -- an unpublished brand legitimately has
+     no mounts -- but it must be stated rather than passing silently. */
+  const bare = path.join(mktmp('bare'), 'site');
+  fs.mkdirSync(bare, { recursive: true });
+  fs.writeFileSync(path.join(bare, 'about.html'), '<html><body><div data-cms-sections="about"></div></body></html>');
+  const b = verify(['--site', bare, '--served', bare]);
+  check('a site with nothing baked passes and says nothing was baked',
+    b.code === 0 && /no page in/.test(b.out), b.out.slice(-300));
+
+  /* A SECTION ID CARRYING `>` OR `"`.
+     Both render into a quoted attribute value, which is legal HTML and which
+     a browser reads as one tag -- tests/test_pb_bake.js asserts our
+     serialisation matches a browser's. A regex tag scan does not: it ends the
+     tag at the `>` inside the value and reads the rest of the value as
+     markup, so the mount looks unclosed and a sound deploy fails. Content
+     cannot inject a tag (it is escaped) but it can contain these characters,
+     so the scan has to honour quoting. */
+  const hostilePages = rowFor(A.id, MARK.a);
+  hostilePages.about.builder.sections[0].id = 'sec_x" ><div class="y"><div>';
+  const hostileRow = writeRow(path.join(ROWS, 'hostile.json'), hostilePages);
+  const hDir = path.join(mktmp('hostile'), 'out');
+  const hb = build([A.id, '--row', rel(hostileRow), '--out', hDir]);
+  check('a section id containing > and " still builds', hb.ok, hb.out.slice(-300));
+  const hSite = path.join(hDir, A.out);
+  check('  and the id reaches the HTML escaped, not raw',
+    fs.readFileSync(path.join(hSite, 'about.html'), 'utf8').indexOf('data-sec="sec_x&quot; >') > -1);
+  const hv = verify(['--site', hSite, '--served', hSite]);
+  check('  and the verifier still passes on a page serving what was built',
+    hv.code === 0, hv.out.slice(-300));
+  check('  having parsed the mount rather than calling it unclosed',
+    /Baked\s*:\s*[1-9]/.test(hv.out) && !/not closed/.test(hv.out));
+  const hStale = path.join(mktmp('hstale'), 'served');
+  fs.cpSync(hSite, hStale, { recursive: true });
+  const hp = path.join(hStale, 'about.html');
+  fs.writeFileSync(hp, fs.readFileSync(hp, 'utf8').replace(MARK.a, 'OLD TEXT'));
+  const hs = verify(['--site', hSite, '--served', hStale, '--attempts', '1']);
+  check('  and a stale serve of that same page still FAILS', hs.code === 1, hs.out.slice(-300));
+
+  /* It must not need a brand, a domain or a page list of its own. */
+  const tool = fs.readFileSync(path.join(ROOT, 'tools', 'verify-deployed.js'), 'utf8');
+  check('the verifier hard-codes no brand, domain or page',
+    !/jsk-1|playzone|about\.html|\.com\b/.test(tool.split('\n')
+      .filter(l => !/^\s*(\*|\/\*|#)/.test(l)).join('\n')));
 }
 
 tmpRoots.forEach(d => { try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) {} });
