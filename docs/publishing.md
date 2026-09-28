@@ -303,6 +303,31 @@ new liberty.
 already downloads and which the admin can regenerate from *Backup & Restore →
 Download brand defaults*. It is read, never written.
 
+#### It is not the same file as the repository root's `js/brand.js`
+
+They used to be byte-identical, and a test pinned them that way, because
+production served the repository root: the root copy *was* the deployed brand
+layer. That ended when the deploy started assembling the site.
+
+| File | What it is | Who reads it |
+| --- | --- | --- |
+| `brands/jsk-1.com/brand.js` | the **build source** — an export of what the CMS has published, regenerated whenever you export | `tools/build-site.js`, and through it every deployed page |
+| `js/brand.js` (repository root) | the **shipped fallback** — the frozen pre-CMS layer | the local static server, `tests/serve.js`, and anyone opening the repository root in a browser |
+
+The deployed site's `js/brand.js` is generated *from* the brand directory
+(`tools/lib/brandkit.js`), so a visitor never loads the root copy. Keeping the
+root copy frozen is deliberate on two counts: it is the fallback a local
+developer sees before the Supabase row loads — the row still supplies live
+content at runtime, exactly as in production — and it is the fixture the browser
+suites are written against. Pointing those suites at a file that changes every
+time someone publishes would mean a footer edit could fail a test about the
+Page Builder.
+
+`tests/test_generator.js` asserts what must still hold across the two: the build
+ships the brand layer unchanged, the root copy still matches its Phase 0
+fixture, and every key the shipped layer provides is still present in the brand
+layer the build ships.
+
 **The build never reads Supabase.** It would stop being deterministic: the same
 commit would produce different HTML depending on when it ran and whether the
 network was up, and CI here cannot reach Supabase anyway. Two builds of the same
@@ -326,6 +351,38 @@ Builder  : (no published content in brands/<id>/brand.js)
 so a drift is visible rather than silent, and the build never claims to have
 baked content it did not. A baker that cannot run is a build failure, not an
 empty div.
+
+### What the deploy actually does
+
+`.github/workflows/static.yml` assembles the site and uploads that:
+
+```yaml
+- name: Assemble the site
+  run: node tools/build-site.js jsk-1.com --out _site
+- name: Upload artifact
+  uses: actions/upload-pages-artifact@v3
+  with:
+    path: '_site/jsk-1.com'
+```
+
+It used to upload `path: '.'` — the repository — with four build-only
+directories deleted from the runner's checkout first. That is why a
+builder-managed page shipped an empty mount however correct the baker was: the
+baker was never part of the deploy. Nothing is deleted now; `templates/`,
+`brands/`, `tools/` and `tests/` are simply never copied, because the assembler
+emits only what the brand system names.
+
+**No `.html` file in the repository is edited to publish content.** The pages
+are rendered from `templates/pages/` on every deploy, and the mount is filled
+from the brand layer. The chain is:
+
+> publish in `/admin` → *Download brand defaults* → commit
+> `brands/<id>/brand.js` → push → the workflow assembles → the content is in the
+> HTTP response
+
+The repository-root `*.html` files are not part of that chain and are not
+deployed. They remain the shell the local server and the browser suites use, and
+`tests/fixtures/golden-jsk1/` still pins them.
 
 ### Runtime: exactly one copy
 
@@ -500,6 +557,11 @@ until the build source is updated:
 
 > publish → *Backup & Restore → Download brand defaults* → commit
 > `brands/<id>/brand.js` → deploy
+
+The commit updates `brands/<id>/brand.js` **only**. The repository-root
+`js/brand.js` is a different file with a different job (see *It is not the same
+file as the repository root's `js/brand.js`* above), and no `.html` file is
+touched at all.
 
 Part 1 guarantees that whatever you committed is what was exported. Part 2, when
 you run it, tells you whether that export is still what is published. Neither

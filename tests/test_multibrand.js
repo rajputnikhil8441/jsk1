@@ -36,6 +36,7 @@ const crypto = require('crypto');
 
 const ROOT = path.resolve(__dirname, '..');
 const KIT = require(path.join(ROOT, 'tools', 'lib', 'brandkit.js'));
+const SHELL = require(path.join(__dirname, 'lib', 'pbshell.js'));
 const PROD_BRANDS = path.join(ROOT, 'brands');
 const SYNTH_BRANDS = path.join(__dirname, 'fixtures', 'brands');
 const TEMPLATES = path.join(ROOT, 'templates');
@@ -155,8 +156,15 @@ console.log('\n===== EACH BRAND SHIPS ITS OWN js/brand.js =====');
 {
   check('all three brand.js files were generated',
     !!jsk1.files['js/brand.js'] && !!acme.files['js/brand.js'] && !!zeta.files['js/brand.js']);
-  check('JSK1 brand.js is the deployed one',
-    sha(path.join(jsk1.dir, 'js/brand.js')) === sha(path.join(GOLDEN, 'js/brand.js')));
+  /* JSK1's brand.js is its committed layer, copied through. It used to
+     be compared against the Phase 0 fixture, which held while the layer
+     was a frozen set of defaults; it is now an export of what the site
+     has published and changes whenever it publishes. The claim that
+     matters here -- the generator ships THIS brand's layer and not a
+     copy it made -- is asserted against the layer itself. */
+  check('JSK1 brand.js is the brand\'s own committed layer',
+    sha(path.join(jsk1.dir, 'js/brand.js')) ===
+    sha(path.join(PROD_BRANDS, 'jsk-1.com', 'brand.js')));
   check('acme brand.js is acme\'s, not JSK1\'s',
     /ACMEPLAY/.test(acme.files['js/brand.js']) && !/JSK1/.test(acme.files['js/brand.js']));
   check('zeta brand.js is zeta\'s, not JSK1\'s',
@@ -260,14 +268,52 @@ console.log('\n===== THE ENGINE IS SHARED, NOT COPIED =====');
      brand-specific branch, this stops being true. */
   const shared = jsk1.paths.filter(p => p.endsWith('.html') && p !== 'login.html');
   check('there are shared pages to compare', shared.length === 7, shared.length);
+  /* JSK1 publishes Page Builder content and acme does not, and the build
+     bakes it in. That is brand CONTENT differing, which is what a brand
+     layer is for -- so JSK1 is projected from its SHELL build, the same
+     generator reading the same brand with its published blocks removed.
+     Everything the template owns is still compared byte for byte, and
+     the content left out is asserted below rather than waved through. */
+  const shellRoot = mktmp('mb-shell');
+  const jsk1Shell = buildBrand(SHELL.shellBrandsDir(PROD_BRANDS, path.join(shellRoot, 'brands')),
+                               'jsk-1.com');
   let equivalent = 0;
   for (const p of shared) {
-    const projected = jsk1.files[p].split('JSK1').join('ACMEPLAY').split('jsk-1.com').join('acme.test');
+    const projected = jsk1Shell.files[p].split('JSK1').join('ACMEPLAY').split('jsk-1.com').join('acme.test');
     if (projected === acme.files[p]) equivalent++;
     else check(p + ': acme output is not JSK1 output with the brand strings swapped', false);
   }
   check('all seven shared pages were compared', equivalent === shared.length && shared.length > 0, equivalent);
   check('acme\'s shared pages differ from JSK1\'s ONLY in the brand strings', equivalent === 7, equivalent);
+
+  /* And what the shell build left out is exactly one brand's published
+     content, in its own mounts. Neither brand's content can reach the
+     other's page: acme publishes none, so acme's mounts stay empty. */
+  const blocks = SHELL.publishedBlocks(PROD_BRANDS, 'jsk-1.com');
+  check('JSK1 publishes content that acme does not', Object.keys(blocks).length > 0, blocks);
+  let bakedOnlyInJsk1 = 0;
+  for (const p of shared) {
+    const slug = p.replace(/\.html$/, '');
+    const d = SHELL.bakedDelta(jsk1Shell.files[p], jsk1.files[p]);
+    check(p + ': the shell and the real build line up', d.aligned, d.detail);
+    if (blocks[slug]) {
+      bakedOnlyInJsk1++;
+      check(p + ': JSK1 bakes its published content into the mount',
+        d.aligned && d.changed.length === 1 && d.styles.length === 1 &&
+        d.changed[0].baked.indexOf('data-cms-baked="' + blocks[slug] + '"') > -1,
+        { changed: d.changed.map(c => c.line), styles: d.styles.length });
+      check(p + ': and acme\'s copy of that page carries none of it',
+        /data-cms-sections="[a-z0-9-]+"><\/div>/.test(acme.files[p]) &&
+        acme.files[p].indexOf('data-cms-baked') === -1);
+    } else {
+      check(p + ': neither brand publishes here, so both mounts stay empty',
+        d.aligned && d.changed.length === 0 &&
+        acme.files[p].indexOf('data-cms-baked') === -1);
+    }
+  }
+  check('every page JSK1 publishes was compared across the two brands',
+    bakedOnlyInJsk1 === Object.keys(blocks).length,
+    bakedOnlyInJsk1 + '/' + Object.keys(blocks).length);
 }
 
 /* ====================================================================

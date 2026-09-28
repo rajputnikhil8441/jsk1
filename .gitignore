@@ -2,3 +2,7 @@
 # Not committed in this phase: Phase 7 decides whether the deploy consumes it
 # from the repository or builds it on the runner.
 sites/
+
+# Assembled site output. Built by tools/build-site.js --out _site, which is
+# what the GitHub Pages deploy uploads. Built on the runner, never committed.
+_site/

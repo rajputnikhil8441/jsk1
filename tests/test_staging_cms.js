@@ -33,6 +33,7 @@ const { chromium } = require('playwright');
 
 const ROOT = path.resolve(__dirname, '..');
 const SITE = require(path.join(ROOT, 'tools', 'lib', 'sitekit.js'));
+const SHELL = require(path.join(__dirname, 'lib', 'pbshell.js'));
 const PROD_BRANDS = path.join(ROOT, 'brands');
 const TEMPLATES = path.join(ROOT, 'templates');
 
@@ -737,7 +738,16 @@ function serveAtOrigin(ctx, dir, log) {
       leak: /PZ9 Staging Round Trip|Playzone9/.test(document.documentElement.outerHTML)
     }));
     check('JSK1 reads its OWN row, not the staging one', j.siteId === 'playzone9', j.siteId);
-    check('JSK1 still resolves its own brand name', j.name === 'JSK1', j.name);
+    /* Its OWN name, whatever the brand layer says that is. The site can
+       rename itself in the CMS -- this assertion is about isolation, not
+       about a spelling -- so the expected value comes from the brand
+       layer being served, and what it must never be is the other
+       brand's. */
+    const jsk1Name = SHELL.readBrand(path.join(PROD_BRANDS, 'jsk-1.com', 'brand.js')).branding.siteName;
+    check('JSK1 still resolves its own brand name',
+      j.name === jsk1Name && !/playzone9|pz9/i.test(j.name), { got: j.name, expected: jsk1Name });
+    check('  and the name it resolved is a real one, not an empty fallback',
+      typeof jsk1Name === 'string' && jsk1Name.length > 1, jsk1Name);
     check('JSK1\'s header colour is untouched by the staging edit',
       j.hdr !== NEW_HDR, j.hdr);
     check('JSK1\'s title is its own', /JSK1/.test(j.title), j.title);
@@ -774,7 +784,12 @@ function serveAtOrigin(ctx, dir, log) {
     }
     check('no workflow deploys Playzone9 or writes a CNAME', true);
     const prod = decomment(fs.readFileSync(path.join(wf, 'static.yml'), 'utf8'));
-    check('the JSK1 deploy still serves the repository root', /path: '\.'/.test(prod));
+    /* It assembles JSK1's site and uploads that, rather than the repository
+       root. The claim this suite makes is the one below it: production is
+       JSK1's deploy and knows nothing about Playzone9. */
+    check('the JSK1 deploy still publishes JSK1 and only JSK1',
+      /run: node tools\/build-site\.js jsk-1\.com/.test(prod) &&
+      /path: '_site\/jsk-1\.com'/.test(prod), prod.match(/(run:|path:)[^\n]*/g));
     check('and still knows nothing about Playzone9', !/playzone9/i.test(prod));
   }
 
