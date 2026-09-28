@@ -87,8 +87,12 @@ jobs:
       # content into the HTML, generates robots.txt, and checks its own
       # output -- so a broken assembly fails here rather than being
       # published.
+      #
+      # --from-cms bakes THIS brand's published CMS record, read from its own
+      # row, so a content change needs no brand.js edit. It refuses rather
+      # than emptying pages.
       - name: Assemble the Playzone9 site
-        run: node tools/build-site.js playzone9.app --env staging --out _site
+        run: node tools/build-site.js playzone9.app --env staging --from-cms --out _site
 
       - name: Publish to the Playzone9 site repository
         if: steps.target.outputs.configured == 'true'

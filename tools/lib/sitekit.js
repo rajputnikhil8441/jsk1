@@ -105,8 +105,10 @@ function registeredBrands(sharedRoot) {
    half-assembled site behind. */
 function planSite(opts) {
     const sharedRoot = opts.sharedRoot;
+    /* opts.published, when the caller has read the brand's published CMS
+       record, is handed straight through: one bake, two possible sources. */
     const plan = kit.planBrand({ brandsDir: opts.brandsDir, templatesDir: opts.templatesDir,
-                                 id: opts.id, env: opts.env });
+                                 id: opts.id, env: opts.env, published: opts.published });
 
     const shared = [];
     for (const d of SHARED_DIRS) {

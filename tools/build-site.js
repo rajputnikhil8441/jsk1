@@ -22,9 +22,12 @@
    host serves, and for which domain, is not decided here.
    ============================================================ */
 
+const fs = require('fs');
 const path = require('path');
 const kit = require('./lib/brandkit.js');
 const site = require('./lib/sitekit.js');
+const pbbake = require('./lib/pbbake.js');
+const cmsrow = require('./lib/cmsrow.js');
 
 const ROOT = path.resolve(__dirname, '..');
 const TEMPLATES = path.join(ROOT, 'templates');
@@ -41,7 +44,88 @@ function opt(n, dflt) { const i = argv.indexOf(n); return i > -1 && argv[i + 1] 
 const BRANDS = path.resolve(ROOT, opt('--brands', 'brands'));
 const rel = p => path.relative(ROOT, p).split(path.sep).join('/');
 
-function main() {
+/* ============================================================
+   THE PUBLISHED CMS RECORD, FOR THE BRAND BEING BUILT
+   ------------------------------------------------------------
+   --from-cms makes the build read the brand's PUBLISHED row and bake what
+   it finds, so a content change reaches the HTML without anyone editing
+   brands/<id>/brand.js. --row FILE reads a captured payload instead,
+   which is how this path is tested and how a deploy can be replayed from
+   a known record.
+
+   WHICH ROW. The brand's own, and only ever its own: the serving hostname
+   goes through js/cms-config.js -- the same block that resolves it for a
+   visitor -- and the siteId that comes back is checked against the one the
+   brand declares. Two answers to "which brand is this?" is how one brand's
+   content ends up on another's site, so there is one answer and a refusal
+   if it disagrees.
+
+   IT FAILS RATHER THAN EMPTYING PAGES. Every way this can go wrong -- not
+   configured, unreachable, no row, a row for the wrong brand, a row that
+   publishes nothing where the committed layer publishes something -- stops
+   the build and says which brand and why. A deploy that quietly replaced
+   live content with empty mounts would be worse than no deploy.
+   ============================================================ */
+async function publishedForBrand(brand, rowFile, allowUnpublish) {
+    const warn = m => console.log('::warning::' + m);
+    const committed = brand.builder || {};
+    let row;
+
+    if (rowFile) {
+        let raw;
+        try {
+            raw = JSON.parse(fs.readFileSync(path.resolve(ROOT, rowFile), 'utf8'));
+        } catch (e) {
+            throw new kit.BrandError('Brand "' + brand.id + '": --row ' + rowFile +
+                ' could not be read: ' + e.message);
+        }
+        if (Array.isArray(raw)) raw = raw[0] || null;
+        row = raw ? { data: raw.data, updatedAt: raw.updated_at || raw.updatedAt } : { data: null };
+    } else {
+        const cfg = cmsrow.readConfig({ root: ROOT, brand: brand.domain, warn: warn });
+        if (!cfg.enabled || !cfg.siteId) {
+            throw new kit.BrandError('Brand "' + brand.id + '": --from-cms was asked for, but ' +
+                'js/cms-config.js does not configure remote storage for "' + brand.domain +
+                '". Refusing to build: the published content cannot be read, and baking the ' +
+                'committed layer instead would silently ship different content than the CMS has.');
+        }
+        if (cfg.siteId !== brand.siteId) {
+            throw new kit.BrandError('Brand "' + brand.id + '": js/cms-config.js resolves "' +
+                brand.domain + '" to row "' + cfg.siteId + '", but the brand declares row "' +
+                brand.siteId + '". Refusing to bake another brand\'s content into this site.');
+        }
+        row = await cmsrow.fetchRow(cfg);
+    }
+
+    if (!row || !row.data) {
+        throw new kit.BrandError('Brand "' + brand.id + '": the published CMS record could not ' +
+            'be read (' + ((row && row.why) || 'no row') + '). Refusing to build rather than ' +
+            'deploy HTML without the content the CMS has published.');
+    }
+
+    const published = pbbake.publishedFromRecord(row.data);
+
+    /* The one case that looks like success and is not: the row publishes
+       nothing for a page the committed layer publishes, so this build would
+       replace live content with an empty mount. Unpublishing IS legitimate,
+       so it is allowed explicitly rather than guessed at. */
+    const emptied = Object.keys(committed).filter(slug =>
+        !Object.prototype.hasOwnProperty.call(published, slug));
+    if (emptied.length && !allowUnpublish) {
+        throw new kit.BrandError('Brand "' + brand.id + '": the published CMS record has no Page ' +
+            'Builder content for ' + emptied.map(x => '"' + x + '"').join(', ') +
+            ', but the committed layer does. This build would replace that content with an empty ' +
+            'mount.\n\n  If the page really was unpublished, say so: --allow-unpublish.\n' +
+            '  If not, the row being read is not the one you think it is -- check the siteId for ' +
+            brand.domain + ' in js/cms-config.js.');
+    }
+
+    return { published: published, updatedAt: row.updatedAt || '',
+             source: rowFile ? rel(path.resolve(ROOT, rowFile)) : 'the published CMS row',
+             emptied: emptied };
+}
+
+async function main() {
     if (flag('--list') || !argv.length) {
         const brands = kit.listBrands(BRANDS);
         const registered = site.registeredBrands(ROOT) || [];
@@ -70,7 +154,7 @@ function main() {
        excluded before the brand id is chosen. Without this, --brands DIR made
        DIR the brand id. */
     const taken = new Set();
-    ['--env', '--out', '--brands'].forEach(f => {
+    ['--env', '--out', '--brands', '--row'].forEach(f => {
         const i = argv.indexOf(f);
         if (i > -1 && argv[i + 1]) taken.add(argv[i + 1]);
     });
@@ -78,8 +162,19 @@ function main() {
     const id = positional[0];
     if (!id) { console.error('No brand id given.'); return 2; }
 
+    /* --from-cms / --row: read this brand's published record first, and hand
+       the blocks to the plan. Its own row, checked, or the build refuses --
+       see publishedForBrand(). Without either flag nothing changes: the
+       committed layer is the source, offline and deterministic. */
+    const ROW_FILE = opt('--row', '');
+    let live = null;
+    if (flag('--from-cms') || ROW_FILE) {
+        live = await publishedForBrand(kit.loadBrand(BRANDS, id, env), ROW_FILE,
+                                      flag('--allow-unpublish'));
+    }
+
     const s = site.planSite({ brandsDir: BRANDS, templatesDir: TEMPLATES, sharedRoot: ROOT,
-                              id: id, env: env });
+                              id: id, env: env, published: live ? live.published : null });
     console.log('Brand    : ' + s.plan.brand.id + '  (name=' + s.plan.brand.name + ')');
     console.log('Env      : ' + s.plan.brand.env +
                 (s.plan.brand.noindex ? '   NOINDEX -- review host, never indexed' : ''));
@@ -107,6 +202,14 @@ function main() {
     /* Whether the committed build source could be verified. Printed next to
        what was baked, because the two answer one question together: what went
        into the HTML, and whether it is the artifact that was exported. */
+    /* Where the content in this HTML came from. First line anyone should
+       read when a page looks wrong. */
+    console.log('Content  : ' + (s.plan.brand.contentSource === 'cms'
+        ? 'the PUBLISHED CMS record via ' + live.source +
+          (live.updatedAt ? '   row updated ' + live.updatedAt : '') +
+          (live.emptied.length ? '   unpublished: ' + live.emptied.join(', ') : '')
+        : 'brands/' + s.plan.brand.id + '/brand.js   (the committed layer; pass --from-cms to bake ' +
+          'what the CMS has published)'));
     const bs = s.plan.brand.buildSource || {};
     const prov = bs.provenance || {};
     console.log('Source   : ' + (bs.status === 'ok'
@@ -120,12 +223,18 @@ function main() {
             ? (baked.length ? 'provenance not recorded (integrity not verified)'
                             : 'no published builder content to verify')
             : String(bs.status)) +
-        '   [integrity only -- freshness: node tools/check-published.js ' + s.plan.brand.id + ']');
+        (s.plan.brand.contentSource === 'cms'
+            ? '   [the FALLBACK layer only -- the baked content came from the row]'
+            : '   [integrity only -- freshness: node tools/check-published.js ' + s.plan.brand.id + ']'));
+    if (bs.warning) console.log('::warning::Brand "' + s.plan.brand.id + '": ' + bs.warning);
+    const cmsMode = s.plan.brand.contentSource === 'cms';
+    const whence = cmsMode ? 'the published CMS record'
+                           : 'brands/' + s.plan.brand.id + '/brand.js';
     console.log('Builder  : ' + (baked.length
         ? baked.map(x => x.slug + ' (' + x.sections +
             (x.sections === 1 ? ' section' : ' sections') + ')').join(', ') +
-          '   baked into the HTML from brands/' + s.plan.brand.id + '/brand.js'
-        : '(no published content in brands/' + s.plan.brand.id + '/brand.js)'));
+          '   baked into the HTML from ' + whence
+        : '(no published content in ' + whence + ')'));
     console.log('SEO      : ' + s.seo.join(', ') +
                 (s.plan.brand.noindex
                     ? '   (staging: blocks everything, no sitemap)'
@@ -157,9 +266,10 @@ function main() {
     return 0;
 }
 
-try {
-    process.exit(main());
-} catch (e) {
+/* main() is async now: --from-cms reads the row before it plans. A
+   BrandError is a refusal with a message the operator can act on, so it
+   exits 1 quietly; anything else is a bug and keeps its stack. */
+main().then(code => process.exit(code), e => {
     if (e instanceof kit.BrandError) { console.error('\n' + e.name + ': ' + e.message + '\n'); process.exit(1); }
     throw e;
-}
+});

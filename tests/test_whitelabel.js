@@ -293,8 +293,10 @@ const depCode = dep.split('\n').filter(l => !/^\s*#/.test(l)).join('\n');
 check('it runs on a push to main, like JSK1\'s', /push:\s*\n\s*branches: \["main"\]/.test(depCode));
 check('it can also be run by hand', /workflow_dispatch:/.test(depCode));
 check('it builds the brand with the SHARED build system',
-  /node tools\/build-site\.js playzone9\.app --env staging --out _site/.test(depCode),
+  /node tools\/build-site\.js playzone9\.app --env staging[^\n]*--out _site/.test(depCode),
   (depCode.match(/run: node[^\n]*/g) || []));
+check('and bakes that brand\'s PUBLISHED CMS record, not a committed snapshot',
+  /--from-cms/.test(depCode), (depCode.match(/run: node[^\n]*/g) || []));
 check('it publishes the assembled staging site', /_site\/playzones9\.com/.test(depCode));
 check('it uses a secret for the target repository, never a literal credential',
   /secrets\.PLAYZONE9_DEPLOY_TOKEN/.test(depCode) &&

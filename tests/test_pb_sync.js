@@ -469,8 +469,7 @@ function checkPublished(brandsDir, id, rowFile) {
     const kitSrc = fs.readFileSync(path.join(ROOT, 'tools', 'lib', 'brandkit.js'), 'utf8');
     const domSrc = fs.readFileSync(path.join(ROOT, 'tools', 'lib', 'minidom.js'), 'utf8');
     const siteSrc = fs.readFileSync(path.join(ROOT, 'tools', 'build-site.js'), 'utf8');
-    [['pbbake.js', bakeSrc], ['brandkit.js', kitSrc], ['minidom.js', domSrc],
-     ['build-site.js', siteSrc]].forEach(([name, src]) => {
+    [['pbbake.js', bakeSrc], ['brandkit.js', kitSrc], ['minidom.js', domSrc]].forEach(([name, src]) => {
       check('  ' + name + ' requires no http/https module',
         !/require\(['"](https?|node:https?)['"]\)/.test(src));
       check('  ' + name + ' does not use the row reader',
@@ -478,6 +477,25 @@ function checkPublished(brandsDir, id, rowFile) {
       check('  ' + name + ' contains no fetch call',
         !/\bfetch\s*\(/.test(src) || /fetch: \(\) => new Promise/.test(src));
     });
+
+    /* build-site.js is no longer on that list, and deliberately: it gained
+       --from-cms, which reads the brand's published record so a content
+       change reaches the HTML without an export and a commit
+       (tests/test_cms_bake.js). The claim this section makes is narrower
+       than it was and still the one that matters -- the BAKE is offline, and
+       a build that is not asked to read the CMS does not:
+
+         - the reader is required, but only reached behind the flag;
+         - the default build above already ran with the reader replaced by
+           one that reports failure, and produced the same HTML;
+         - nothing on the bake path itself can reach the network at all. */
+    check('  build-site.js requires no http/https module directly',
+      !/require\(['"](https?|node:https?)['"]\)/.test(siteSrc));
+    check('  it reads the row ONLY when asked to',
+      /flag\('--from-cms'\)/.test(siteSrc) &&
+      /if \(flag\('--from-cms'\) \|\| ROW_FILE\)/.test(siteSrc), 'the fetch is not behind the flag');
+    check('  and the default build is the committed layer',
+      /contentSource === 'cms'/.test(fs.readFileSync(path.join(ROOT, 'tools', 'lib', 'brandkit.js'), 'utf8')));
 
     /* Deterministic: same commit, same bytes. */
     const d1 = path.join(tmp, 'det1'), d2 = path.join(tmp, 'det2');

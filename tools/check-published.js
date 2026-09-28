@@ -57,19 +57,12 @@ const ROW_FILE = opt('--row', '');
 function log(m) { process.stdout.write(m + '\n'); }
 function fail(m) { process.stdout.write('::error::' + m + '\n'); }
 
-/* The published builder blocks in an arbitrary record, by the same test the
-   bake and the admin apply. A record is a record whether it came from a file
-   or from the wire. */
-function publishedFrom(data) {
-    const out = {};
-    if (!data || typeof data !== 'object' || !data.pages || typeof data.pages !== 'object') return out;
-    Object.keys(data.pages).forEach(slug => {
-        const b = (data.pages[slug] || {}).builder;
-        if (!b || b.status !== 'published' || !Array.isArray(b.sections)) return;
-        out[slug] = { sections: b.sections, schemaVersion: b.schemaVersion };
-    });
-    return out;
-}
+/* The published builder blocks in a row, from the ONE reader in
+   tools/lib/pbbake.js -- the same function the build calls when it bakes
+   from the CMS. This file used to carry its own copy of it; two answers to
+   "what counts as published" is exactly the drift this check exists to
+   catch. */
+const publishedFrom = pbbake.publishedFromRecord;
 
 async function main() {
     const taken = new Set();
