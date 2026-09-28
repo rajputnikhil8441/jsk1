@@ -154,6 +154,23 @@ function publishedSections(brandJsText) {
     return out;
 }
 
+/* The published builder blocks in an arbitrary RECORD -- a Supabase row's
+   `data`, or any object of the same shape -- by the same test
+   publishedSections() applies to a committed layer. A record is a record
+   whether it arrived as a file or over the wire, and having one function
+   for both is what stops the build and the freshness check from ever
+   disagreeing about what "published" means. */
+function publishedFromRecord(data) {
+    const out = {};
+    if (!data || typeof data !== 'object' || !data.pages || typeof data.pages !== 'object') return out;
+    Object.keys(data.pages).forEach(slug => {
+        const b = (data.pages[slug] || {}).builder;
+        if (!b || b.status !== 'published' || !Array.isArray(b.sections)) return;
+        out[slug] = { sections: b.sections, schemaVersion: b.schemaVersion };
+    });
+    return out;
+}
+
 /* One section array -> the markup and the scoped CSS the runtime produces.
 
    Upgraded through the engine's own migration chain first, so a block saved
@@ -286,6 +303,7 @@ function verifyBuildSource(sharedRoot, brandJsText, expect) {
 module.exports = {
     loadEngine: loadEngine,
     publishedSections: publishedSections,
+    publishedFromRecord: publishedFromRecord,
     readProvenance: readProvenance,
     fingerprint: fingerprint,
     verifyBuildSource: verifyBuildSource,

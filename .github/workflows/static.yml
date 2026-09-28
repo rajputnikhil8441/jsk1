@@ -45,8 +45,14 @@ jobs:
       # publishing an unverified site, which is also why the old prune step is
       # gone: the assembler emits only site files, so there is nothing to
       # remove.
+      # --from-cms reads THIS brand's published CMS record and bakes what it
+      # finds, so a content change reaches the HTML without anyone editing
+      # brands/<id>/brand.js. It refuses rather than emptying pages: an
+      # unreachable row, a row for the wrong brand, or a row that publishes
+      # nothing where the committed layer publishes something all stop the
+      # deploy with a message naming the brand and the reason.
       - name: Assemble the site
-        run: node tools/build-site.js jsk-1.com --out _site
+        run: node tools/build-site.js jsk-1.com --from-cms --out _site
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

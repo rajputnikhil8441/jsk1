@@ -651,8 +651,43 @@ function planBrand(opts) {
        ------------------------------------------------------------ */
     const guard = verifyBuildSource(brand);
     brand.buildSource = { status: guard.status, provenance: guard.provenance };
+
+    /* ------------------------------------------------------------
+       WHERE THE PUBLISHED SECTIONS COME FROM
+       ------------------------------------------------------------
+       By default: brands/<id>/brand.js, the committed layer. Offline,
+       deterministic, and what every test and local build uses.
+
+       With opts.published: the caller has already read the brand's
+       PUBLISHED CMS record and hands the blocks over. tools/build-site.js
+       --from-cms does that, which is how a content change reaches the HTML
+       without anyone editing brand.js. The caller owns the fetching and its
+       failures; this only decides which set gets baked, so there is one
+       bake, not two.
+
+       Nothing here knows a brand. Whoever is being built gets their own
+       record, because the caller fetched it for that brand's own row.
+       ------------------------------------------------------------ */
+    if (opts.published && typeof opts.published === 'object') {
+        brand.builder = opts.published;
+        brand.contentSource = 'cms';
+    } else {
+        brand.contentSource = 'committed';
+    }
+
     if (guard.status === 'mismatch') {
-        throw new BrandError(buildSourceError(brand, guard));
+        /* In CMS mode the committed layer is no longer what gets baked, so a
+           mismatch there is not a reason to refuse the content the row just
+           supplied. It still matters -- js/brand.js ships to visitors as the
+           pre-row fallback -- so it is reported rather than dropped. */
+        if (brand.contentSource === 'cms') {
+            brand.buildSource.warning = 'the committed brand layer does not match its recorded ' +
+                'export, so the FALLBACK js/brand.js this build ships is not the exported ' +
+                'artifact. The content baked into the HTML came from the published CMS record ' +
+                'and is unaffected.';
+        } else {
+            throw new BrandError(buildSourceError(brand, guard));
+        }
     }
 
     const available = fs.existsSync(path.join(templatesDir, 'pages'))

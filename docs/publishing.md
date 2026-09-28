@@ -328,10 +328,47 @@ ships the brand layer unchanged, the root copy still matches its Phase 0
 fixture, and every key the shipped layer provides is still present in the brand
 layer the build ships.
 
-**The build never reads Supabase.** It would stop being deterministic: the same
-commit would produce different HTML depending on when it ran and whether the
-network was up, and CI here cannot reach Supabase anyway. Two builds of the same
-commit produce byte-identical HTML, and there is a test for that.
+That is the DEFAULT source, and the only one a local build or a test uses: no
+network, and two builds of one commit produce byte-identical HTML.
+
+#### `--from-cms`: baking what the CMS has published
+
+The deploy passes `--from-cms`, which reads the brand's **published record**
+and bakes that instead. It is the same record in the same shape, through the
+same renderer — a second SOURCE, not a second bake — and it is what removes the
+export-and-commit step from an ordinary content change:
+
+```
+CMS publish  ->  deploy  ->  build-site.js --from-cms  ->  HTML contains the content
+```
+
+The trade is deliberate. A build that reads the row is no longer a pure function
+of the commit; it is a function of the commit *and* what is published when it
+runs. That is the point — the content is supposed to be live — but it means the
+failure modes are new, and all of them are quiet ones that would replace a live
+page with an empty mount. Every one of them **stops the build**:
+
+| What | What happens |
+| --- | --- |
+| remote storage not configured for the brand's host | refuses; will not fall back to the committed layer, which would ship different content than the CMS has |
+| `js/cms-config.js` resolves the host to a different row than the brand declares | refuses — *"Refusing to bake another brand's content into this site"* |
+| the row cannot be read, or has no data | refuses rather than deploying HTML without the published content |
+| the row publishes nothing for a page the committed layer publishes | refuses, names the pages, and says how to proceed |
+
+That last one is the important one: unpublishing a page is legitimate, so it is
+allowed **explicitly** with `--allow-unpublish` rather than guessed at. Neither
+deploy workflow passes it, so an unexpectedly empty row stops the deploy instead
+of blanking production.
+
+`--row FILE` reads a captured payload instead of fetching, which is how
+`tests/test_cms_bake.js` drives this path with no network and how a deploy can be
+replayed from a known record.
+
+**The committed layer still ships**, as `js/brand.js`, and is still what a
+visitor's browser falls back to before the row loads. In `--from-cms` mode the
+integrity guard therefore reports on it rather than failing the build: the
+content that was baked came from the row and is unaffected by it. The build says
+which source it used on its own `Content :` line, first thing.
 
 ### The rule when the row and the commit disagree
 
@@ -358,7 +395,7 @@ empty div.
 
 ```yaml
 - name: Assemble the site
-  run: node tools/build-site.js jsk-1.com --out _site
+  run: node tools/build-site.js jsk-1.com --from-cms --out _site
 - name: Upload artifact
   uses: actions/upload-pages-artifact@v3
   with:
@@ -555,13 +592,17 @@ Publishing in `/admin` is live immediately for anyone running JavaScript. For th
 static HTML — what a crawler without JavaScript reads — a publish is not finished
 until the build source is updated:
 
-> publish → *Backup & Restore → Download brand defaults* → commit
-> `brands/<id>/brand.js` → deploy
+> publish → deploy
 
-The commit updates `brands/<id>/brand.js` **only**. The repository-root
-`js/brand.js` is a different file with a different job (see *It is not the same
-file as the repository root's `js/brand.js`* above), and no `.html` file is
-touched at all.
+That is the whole loop now. The deploy reads the published record itself
+(`--from-cms`), so an ordinary content change needs **no export, no commit and
+no `brand.js` edit** — and no `.html` file is touched at any point, because the
+pages are rendered from `templates/pages/` on every build.
+
+Exporting and committing `brands/<id>/brand.js` is still worth doing, but for a
+different reason: it is the fallback a visitor's browser uses before the row
+loads, and the source a build uses without `--from-cms`. It is no longer on the
+critical path for publishing.
 
 Part 1 guarantees that whatever you committed is what was exported. Part 2, when
 you run it, tells you whether that export is still what is published. Neither
