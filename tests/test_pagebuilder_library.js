@@ -495,7 +495,16 @@ const RICH = {
       return out;
     });
 
-    check('the registry offers six templates', r.list.length === 6, r.list.map(t => t.id));
+    /* Counted as "more than one and all of them sound" rather than to a
+       literal: the checks below already assert that EVERY template in the
+       registry has a name, a description, a version, the section and element
+       counts it claims, and only types the renderer knows -- so a new one is
+       held to all of that, and the number it brings the total to is not a
+       fact worth failing on. */
+    check('the registry offers several templates', r.list.length >= 6, r.list.map(t => t.id));
+    check('  and the two Phase 2B starters are among them',
+      ['pricing', 'showcase'].every(id => r.list.some(t => t.id === id)),
+      r.list.map(t => t.id));
     check('with unique ids', r.uniqueIds, r.list.map(t => t.id));
     check('each with a name, a description and a version', r.allDescribed, r.list);
     check('every template instantiates cleanly, with valid types throughout',

@@ -1033,6 +1033,141 @@ console.log('\n===== ONE FIXTURE, THREE BRANDS, THREE SETS OF SEO =====');
 }
 
 /* ====================================================================
+   16b. THE PHASE 2B ELEMENTS, THROUGH THREE BRANDS
+   --------------------------------------------------------------------
+   The elements added in Phase 2B are shared code, so the question is the
+   same one section 16 asks of the SEO chain: does one fixture, built for
+   three brands, come out as three brand-correct pages with nothing of each
+   other in them?
+
+   What SHOULD be identical across brands is asserted to be identical -- an
+   element's markup is the renderer's, not a brand's -- and what should
+   differ is asserted to differ. A test that only checked for the absence of
+   the word "JSK1" would pass on a build that produced nothing at all.
+   ==================================================================== */
+console.log('\n===== PHASE 2B ELEMENTS: ONE FIXTURE, THREE BRANDS =====');
+{
+  const PBSLUG = 'phase2b-fixture';
+  /* Every element added in this phase, plus a styled container, in one
+     page. Nothing in it names a brand, a domain or a site id. */
+  const pbEls = [
+    { id: 'x_tm', type: 'testimonials', style: {}, responsive: {}, content: { items: [
+        { quote: 'A quote nobody owns', name: 'A name', role: 'A role' }] } },
+    { id: 'x_st', type: 'stats', style: {}, responsive: {}, content: { items: [
+        { value: '0', label: 'Counts nothing' }] } },
+    { id: 'x_pl', type: 'plans', style: {}, responsive: {}, content: { items: [
+        { title: 'A plan', price: '0', f1: 'A feature', ctaText: 'Go', ctaHref: 'contact.html' }] } },
+    { id: 'x_ga', type: 'gallery', style: {}, responsive: {}, content: { items: [
+        { src: 'assets/images/logo.png', alt: 'An image', caption: 'A caption' }] } },
+    { id: 'x_pg', type: 'progress', style: {}, responsive: {},
+      content: { label: 'A label', value: '40', max: '100' } },
+    { id: 'x_tb', type: 'tabs', style: {}, responsive: {}, content: { items: [
+        { label: 'One', text: 'First panel' }, { label: 'Two', text: 'Second panel' }] } },
+    { id: 'x_cr', type: 'carousel', style: {}, responsive: {}, content: { items: [
+        { title: 'Slide one', text: 'first' }, { title: 'Slide two', text: 'second' }] } },
+    { id: 'x_vd', type: 'video', style: {}, responsive: {},
+      content: { url: 'https://youtu.be/dQw4w9WgXcQ', title: 'A video' } },
+    { id: 'x_cols', type: 'columns', style: { columns: '2' }, responsive: {},
+      content: { columns: [
+        { style: { direction: 'row', justify: 'between', bg: '#101010', padding: '12' },
+          responsive: { mobile: { direction: 'column' } },
+          elements: [{ id: 'x_in', type: 'text', style: {}, responsive: {},
+                       content: { text: 'In a styled container' } }] },
+        { visibility: { mobile: false },
+          elements: [{ id: 'x_in2', type: 'text', style: {}, responsive: {},
+                       content: { text: 'In a container hidden on mobile' } }] }
+      ] } }
+  ];
+  const pbBlock = { schemaVersion: 2, status: 'published', updatedAt: '2026-10-01',
+    sections: [{ id: 'x_sec', type: 'text', enabled: true,
+      visibility: { desktop: true, tablet: true, mobile: true },
+      style: {}, responsive: {}, elements: pbEls }] };
+
+  const troot2 = mktmp('pb2b-third');
+  const tbrands2 = path.join(troot2, 'brands');
+  fs.cpSync(path.join(__dirname, 'fixtures', 'brands'), tbrands2, { recursive: true });
+  const tid2 = fs.readdirSync(tbrands2, { withFileTypes: true })
+    .filter(e => e.isDirectory()).map(e => e.name).sort()[0];
+  {
+    const seo = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools', 'seo-config.json'), 'utf8'));
+    seo.seo = seo.seo || {};
+    seo.seo.baseUrl = 'https://' + tid2;
+    seo.seo.siteName = 'Third';
+    fs.writeFileSync(path.join(tbrands2, tid2, 'seo-config.json'), JSON.stringify(seo, null, 2) + '\n');
+  }
+
+  const got = [];
+  for (const t of [{ id: A.id, env: A.env, brands: path.join(ROOT, 'brands'), out: A.out },
+                   { id: B.id, env: B.env, brands: path.join(ROOT, 'brands'), out: B.out },
+                   { id: tid2, env: [], brands: tbrands2, out: tid2 }]) {
+    const dir = mktmp('pb2b-build');
+    const row = writeFullRow(path.join(ROWS, 'pb2b-' + t.out + '.json'), t.brands, t.id,
+      Object.assign(rowFor2(t.brands, t.id),
+        { [PBSLUG]: cmsPage(PBSLUG, 'Phase 2B Fixture', { builder: pbBlock }) }));
+    const r = build([t.id, '--brands', rel(t.brands)].concat(t.env,
+      ['--row', rel(row), '--out', dir]));
+    check(t.id + ': builds a page carrying every Phase 2B element', r.ok, r.out.slice(-600));
+    const f = path.join(dir, t.out, PBSLUG + '.html');
+    const h = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '';
+    check(t.id + ':   the page exists and is not empty', h.length > 1000, h.length);
+    /* The words, in the static HTML, for this brand. */
+    check(t.id + ':   every element put its content in the HTML',
+      ['A quote nobody owns', 'Counts nothing', 'A plan', 'A caption', 'A label',
+       'First panel', 'Second panel', 'first', 'second', 'In a styled container']
+        .every(w => h.indexOf(w) > -1),
+      ['A quote nobody owns', 'Counts nothing', 'A plan', 'A caption', 'A label',
+       'First panel', 'Second panel', 'In a styled container'].filter(w => h.indexOf(w) === -1));
+    got.push({ id: t.id, out: t.out, html: h });
+  }
+
+  check('no brand\u2019s page mentions another brand\u2019s domain',
+    got.every(s => got.filter(o => o.out !== s.out).every(o => s.html.indexOf(o.out) === -1)),
+    got.map(s => s.out));
+
+  /* An element's markup belongs to the renderer, so the parts that carry no
+     brand data must come out identical for all three. */
+  const slice = (h, re) => (h.match(re) || [''])[0];
+  const EL_SHAPES = [
+    ['testimonial', /<figure class="pb-tm">[\s\S]*?<\/figure>/],
+    ['stat', /<div class="pb-stat">[\s\S]*?<\/div><\/div>/],
+    ['gallery item', /<figure class="pb-gal-item">[\s\S]*?<\/figure>/],
+    ['progress', /<div class="pb-el pb-progress"[\s\S]*?<\/progress><\/div>/],
+    ['tablist', /<div class="pb-tablist"[\s\S]*?<\/div>/],
+    ['carousel strip', /<div class="pb-car-strip"[\s\S]*?<\/div><\/div>/],
+    ['video iframe', /<iframe class="pb-video-embed"[^>]*>/],
+    ['styled container', /<div class="pb-column" data-col="x_cols-0">[\s\S]*?<\/div>/]
+  ];
+  EL_SHAPES.forEach(function (pair) {
+    const parts = got.map(g => slice(g.html, pair[1]));
+    check(pair[0] + ' markup is identical for all three brands',
+      parts[0].length > 0 && parts.every(p => p === parts[0]),
+      parts.map(p => p.slice(0, 90)));
+  });
+
+  /* The container's generated CSS is addressed by position, so it has to be
+     the same rule for every brand too -- and it has to be THERE. */
+  check('the styled container\u2019s CSS is baked for every brand',
+    got.every(g => g.html.indexOf('.pb-columns .pb-column[data-col="x_cols-0"]') > -1),
+    got.map(g => g.html.indexOf('.pb-columns .pb-column[data-col="x_cols-0"]')));
+  check('  including its per-breakpoint override',
+    got.every(g => /@media \(max-width:768px\)\{\.pb-columns \.pb-column\[data-col="x_cols-0"\]/
+      .test(g.html)), true);
+  check('  and the container hidden on mobile is marked, not removed',
+    got.every(g => g.html.indexOf('pb-hide-mobile') > -1 &&
+                   g.html.indexOf('In a container hidden on mobile') > -1), true);
+
+  /* The video embed is built from an id, so it cannot pick up a brand. */
+  check('the video embed points at the allow-listed host for every brand',
+    got.every(g => g.html.indexOf('src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"') > -1),
+    true);
+
+  /* And no brand needed a copy of anything to get all of this. */
+  check('the third brand needed no code of its own',
+    !walk(path.join(tbrands2, tid2)).some(f => /(cms|seo-files|cms-page|brandkit)\.(js|html)$/.test(f)),
+    walk(path.join(tbrands2, tid2)));
+}
+
+/* ====================================================================
    17. DRAFT AND PUBLISHED
    --------------------------------------------------------------------
    A page record now says whether it is live. Three rules, and the

@@ -4902,6 +4902,100 @@
                   tEl('notice', { text: 'Tell readers where to go if their question is not here.',
                                   variant: 'info', icon: 'question' })
               ])
+          ]; } },
+
+        /* ---- Phase 2B ----
+
+           Two more starters, added to this registry rather than beside it.
+           They exist for a reason beyond saving an author some clicks: a
+           template is the only place in this file that shows how the
+           elements are meant to go TOGETHER, and the elements added in this
+           phase had nowhere demonstrating that.
+
+           Same rules as every template above. Placeholder copy only --
+           nothing here states a fact, quotes a real person, names a price
+           or claims a number, because a template that ships an invented
+           statistic is a template that publishes one. No h1, for the reason
+           given above the registry. Every link is '#'. */
+
+        { id: 'pricing', name: 'Pricing page', version: PB_TEMPLATE_VERSION,
+          description: 'A heading, three plans to compare, a FAQ and a closing banner.',
+          sections: function () { return [
+              tSec('text', [
+                  tEl('heading', { text: 'Choose a plan', level: 'h2' }, { typography: '@h1' }),
+                  tEl('text', { text: 'A sentence saying what the plans have in common.' })
+              ]),
+              tSec('text', [
+                  tEl('plans', { items: [
+                      { title: 'First plan', subtitle: 'Who it suits', price: '0', period: '/mo',
+                        f1: 'What is included', f2: 'And this', f3: 'And this',
+                        ctaText: 'Choose', ctaHref: '#' },
+                      { title: 'Second plan', subtitle: 'Who it suits', price: '00', period: '/mo',
+                        highlight: true,
+                        f1: 'Everything above', f2: 'Plus this', f3: 'And this',
+                        ctaText: 'Choose', ctaHref: '#' },
+                      { title: 'Third plan', subtitle: 'Who it suits', price: '000', period: '/mo',
+                        f1: 'Everything above', f2: 'Plus this', f3: 'And this',
+                        ctaText: 'Choose', ctaHref: '#' }
+                  ] })
+              ]),
+              tSec('text', [
+                  tEl('heading', { text: 'Questions about the plans', level: 'h2' }),
+                  tEl('faq', { single: false, items: [
+                      { question: 'First question?', answer: 'Answer.' },
+                      { question: 'Second question?', answer: 'Answer.' }
+                  ] })
+              ]),
+              tSec('banner', [
+                  tEl('featureBox', { title: 'Still deciding?',
+                                      text: 'Say what to do next.',
+                                      linkText: 'Primary action', href: '#',
+                                      linkText2: 'Or ask a question', href2: '#' })
+              ])
+          ]; } },
+
+        { id: 'showcase', name: 'Showcase page', version: PB_TEMPLATE_VERSION,
+          description: 'A contents list, numbers, a gallery, quotes and a closing call to action.',
+          sections: function () { return [
+              tSec('text', [
+                  tEl('heading', { text: 'What this page shows', level: 'h2' },
+                      { typography: '@h1' }),
+                  tEl('text', { text: 'One or two sentences introducing it.' }),
+                  tEl('toc', { title: 'On this page', depth: 'h3' })
+              ]),
+              tSec('text', [
+                  tEl('heading', { text: 'By the numbers', level: 'h2' }),
+                  /* Zeroes, not plausible-looking figures: a placeholder a
+                     reader could mistake for a real statistic is worse than
+                     an obvious blank. */
+                  tEl('stats', { items: [
+                      { value: '0', label: 'What this counts' },
+                      { value: '0', label: 'And this' },
+                      { value: '0', label: 'And this' }
+                  ] })
+              ]),
+              tSec('text', [
+                  tEl('heading', { text: 'Pictures', level: 'h2' }),
+                  /* Deliberately empty: the gallery says what to add rather
+                     than shipping somebody else's photographs. */
+                  tEl('text', { text: 'Add images to the gallery below in Page Builder.' }),
+                  tEl('gallery', { items: [] })
+              ]),
+              tSec('text', [
+                  tEl('heading', { text: 'What people say', level: 'h2' }),
+                  tEl('testimonials', { items: [
+                      { quote: 'Replace this with something somebody actually said.',
+                        name: 'Their name', role: 'Their role' },
+                      { quote: 'And this with another.',
+                        name: 'Their name', role: 'Their role' }
+                  ] })
+              ]),
+              tSec('banner', [
+                  tEl('featureBox', { title: 'Next step',
+                                      text: 'Say what you want a reader to do.',
+                                      linkText: 'Primary action', href: '#',
+                                      linkText2: 'Secondary action', href2: '#' })
+              ])
           ]; } }
     ];
 
