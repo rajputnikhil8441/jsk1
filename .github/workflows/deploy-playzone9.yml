@@ -150,3 +150,28 @@ jobs:
           git commit -m "Playzone9 site built from ${GITHUB_REPOSITORY}@${GITHUB_SHA}"
           git push origin "HEAD:${branch}"
           echo "::notice::Published $(git ls-files | wc -l) file(s) to ${repo}@${branch}."
+
+      # VERIFY THE DEPLOYED HTML, when there is a URL to ask.
+      #
+      # The other site's deploy gets this for free: GitHub Pages hands its
+      # workflow the URL it deployed to. This one publishes to a repository
+      # that something else serves, so the address is not ours to know -- and
+      # guessing one would hard-code a domain into a white-label pipeline.
+      #
+      # So it is a repository VARIABLE, not a secret (there is nothing secret
+      # about a public address) and not a default. Unset, this step does not
+      # run and the deploy behaves exactly as before. Set, the same verifier
+      # the other site uses compares the served HTML, its SEO, its sitemap and
+      # its robots.txt with the artifact that was just published -- including
+      # that a review host stays noindex and serves no sitemap.
+      #
+      #   vars.PLAYZONE9_VERIFY_URL   e.g. https://<the host serving it>
+      - name: Verify the deployed HTML
+        if: steps.target.outputs.configured == 'true' && vars.PLAYZONE9_VERIFY_URL != ''
+        env:
+          VERIFY_URL: ${{ vars.PLAYZONE9_VERIFY_URL }}
+        run: |
+          set -eu
+          node tools/verify-deployed.js \
+            --site _site/playzones9.com \
+            --url "${VERIFY_URL}"

@@ -1186,6 +1186,166 @@ console.log('\n===== A PAGE SAYS WHETHER IT IS PUBLISHED =====');
       .test(fs.readFileSync(path.join(ROOT, 'js', 'admin.js'), 'utf8')));
 }
 
+/* ====================================================================
+   18. THE DEPLOYED SITE IS CHECKED, NOT ASSUMED
+   --------------------------------------------------------------------
+   One verifier, extended rather than duplicated: it already compared the
+   baked mounts in the served HTML with the artifact, and now compares the
+   SEO, the sitemap and robots.txt the same way. The ARTIFACT is the
+   expectation, so nothing in it knows a brand, a domain, a page or an SEO
+   value -- which is also why every assertion below is made about whichever
+   brand is being built.
+
+   --served reads the "response" from a directory, so these run offline and
+   execute no JavaScript, which is the property being asserted.
+   ==================================================================== */
+console.log('\n===== THE DEPLOYED HTML, SEO AND SITEMAP ARE VERIFIED =====');
+{
+  const verify = args => {
+    try {
+      return { code: 0, out: execFileSync(process.execPath,
+        [path.join(ROOT, 'tools', 'verify-deployed.js')].concat(args),
+        { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) };
+    } catch (e) { return { code: e.status, out: (e.stdout || '') + (e.stderr || '') }; }
+  };
+  const kinds = out => [...new Set((out.match(/\[[a-z-]+\]/g) || []))].sort().join(',');
+
+  /* A real site for each brand: one production host and one review host. */
+  const brandsDir = path.join(ROOT, 'brands');
+  const VSLUG = 'verify-fixture';
+  function siteFor(t) {
+    const dir = mktmp('verify');
+    const pages = Object.assign(rowFor2(t.brands, t.id), {
+      [VSLUG]: cmsPage(VSLUG, 'VERIFY FIXTURE', { status: 'published',
+        og: { title: '', description: '', image: 'assets/images/ssl.png' },
+        twitter: { title: '', description: '', image: '' },
+        builder: { status: 'published', schemaVersion: 2, updatedAt: '2026-10-01',
+                   sections: sections('VERIFY FIXTURE SECTION') } }) });
+    const row = writeFullRow(path.join(ROWS, 'verify-' + t.out + '.json'), t.brands, t.id, pages);
+    const r = build([t.id, '--brands', rel(t.brands)].concat(t.env, ['--row', rel(row), '--out', dir]));
+    return { r: r, dir: path.join(dir, t.out), out: t.out };
+  }
+
+  const prod = siteFor({ id: A.id, env: A.env, brands: brandsDir, out: A.out });
+  const review = siteFor({ id: B.id, env: B.env, brands: brandsDir, out: B.out });
+  check('a production site and a review site both build', prod.r.ok && review.r.ok,
+    [prod.r.out.slice(-200), review.r.out.slice(-200)]);
+
+  /* ---- the deployment that is correct ---- */
+  const okP = verify(['--site', prod.dir, '--served', prod.dir]);
+  check('a site serving what was built passes', okP.code === 0, okP.out.slice(-400));
+  check('  having checked every page, not only the ones with baked content',
+    /Checked\s*:\s*(\d+)\/\1 page\(s\)/.test(okP.out), (okP.out.match(/Checked.*/) || [''])[0]);
+  check('  and a real number of SEO values, not zero',
+    parseInt((okP.out.match(/Checked\s*:[^\n]*?(\d+) SEO value\(s\)/) || [, '0'])[1], 10) > 20,
+    (okP.out.match(/Checked.*/) || [''])[0]);
+  check('  the sitemap: every URL served and every URL a built page',
+    /sitemap\.xml\s+\d+ URL\(s\), each served and each a built page/.test(okP.out));
+  check('  robots.txt compared too', /robots\.txt\s+matches the artifact/.test(okP.out));
+  check('  and it says no JavaScript was executed',
+    /No JavaScript was executed/.test(okP.out));
+
+  const okR = verify(['--site', review.dir, '--served', review.dir]);
+  check('a review host serving what was built passes', okR.code === 0, okR.out.slice(-400));
+  check('  recognising that it blocks everything', /blocks everything -- a review host/.test(okR.out));
+  check('  and that publishing no sitemap is the point',
+    /absent from the artifact and not served/.test(okR.out));
+
+  /* ---- each failure state, told apart ---- */
+  const tamper = (from, fn) => {
+    const d = path.join(mktmp('served'), 'srv');
+    fs.cpSync(from, d, { recursive: true });
+    fn(d);
+    return d;
+  };
+  const rw = (f, a, b) => fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(a, b));
+
+  const stale = verify(['--site', prod.dir, '--attempts', '1', '--served',
+    tamper(prod.dir, d => rw(path.join(d, VSLUG + '.html'),
+      /<title([^>]*)>[^<]*/, '<title$1>A TITLE FROM AN EARLIER BUILD'))]);
+  check('a served page whose SEO is from an earlier build is STALE',
+    stale.code === 1 && kinds(stale.out) === '[stale]', [stale.code, kinds(stale.out)]);
+  check('  naming the field, with both values', /\[stale\].*<title>: built .*, served /.test(stale.out),
+    (stale.out.match(/\[stale\].*/) || [''])[0]);
+
+  const gone = verify(['--site', prod.dir, '--attempts', '1', '--served',
+    tamper(prod.dir, d => fs.rmSync(path.join(d, 'login.html')))]);
+  check('a generated page that is not served is MISSING-HTML',
+    gone.code === 2 && kinds(gone.out) === '[missing-html]', [gone.code, kinds(gone.out)]);
+  check('  and that is "could not check", not "wrong"', gone.code === 2);
+
+  const noSeo = verify(['--site', prod.dir, '--attempts', '1', '--served',
+    tamper(prod.dir, d => rw(path.join(d, VSLUG + '.html'), /<link rel="canonical"[^>]*>/, ''))]);
+  check('a served page missing a tag the artifact has is MISSING-SEO',
+    noSeo.code === 1 && /\[missing-seo\]/.test(noSeo.out), [noSeo.code, kinds(noSeo.out)]);
+  check('  naming which tag', /\[missing-seo\].*canonical is not in the served page/.test(noSeo.out));
+
+  const other = verify(['--site', prod.dir, '--attempts', '1', '--served',
+    tamper(prod.dir, d => rw(path.join(d, VSLUG + '.html'),
+      /rel="canonical" href="https:\/\/[^/]+\//, 'rel="canonical" href="https://not-this-brand.test/'))]);
+  check('a URL pointing at another host is CROSS-HOST',
+    other.code === 1 && /\[cross-host\]/.test(other.out), [other.code, kinds(other.out)]);
+  check('  naming the host it found and the one it expected',
+    /\[cross-host\].*points at not-this-brand\.test, not /.test(other.out),
+    (other.out.match(/\[cross-host\].*/) || [''])[0]);
+
+  const smap = verify(['--site', prod.dir, '--attempts', '1', '--served',
+    tamper(prod.dir, d => rw(path.join(d, 'sitemap.xml'), '</urlset>',
+      '  <url><loc>https://' + A.out + '/not-generated.html</loc></url>\n</urlset>'))]);
+  check('a sitemap that differs from the built one is a SITEMAP-MISMATCH',
+    smap.code === 1 && /\[sitemap-mismatch\]/.test(smap.out), [smap.code, kinds(smap.out)]);
+
+  const leak = verify(['--site', review.dir, '--attempts', '1', '--served',
+    tamper(review.dir, d => fs.writeFileSync(path.join(d, 'sitemap.xml'),
+      '<?xml version="1.0"?><urlset></urlset>'))]);
+  check('a review host serving a sitemap it should not is a NOINDEX-LEAK',
+    leak.code === 1 && /\[noindex-leak\]/.test(leak.out), [leak.code, kinds(leak.out)]);
+
+  const indexable = verify(['--site', review.dir, '--attempts', '1', '--served',
+    tamper(review.dir, d => rw(path.join(d, VSLUG + '.html'),
+      /content="noindex,nofollow"/, 'content="index,follow"'))]);
+  check('a review page served as indexable is a NOINDEX-LEAK too',
+    indexable.code === 1 && /\[noindex-leak\]/.test(indexable.out),
+    [indexable.code, kinds(indexable.out)]);
+
+  check('the summary counts the kinds it found',
+    /problem\(s\) with the deployed site: [a-z-]+ x\d+/.test(stale.out),
+    (stale.out.match(/problem\(s\) with.*/) || [''])[0]);
+
+  /* ---- brand-agnostic, and wired into the deploys ---- */
+  const tool = fs.readFileSync(path.join(ROOT, 'tools', 'verify-deployed.js'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+  check('the verifier hard-codes no brand, domain, page or SEO value',
+    !/jsk-?1|playzone|[a-z0-9-]+\.(?:com|app)\b/i.test(tool),
+    (tool.match(/jsk-?1|playzone|[a-z0-9-]+\.(?:com|app)\b/i) || [])[0]);
+  check('  and no production URL of its own: the caller supplies it',
+    /opt\('--url'/.test(tool) && !/https?:\/\/[a-z0-9-]+\./i.test(tool));
+  {
+    const wf = d => fs.readFileSync(path.join(ROOT, '.github', 'workflows', d), 'utf8')
+      .split('\n').filter(l => !/^\s*#/.test(l)).join('\n');
+    const prodWf = wf('static.yml'), pzWf = wf('deploy-playzone9.yml');
+    check('the production deploy verifies the URL it deployed to',
+      /verify-deployed\.js/.test(prodWf) &&
+      /--url "\$\{\{ steps\.deployment\.outputs\.page_url \}\}"/.test(prodWf));
+    check('the other deploy verifies too, when an address is configured',
+      /verify-deployed\.js/.test(pzWf) && /vars\.PLAYZONE9_VERIFY_URL != ''/.test(pzWf));
+    check('  through a variable, not a secret, and never printed',
+      !/secrets\.PLAYZONE9_VERIFY/.test(pzWf) && !/echo[^\n]*VERIFY_URL/.test(pzWf));
+    check('there is exactly one verifier, not two',
+      (prodWf.match(/verify-deployed\.js/g) || []).length === 1 &&
+      (pzWf.match(/verify-deployed\.js/g) || []).length === 1 &&
+      !fs.readdirSync(path.join(ROOT, 'tools')).some(f => /verify.*deploy/.test(f) && f !== 'verify-deployed.js'));
+    /* Every trigger Step 2 added, and the deploys' separation, still there. */
+    ['push:', 'repository_dispatch:', 'schedule:', 'workflow_dispatch:'].forEach(t => {
+      check('static.yml still has ' + t, prodWf.indexOf(t) > -1);
+      check('deploy-playzone9.yml still has ' + t, pzWf.indexOf(t) > -1);
+    });
+    check('and neither deploy gained a permission',
+      /permissions:\s*\n\s*contents: read\s*\n\s*pages: write\s*\n\s*id-token: write/.test(prodWf) &&
+      /permissions:\s*\n\s*contents: read\s*\n/.test(pzWf));
+  }
+}
+
 tmpRoots.forEach(d => { try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) {} });
 
 console.log(`\n==== ${pass} passed, ${fail} failed ====`);
