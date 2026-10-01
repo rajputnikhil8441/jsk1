@@ -31,6 +31,12 @@ async function page(b, opts) {
   opts = opts || {};
   const ctx = await b.newContext({ viewport: opts.viewport || { width: 1280, height: 900 } });
   const seen = [], sent = [];
+  /* An extra route, installed BEFORE the page navigates. Added for the video
+     cases: a route added after page() returns is too late, the frame has
+     already gone to the real host, and what comes back is the egress
+     proxy's error page inside a sandbox -- which throws on localStorage from
+     an opaque origin and looks like a failure of the element. */
+  if (opts.route) await ctx.route(opts.route[0], opts.route[1]);
   await ctx.route('**', r => {
     const u = r.request().url();
     if (/supabase\.co/.test(u)) { seen.push('supabase:' + r.request().method());
@@ -60,10 +66,22 @@ async function page(b, opts) {
   p.on('pageerror', e => errs.push('pageerror: ' + String(e).slice(0, 120)));
   p.on('console', m => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text()))
     errs.push(m.text().slice(0, 120)); });
+  /* ONLY THE TOP DOCUMENT. addInitScript runs in EVERY frame, and the CMS
+     state belongs to the page, never to something the page embeds -- so a
+     subframe both does not want this and, if it is sandboxed and
+     cross-origin, cannot have it: reading localStorage there throws a
+     SecurityError, which arrives as a pageerror and reads as a failure of
+     whatever put the frame on the page. The video element's own tests found
+     this. Guarded on being the top frame rather than wrapped in a try, so a
+     storage error that IS real still fails loudly. */
   if (opts.raw !== undefined) {
-    await p.addInitScript(r => { localStorage.setItem('whiteLabelCMS', r); }, opts.raw);
+    await p.addInitScript(r => {
+      if (window.top !== window) return;
+      localStorage.setItem('whiteLabelCMS', r);
+    }, opts.raw);
   } else if (opts.sections || opts.state) {
     await p.addInitScript(a => {
+      if (window.top !== window) return;
       const raw = JSON.parse(localStorage.getItem('whiteLabelCMS') || '{}');
       if (a.state) Object.assign(raw, a.state);
       if (a.sections) raw.pages = Object.assign(raw.pages || {}, { about: Object.assign(
@@ -363,7 +381,9 @@ const shot = p => p.evaluate(() => {
   {
     const TYPES = ['heading', 'text', 'image', 'button', 'card', 'columns', 'divider',
                    'spacer', 'icon', 'notice', 'featureBox', 'faq', 'socialLinks',
-                   'list', 'table', 'toc'];
+                   'list', 'table', 'toc',
+                   'testimonials', 'stats', 'plans', 'gallery', 'progress',
+                   'tabs', 'carousel', 'video'];
     const HOSTILE = {
       text: '<img src=x onerror=window.__pwned=1>', level: 'javascript:',
       src: 'javascript:alert(1)', alt: '"><script>window.__pwned=2</script>',
@@ -379,6 +399,21 @@ const shot = p => p.evaluate(() => {
       cols: 'constructor', caption: '<script>window.__pwned=9</script>', ordered: 'yes',
       header: 'maybe', depth: '__proto__', tag: 'script', rich: 'yes',
       titleLevel: 'toString',
+      /* Phase 2B content keys. headingLevel is an allow-listed name, the
+         progress numbers are not numbers, and the second action's address
+         is a scheme pbUrl() refuses. */
+      headingLevel: 'constructor', captions: 'yes', showValue: 'maybe',
+      value: 'valueOf', max: '-0', label: '<b>x</b>',
+      linkText2: 'x', href2: 'javascript:window.__pwned=7',
+      quote: '<script>window.__pwned=8</script>', prefix: 'x', suffix: 'x',
+      role: 'x', company: 'x', period: 'x', subtitle: 'x',
+      ctaText: 'x', ctaHref: 'data:text/html,<script>x</script>',
+      f1: '<img src=x onerror=window.__pwned=10>', caption: 'x',
+      /* The video address is the one field that decides whether a third
+         party's code runs in the page, so it is given every shape that
+         should NOT become an iframe. */
+      url: 'https://evil.example/embed?u=https://www.youtube.com/watch?v=abcdefg',
+      interval: 'constructor', autoplay: 'yes',
       items: [{ question: '<script>q</script>', answer: 'a' },
               { platform: 'constructor', url: 'javascript:x' },
               { text: '<img src=x onerror=window.__pwned=5>' },
@@ -799,6 +834,185 @@ const shot = p => p.evaluate(() => {
     check('the homepage still has no builder mount at all', home.mounts === 0, home);
     check('and exactly one H1', home.h1 === 1, home);
     await r.ctx.close();
+  }
+
+  /* ================================================================
+     TABS AND A CAROUSEL, FROM THE KEYBOARD  (Phase 2B)
+     ----------------------------------------------------------------
+     ARIA attributes being present proves nothing. These drive the two
+     interactive elements the way a person without a mouse would, and
+     assert what actually happens: which panel is shown, where focus went,
+     and that the content was in the HTML before any of it.
+     ================================================================ */
+  console.log('\n===== TABS WORK FROM THE KEYBOARD, AND THEIR CONTENT IS IN THE HTML =====');
+  {
+    const r = await page(b, { sections: [sec('ts', 'text', [
+      el('tb', 'tabs', { items: [
+        { label: 'Alpha', text: 'Content of alpha' },
+        { label: 'Beta', text: 'Content of beta' },
+        { label: 'Gamma', text: 'Content of gamma' } ] })])] });
+
+    /* Before touching anything: every panel's words are in the source. */
+    const raw = await r.p.content();
+    check('every panel\u2019s text is in the HTML, not only the open one',
+      raw.includes('Content of alpha') && raw.includes('Content of beta') &&
+      raw.includes('Content of gamma'), true);
+
+    const state = () => r.p.evaluate(() => ({
+      sel: [...document.querySelectorAll('.pb-tab')].map(t => t.getAttribute('aria-selected')),
+      tabindex: [...document.querySelectorAll('.pb-tab')].map(t => t.getAttribute('tabindex')),
+      shown: [...document.querySelectorAll('.pb-tabpanel')].map(p => !p.hidden),
+      focused: document.activeElement ? document.activeElement.textContent : null,
+      /* every tab points at a panel that exists, and back again */
+      wired: [...document.querySelectorAll('.pb-tab')].every(t => {
+        const p = document.getElementById(t.getAttribute('aria-controls'));
+        return p && p.getAttribute('role') === 'tabpanel' &&
+               p.getAttribute('aria-labelledby') === t.id;
+      }),
+      list: (document.querySelector('.pb-tablist') || {}).getAttribute
+        ? document.querySelector('.pb-tablist').getAttribute('role') : null
+    }));
+
+    let s = await state();
+    check('the first tab is selected and the others are not',
+      s.sel.join(',') === 'true,false,false', s.sel);
+    check('  only the selected tab is in the tab order',
+      s.tabindex.join(',') === '0,-1,-1', s.tabindex);
+    check('  only its panel is shown', s.shown.join(',') === 'true,false,false', s.shown);
+    check('  every tab and panel point at each other', s.wired, s.wired);
+    check('  and the list is a tablist', s.list === 'tablist', s.list);
+
+    /* Arrow keys, which is the whole point of a tablist. */
+    await r.p.focus('.pb-tab');
+    await r.p.keyboard.press('ArrowRight');
+    s = await state();
+    check('ArrowRight selects the next tab and moves focus with it',
+      s.sel.join(',') === 'false,true,false' && s.focused === 'Beta', s);
+    check('  and shows its panel', s.shown.join(',') === 'false,true,false', s.shown);
+    await r.p.keyboard.press('End');
+    s = await state();
+    check('End jumps to the last tab', s.sel.join(',') === 'false,false,true' &&
+      s.focused === 'Gamma', s);
+    await r.p.keyboard.press('ArrowRight');
+    s = await state();
+    check('  and ArrowRight from the last wraps to the first',
+      s.sel.join(',') === 'true,false,false' && s.focused === 'Alpha', s);
+    await r.p.keyboard.press('Home');
+    s = await state();
+    check('Home goes to the first', s.sel.join(',') === 'true,false,false', s.sel);
+
+    /* A click still works, and Space/Enter come free with a real button. */
+    await r.p.click('.pb-tab:nth-child(2)');
+    s = await state();
+    check('clicking a tab selects it too', s.sel.join(',') === 'false,true,false', s.sel);
+    check('no page errors', r.errs.length === 0, r.errs);
+    await r.ctx.close();
+  }
+
+  console.log('\n===== A CAROUSEL WORKS BEFORE ITS SCRIPT DOES =====');
+  {
+    const r = await page(b, { sections: [sec('cs', 'text', [
+      el('cr', 'carousel', { autoplay: true, interval: '2000', items: [
+        { title: 'Slide one', text: 'first' },
+        { title: 'Slide two', text: 'second' },
+        { title: 'Slide three', text: 'third' } ] })])] });
+
+    const raw = await r.p.content();
+    check('every slide\u2019s words are in the HTML',
+      raw.includes('first') && raw.includes('second') && raw.includes('third'), true);
+
+    const r2 = await r.p.evaluate(() => {
+      const strip = document.querySelector('.pb-car-strip');
+      const cs = getComputedStyle(strip);
+      return {
+        /* the strip scrolls and snaps with no JavaScript at all */
+        scrolls: cs.overflowX === 'auto' || cs.overflowX === 'scroll',
+        snaps: /mandatory|proximity/.test(cs.scrollSnapType),
+        reachable: strip.getAttribute('tabindex') === '0',
+        named: !!strip.getAttribute('aria-label'),
+        slides: document.querySelectorAll('.pb-car-slide').length,
+        /* controls exist and every one of them is named */
+        btns: [...document.querySelectorAll('.pb-car-btn')].map(x => x.getAttribute('aria-label')),
+        pausePressed: (document.querySelector('.pb-car-pause') || {}).getAttribute
+          ? document.querySelector('.pb-car-pause').getAttribute('aria-pressed') : null
+      };
+    });
+    check('the strip scrolls and snaps from CSS alone',
+      r2.scrolls && r2.snaps, r2);
+    check('  it is reachable from the keyboard and has a name',
+      r2.reachable && r2.named, r2);
+    check('  all three slides are there', r2.slides === 3, r2.slides);
+    check('  every control has an accessible name, none is a bare glyph',
+      r2.btns.length === 3 && r2.btns.every(Boolean), r2.btns);
+    check('  autoplay offers a pause control, as it must', r2.pausePressed !== null, r2);
+
+    /* Pressing pause reports itself as pressed, and says what it does now. */
+    await r.p.click('.pb-car-pause');
+    const r3 = await r.p.evaluate(() => ({
+      pressed: document.querySelector('.pb-car-pause').getAttribute('aria-pressed'),
+      label: document.querySelector('.pb-car-pause').getAttribute('aria-label')
+    }));
+    check('pausing is reported, and the label becomes Play',
+      r3.pressed === 'true' && /Play/i.test(r3.label), r3);
+
+    /* Next scrolls the strip rather than rewriting it. */
+    const before = await r.p.evaluate(() => document.querySelector('.pb-car-strip').scrollLeft);
+    await r.p.click('.pb-car-next');
+    await r.p.waitForTimeout(700);
+    const after = await r.p.evaluate(() => document.querySelector('.pb-car-strip').scrollLeft);
+    check('Next moves the strip along', after > before, { before, after });
+    check('  and the slides are still all in the DOM, not replaced',
+      (await r.p.evaluate(() => document.querySelectorAll('.pb-car-slide').length)) === 3);
+    check('no page errors', r.errs.length === 0, r.errs);
+    await r.ctx.close();
+  }
+
+  console.log('\n===== ONLY AN ALLOW-LISTED HOST BECOMES AN IFRAME =====');
+  {
+    const CASES = [
+      ['https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'embed'],
+      ['https://youtu.be/dQw4w9WgXcQ', 'embed'],
+      ['https://vimeo.com/123456789', 'embed'],
+      /* An address that merely CONTAINS a recognised one is not one. */
+      ['https://evil.example/p?u=https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'link'],
+      ['https://evil.example/embed/dQw4w9WgXcQ', 'link'],
+      ['javascript:alert(1)', 'nothing'],
+      ['data:text/html,<script>alert(1)</script>', 'nothing'],
+      ['//evil.example/x', 'nothing']
+    ];
+    /* The claim here is about the src this builder BUILDS, not about whether
+       a video host is reachable, so the hosts are served an empty document.
+       Installed before the page navigates -- see page()'s opts.route. */
+    const stubHosts = [/youtube-nocookie\.com|player\.vimeo\.com/, route =>
+      route.fulfill({ status: 200, contentType: 'text/html',
+                      body: '<!doctype html><title>stub</title>' })];
+    for (const [url, want] of CASES) {
+      const r = await page(b, { route: stubHosts, sections: [sec('vs', 'text', [
+        el('vd', 'video', { url: url, title: 'T' })])] });
+      const got = await r.p.evaluate(() => {
+        const f = document.querySelector('.pb-video-embed');
+        const a = document.querySelector('.pb-video-link');
+        return { kind: f ? 'embed' : (a ? 'link' : 'nothing'),
+                 src: f ? f.getAttribute('src') : null,
+                 href: a ? a.getAttribute('href') : null,
+                 titled: f ? !!f.getAttribute('title') : null,
+                 sandbox: f ? f.getAttribute('sandbox') : null };
+      });
+      check(`${url.slice(0, 46)} -> ${want}`, got.kind === want, got);
+      if (want === 'embed') {
+        check('  the src is BUILT, not the address that was given',
+          /^https:\/\/(www\.youtube-nocookie\.com\/embed\/|player\.vimeo\.com\/video\/)/
+            .test(got.src) && got.src.indexOf('evil') === -1, got.src);
+        check('  and the frame is named and sandboxed',
+          got.titled && /allow-scripts/.test(got.sandbox), got);
+      }
+      if (want === 'link') {
+        check('  the link goes where it said, and no frame was made',
+          got.href === url && got.src === null, got);
+      }
+      check('  no page errors', r.errs.length === 0, r.errs);
+      await r.ctx.close();
+    }
   }
 
   /* ================================================================

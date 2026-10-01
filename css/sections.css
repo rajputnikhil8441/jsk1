@@ -225,11 +225,54 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
     text-align: var(--pbe-align, inherit);
 }
 
-/* Inherits the columns element's gap on purpose: one control, one result. */
+/* ---------- container ----------
+
+   A container is a column of a columns element, and it was always a flex
+   box -- it simply had no controls. Every declaration below reads a token
+   with the value this rule ALREADY HAD as its fallback, so a container
+   that was never given a style renders exactly as it did before:
+
+     direction  column      what the rule hard-coded
+     gap        12px        what the rule hard-coded, still inherited from
+                            the columns element when it sets one
+     wrap       nowrap      the flex default
+     justify    flex-start  the flex default
+     alignItems stretch     the flex default
+     bg/padding/border/...  the shipped nothing
+     min-width  auto        NOT 0: a grid item's default is auto, and
+                            flipping it to 0 would let a wide child shrink
+                            its track on pages nobody touched
+
+   The tokens are inherited from the enclosing .pb-columns, which is a
+   .pb-el and therefore resets the whole --pbe-* namespace to the
+   guaranteed-invalid value. So an unstyled container reads `initial` for
+   each one and falls through to the fallback here. The gap is the one
+   deliberate exception, and it is why `gap` stays inherited rather than
+   reset: one control, one result.
+
+   align-self and justify-self are deliberately NOT read here. PB_SELF
+   writes --pbe-self/--pbe-justify whenever `align` is set, including on
+   the columns element itself -- and a container reading those would start
+   moving itself inside its track on existing pages that only meant to
+   centre some text. */
 .pb-columns .pb-column {
     display: flex;
-    flex-direction: column;
+    flex-direction: var(--pbe-direction, column);
+    flex-wrap: var(--pbe-wrap, nowrap);
+    justify-content: var(--pbe-justify-content, flex-start);
+    align-items: var(--pbe-align-items, stretch);
     gap: var(--pbe-gap, 12px);
+    background: var(--pbe-bg, transparent);
+    color: var(--pbe-color, inherit);
+    padding: var(--pbe-padding, 0);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    min-width: var(--pbe-min-width, auto);
+    min-height: var(--pbe-height, auto);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+    text-align: var(--pbe-align, inherit);
 }
 
 
@@ -280,11 +323,36 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
 }
 
 
-/* ---------- per-breakpoint visibility ---------- */
+/* ---------- per-breakpoint visibility ----------
 
-@media (min-width: 1025px) { .pb-section.pb-hide-desktop { display: none; } }
-@media (max-width: 1024px) and (min-width: 769px) { .pb-section.pb-hide-tablet { display: none; } }
-@media (max-width: 768px)  { .pb-section.pb-hide-mobile  { display: none; } }
+   Sections had this; elements and containers did not, so an author could
+   hide a whole band on a phone but not the one button inside it that did
+   not fit. The selectors are a plain class each, so they apply to whatever
+   carries it -- a section, an element or a container -- and there is one
+   idea of what hidden means instead of three.
+
+   `display: none` and not visibility/opacity: a hidden element must take no
+   space, and must not be reachable by keyboard while invisible. The content
+   stays in the HTML either way, which is deliberate -- this hides a thing
+   on one screen size, it does not remove it from the page a crawler reads. */
+
+@media (min-width: 1025px) {
+    .pb-section.pb-hide-desktop,
+    .pb-el.pb-hide-desktop,
+    .pb-column.pb-hide-desktop { display: none; }
+}
+
+@media (max-width: 1024px) and (min-width: 769px) {
+    .pb-section.pb-hide-tablet,
+    .pb-el.pb-hide-tablet,
+    .pb-column.pb-hide-tablet { display: none; }
+}
+
+@media (max-width: 768px) {
+    .pb-section.pb-hide-mobile,
+    .pb-el.pb-hide-mobile,
+    .pb-column.pb-hide-mobile { display: none; }
+}
 
 
 /* =========================================================
@@ -701,3 +769,495 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
    top of the viewport. Browser-level, and costs nothing on a page with no
    contents list on it. */
 .pb-heading { scroll-margin-top: 16px; }
+
+
+/* ---------- testimonials ----------
+   A <figure> per quote, laid out on the same 13 track presets the columns
+   element uses, so there is one column control in this builder and not two.
+   The default is auto-fill, which reflows without being told to. */
+
+.pb-el.pb-testimonials {
+    display: grid;
+    grid-template-columns: var(--pbe-cols, repeat(auto-fit, minmax(260px, 1fr)));
+    gap: var(--pbe-gap, 16px);
+    background: var(--pbe-bg, transparent);
+    color: var(--pbe-color, inherit);
+    font-size: var(--pbe-font-size, 15px);
+    font-weight: var(--pbe-font-weight, 400);
+    letter-spacing: var(--pbe-letter-spacing, inherit);
+    text-align: var(--pbe-align, inherit);
+    padding: var(--pbe-padding, 0);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+}
+
+.pb-testimonials .pb-tm {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 0;
+    padding: 16px;
+    border: 1px solid rgba(0, 0, 0, .12);
+    border-radius: 8px;
+}
+
+.pb-testimonials .pb-tm-quote { margin: 0; }
+
+.pb-testimonials .pb-tm-text {
+    margin: 0;
+    color: inherit;
+    line-height: var(--pbe-line-height, 1.55);
+    white-space: pre-line;
+}
+
+.pb-testimonials .pb-tm-by {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: auto;      /* attributions line up even if quotes differ in length */
+}
+
+.pb-testimonials .pb-tm-face {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.pb-testimonials .pb-tm-who { display: flex; flex-direction: column; }
+.pb-testimonials .pb-tm-name { font-weight: 600; color: inherit; }
+.pb-testimonials .pb-tm-role { font-size: .9em; opacity: .75; color: inherit; }
+
+
+/* ---------- stats ---------- */
+
+.pb-el.pb-stats {
+    display: grid;
+    grid-template-columns: var(--pbe-cols, repeat(auto-fit, minmax(140px, 1fr)));
+    gap: var(--pbe-gap, 16px);
+    background: var(--pbe-bg, transparent);
+    color: var(--pbe-color, inherit);
+    /* Read here as well as on the number below, so a typography role reaches
+       the whole block rather than only the figure. Without a value this is
+       `inherit`, which is what the rule did before -- and the number keeps
+       its own 32px default either way. */
+    font-size: var(--pbe-font-size, inherit);
+    font-weight: var(--pbe-font-weight, inherit);
+    letter-spacing: var(--pbe-letter-spacing, inherit);
+    text-align: var(--pbe-align, center);
+    padding: var(--pbe-padding, 0);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+}
+
+.pb-stats .pb-stat { display: flex; flex-direction: column; gap: 4px; }
+
+.pb-stats .pb-stat-value {
+    font-size: var(--pbe-font-size, 32px);
+    font-weight: var(--pbe-font-weight, 700);
+    line-height: var(--pbe-line-height, 1.1);
+    color: inherit;
+}
+
+/* A prefix or suffix is part of the number, so it is sized with it and only
+   slightly quieter -- not a separate label. */
+.pb-stats .pb-stat-affix { font-size: .7em; opacity: .8; }
+
+.pb-stats .pb-stat-label {
+    margin: 0;
+    font-size: .95rem;
+    font-weight: 400;
+    color: inherit;
+    opacity: .8;
+}
+
+
+/* ---------- plans / pricing ---------- */
+
+.pb-el.pb-plans {
+    display: grid;
+    grid-template-columns: var(--pbe-cols, repeat(auto-fit, minmax(230px, 1fr)));
+    gap: var(--pbe-gap, 16px);
+    background: var(--pbe-bg, transparent);
+    color: var(--pbe-color, inherit);
+    font-size: var(--pbe-font-size, 15px);
+    font-weight: var(--pbe-font-weight, 400);
+    letter-spacing: var(--pbe-letter-spacing, inherit);
+    text-align: var(--pbe-align, inherit);
+    padding: var(--pbe-padding, 0);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+}
+
+.pb-plans .pb-plan {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 18px;
+    border: 1px solid rgba(0, 0, 0, .14);
+    border-radius: 10px;
+}
+
+/* The highlighted card is drawn differently AND carries data-highlight in
+   the markup, so which one is recommended does not depend on seeing a
+   colour. */
+.pb-plans .pb-plan-hi {
+    border-width: 2px;
+    border-color: currentColor;
+}
+
+.pb-plans .pb-plan-title {
+    margin: 0;
+    font-size: 1.15em;
+    font-weight: 700;
+    color: inherit;
+}
+
+.pb-plans .pb-plan-sub { margin: 0; font-size: .92em; opacity: .75; color: inherit; }
+
+.pb-plans .pb-plan-price {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+.pb-plans .pb-plan-amount { font-size: 1.9em; font-weight: 700; line-height: 1.1; }
+.pb-plans .pb-plan-period { font-size: .85em; opacity: .7; }
+
+.pb-plans .pb-plan-features {
+    list-style-position: outside;
+    margin: 0;
+    padding-inline-start: 1.2em;
+    line-height: var(--pbe-line-height, 1.6);
+}
+
+.pb-plans .pb-plan-feature { color: inherit; }
+
+.pb-plans .pb-plan-cta {
+    margin-top: auto;          /* actions line up across cards of any height */
+    align-self: flex-start;
+    color: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.pb-plans .pb-plan-cta:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+
+/* ---------- gallery ----------
+   minWidth drives the smallest tile, so one control changes how many fit
+   per row at every width without a breakpoint being named. */
+
+.pb-el.pb-gallery {
+    display: grid;
+    grid-template-columns:
+        var(--pbe-cols, repeat(auto-fill, minmax(var(--pbe-min-width, 180px), 1fr)));
+    gap: var(--pbe-gap, 10px);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    text-align: var(--pbe-align, inherit);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+}
+
+.pb-gallery .pb-gal-item { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+
+.pb-gallery .pb-gal-img {
+    width: 100%;
+    height: auto;
+    border-radius: inherit;
+    object-fit: cover;
+}
+
+.pb-gallery .pb-gal-cap { font-size: .88em; opacity: .8; color: inherit; }
+
+
+/* ---------- progress ----------
+   The native element, so the fill is drawn by the browser from its
+   attributes rather than from an inline style built out of stored content.
+   accent-color is the one line that themes it in every current browser. */
+
+.pb-el.pb-progress {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pbe-gap, 6px);
+    background: var(--pbe-bg, transparent);
+    color: var(--pbe-color, inherit);
+    font-size: var(--pbe-font-size, 14px);
+    font-weight: var(--pbe-font-weight, 400);
+    letter-spacing: var(--pbe-letter-spacing, inherit);
+    text-align: var(--pbe-align, inherit);
+    padding: var(--pbe-padding, 0);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+}
+
+.pb-progress .pb-progress-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    line-height: var(--pbe-line-height, 1.4);
+}
+
+.pb-progress .pb-progress-label { font-weight: 600; color: inherit; }
+.pb-progress .pb-progress-value { opacity: .8; color: inherit; font-variant-numeric: tabular-nums; }
+
+.pb-progress .pb-progress-bar {
+    width: 100%;
+    height: 10px;
+    accent-color: currentColor;
+    border-radius: 999px;
+}
+
+
+/* ---------- a feature box with two actions ---------- */
+
+.pb-feature .pb-feature-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+}
+
+/* The second action is the quieter one: same size, less weight, so the pair
+   reads as a primary and an alternative rather than as two equals. */
+.pb-feature .pb-feature-link2 { font-weight: 400; opacity: .85; }
+
+
+/* ---------- tabs ---------- */
+
+.pb-el.pb-tabs {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pbe-gap, 12px);
+    background: var(--pbe-bg, transparent);
+    color: var(--pbe-color, inherit);
+    font-size: var(--pbe-font-size, 15px);
+    font-weight: var(--pbe-font-weight, 400);
+    letter-spacing: var(--pbe-letter-spacing, inherit);
+    text-align: var(--pbe-align, inherit);
+    padding: var(--pbe-padding, 0);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+}
+
+/* The list scrolls rather than wrapping, so eight tabs on a phone stay a
+   row of tabs instead of becoming a block of buttons. */
+.pb-tabs .pb-tablist {
+    display: flex;
+    gap: 2px;
+    overflow-x: auto;
+    border-bottom: 1px solid rgba(0, 0, 0, .14);
+    scrollbar-width: thin;
+}
+
+.pb-tabs .pb-tab {
+    flex: none;
+    padding: 9px 14px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.pb-tabs .pb-tab:hover { background: rgba(0, 0, 0, .03); }
+
+/* The selected tab is marked by a rule AND by weight, so which one is open
+   does not depend on telling two colours apart. */
+.pb-tabs .pb-tab[aria-selected="true"] {
+    border-bottom-color: currentColor;
+}
+
+.pb-tabs .pb-tab:focus-visible,
+.pb-tabs .pb-tabpanel:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: -2px;
+}
+
+.pb-tabs .pb-tabpanel[hidden] { display: none; }
+
+.pb-tabs .pb-tab-text {
+    margin: 0;
+    color: inherit;
+    line-height: var(--pbe-line-height, 1.6);
+    white-space: pre-line;
+}
+
+
+/* ---------- carousel ----------
+   The strip scrolls and snaps with no JavaScript at all, so the slides are
+   usable by swipe, by trackpad and by keyboard before any script runs. The
+   buttons only call scrollBy on the same strip. */
+
+.pb-el.pb-carousel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pbe-gap, 10px);
+    background: var(--pbe-bg, transparent);
+    color: var(--pbe-color, inherit);
+    font-size: var(--pbe-font-size, 15px);
+    font-weight: var(--pbe-font-weight, 400);
+    letter-spacing: var(--pbe-letter-spacing, inherit);
+    text-align: var(--pbe-align, inherit);
+    padding: var(--pbe-padding, 0);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+}
+
+.pb-carousel .pb-car-strip {
+    display: flex;
+    gap: var(--pbe-gap, 10px);
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+
+.pb-carousel .pb-car-strip:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+.pb-carousel .pb-car-slide {
+    flex: 0 0 var(--pbe-min-width, 280px);
+    scroll-snap-align: start;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.pb-carousel .pb-car-img { width: 100%; height: auto; border-radius: inherit; }
+.pb-carousel .pb-car-title { margin: 0; font-size: 1.1em; font-weight: 700; color: inherit; }
+.pb-carousel .pb-car-text {
+    margin: 0;
+    color: inherit;
+    line-height: var(--pbe-line-height, 1.55);
+}
+.pb-carousel .pb-car-link {
+    color: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.pb-carousel .pb-car-controls { display: flex; gap: 8px; align-items: center; }
+
+/* The glyphs are drawn in CSS, so a control does not depend on an icon font
+   having loaded before a visitor can use it. */
+.pb-carousel .pb-car-btn {
+    width: 34px;
+    height: 34px;
+    flex: none;
+    border: 1px solid rgba(0, 0, 0, .18);
+    border-radius: 50%;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+    position: relative;
+}
+
+.pb-carousel .pb-car-btn:hover { background: rgba(0, 0, 0, .04); }
+.pb-carousel .pb-car-btn:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+.pb-carousel .pb-car-btn::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+}
+
+.pb-carousel .pb-car-prev::before { transform: rotate(135deg) translate(-1px, -1px); }
+.pb-carousel .pb-car-next::before { transform: rotate(-45deg) translate(-1px, -1px); }
+
+/* Two bars for pause, one triangle-ish block for play. Drawn from the
+   pressed state, so the control always shows what it will do. */
+.pb-carousel .pb-car-pause::before {
+    width: 4px;
+    height: 11px;
+    border: 0;
+    border-left: 3px solid currentColor;
+    border-right: 3px solid currentColor;
+    transform: none;
+}
+
+.pb-carousel .pb-car-pause[aria-pressed="true"]::before {
+    width: 0;
+    height: 0;
+    border: 6px solid transparent;
+    border-left-color: currentColor;
+    border-right: 0;
+    transform: translateX(2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pb-carousel .pb-car-strip { scroll-behavior: auto; }
+}
+
+
+/* ---------- video ----------
+   A fixed aspect box, so the page does not jump when the frame loads. */
+
+.pb-el.pb-video {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pbe-gap, 8px);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    text-align: var(--pbe-align, inherit);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+}
+
+.pb-video .pb-video-frame {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    width: 100%;
+    overflow: hidden;
+    border-radius: inherit;
+    background: #000;
+}
+
+.pb-video .pb-video-embed {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
+
+.pb-video .pb-video-link {
+    color: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.pb-video .pb-video-cap { font-size: .9em; opacity: .8; color: inherit; }

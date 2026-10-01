@@ -3204,3 +3204,21 @@ body.pb-dragging #pbList iframe {
    this is the one line on the screen it is expensive to misread. */
 .brandtable tr.is-current { background: rgba(0, 136, 204, .07); }
 .brandtable tr.is-current strong { color: #0088cc; }
+
+/* The container's own Design panel, inside a column box. Set apart from the
+   element cards below it so it reads as belonging to the container rather
+   than to the first element in it. */
+.pb-col-design {
+    margin: 0 0 10px;
+    background: var(--a-soft, rgba(0, 0, 0, .02));
+}
+
+.pb-col-design > summary { font-size: .82rem; }
+
+/* The visibility checkboxes share the container's panel with its design
+   controls, so they need a line between them to read as a separate question. */
+.pb-col-vis {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--a-line, rgba(0, 0, 0, .12));
+}

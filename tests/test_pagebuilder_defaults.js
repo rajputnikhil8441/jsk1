@@ -48,7 +48,9 @@ const sec = (id, type, extra) => Object.assign({ id, type, enabled: true, elemen
 
 const TYPES = ['heading', 'text', 'image', 'button', 'card', 'columns', 'divider',
                'spacer', 'icon', 'notice', 'featureBox', 'faq', 'socialLinks',
-               'list', 'table', 'toc'];
+               'list', 'table', 'toc',
+               'testimonials', 'stats', 'plans', 'gallery', 'progress',
+               'tabs', 'carousel', 'video'];
 /* An image with no source is the one type that is meant to start empty:
    there is nothing to show until a file is named.
 
@@ -59,7 +61,12 @@ const TYPES = ['heading', 'text', 'image', 'button', 'card', 'columns', 'divider
    for it to point at, and it renders like everything else. On a page with
    none it draws nothing, which is the honest answer rather than a list of
    one link; the admin card says so while editing. */
-const INVISIBLE_BY_DESIGN = ['image'];
+/* The gallery and the video are the same case as the image, for the same
+   reason: each has nothing to show until an address is given. Their blank
+   content is deliberately empty rather than an invented picture or an
+   invented video -- the admin card tells an author what to paste, which is
+   the honest alternative to shipping someone else's URL as a placeholder. */
+const INVISIBLE_BY_DESIGN = ['image', 'gallery', 'video'];
 
 /* Icon glyphs come from Font Awesome, which this sandbox's egress proxy
    blocks, so an <i class="fa-solid fa-star"> measures 0x0 here however

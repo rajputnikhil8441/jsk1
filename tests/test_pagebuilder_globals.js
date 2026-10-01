@@ -366,7 +366,21 @@ const cs = (p, sel, prop) => p.$eval(sel, (n, k) => getComputedStyle(n)[k], prop
       /* A contents list describes the headings around it, so it needs
          siblings; SIBLINGS below supplies them rather than leaving this
          case to depend on which other types happen to be on the page. */
-      toc: { title: 'On this page', depth: 'h3' }
+      toc: { title: 'On this page', depth: 'h3' },
+      /* Phase 2B. Added because the self-check below said they were
+         missing -- which is what it is for: a type with no entry becomes an
+         element with no content, renders nothing, and reads as a role that
+         does not work. */
+      testimonials: { items: [{ quote: 'A quote', name: 'A name' },
+                              { quote: 'Another', name: 'Another' }] },
+      stats: { items: [{ value: '1', label: 'One' }, { value: '2', label: 'Two' }] },
+      plans: { items: [{ title: 'Basic', price: '0', f1: 'A feature' },
+                       { title: 'Pro', price: '9', f1: 'A feature' }] },
+      gallery: { items: [{ src: 'assets/images/favicon.png', alt: 'a', caption: 'c' }] },
+      progress: { label: 'Done', value: 60, max: 100 },
+      tabs: { items: [{ label: 'One', text: 'First' }, { label: 'Two', text: 'Second' }] },
+      carousel: { items: [{ title: 'A', text: 'one' }, { title: 'B', text: 'two' }] },
+      video: { url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', title: 'A video' }
     };
     /* A contents list cannot render alone. Identical for every probe on
        the page, so it cannot be what a comparison sees change. */

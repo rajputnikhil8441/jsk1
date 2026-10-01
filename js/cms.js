@@ -1598,7 +1598,16 @@
            existing value as the fallback, so an element that has never been
            given one renders exactly as before. */
         lineHeight:    ['--pbe-line-height', ''],
-        letterSpacing: ['--pbe-letter-spacing', 'px']
+        letterSpacing: ['--pbe-letter-spacing', 'px'],
+        /* Container layout. `justify` writes --pbe-justify-CONTENT, not
+           --pbe-justify: that name is already taken by the justify-self
+           half of PB_SELF, and one property name for two meanings is how a
+           value ends up read by the wrong rule. */
+        direction:  ['--pbe-direction', ''],
+        justify:    ['--pbe-justify-content', ''],
+        alignItems: ['--pbe-align-items', ''],
+        wrap:       ['--pbe-wrap', ''],
+        minWidth:   ['--pbe-min-width', 'px']
     };
 
     /* Which controls actually do something for each element type. The admin
@@ -1654,7 +1663,32 @@
                       'border', 'radius', 'shadow'],
         toc:         ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
                       'align', 'bg', 'padding', 'margin', 'maxWidth', 'gap',
-                      'border', 'radius', 'shadow']
+                      'border', 'radius', 'shadow'],
+
+        /* Phase 2B. `columns` appears on the three that lay their items out
+           in a grid, so they reuse the existing 13 track presets rather
+           than inventing a column control of their own. */
+        testimonials: ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight',
+                       'letterSpacing', 'align', 'bg', 'padding', 'margin', 'maxWidth',
+                       'gap', 'columns', 'border', 'radius', 'shadow'],
+        stats:        ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight',
+                       'letterSpacing', 'align', 'bg', 'padding', 'margin', 'maxWidth',
+                       'gap', 'columns', 'border', 'radius', 'shadow'],
+        plans:        ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight',
+                       'letterSpacing', 'align', 'bg', 'padding', 'margin', 'maxWidth',
+                       'gap', 'columns', 'border', 'radius', 'shadow'],
+        gallery:      ['align', 'margin', 'maxWidth', 'gap', 'columns', 'minWidth',
+                       'border', 'radius', 'shadow'],
+        progress:     ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight',
+                       'letterSpacing', 'align', 'bg', 'padding', 'margin', 'maxWidth',
+                       'gap', 'border', 'radius', 'shadow'],
+        tabs:         ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight',
+                       'letterSpacing', 'align', 'bg', 'padding', 'margin', 'maxWidth',
+                       'gap', 'border', 'radius', 'shadow'],
+        carousel:     ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight',
+                       'letterSpacing', 'align', 'bg', 'padding', 'margin', 'maxWidth',
+                       'gap', 'minWidth', 'border', 'radius', 'shadow'],
+        video:        ['align', 'margin', 'maxWidth', 'gap', 'border', 'radius', 'shadow']
     };
 
     /* The keys a SECTION reacts to. Derived from the section token map, so
@@ -1714,8 +1748,14 @@
         spacer:      [],
         icon:        ['icon', 'label', 'href', 'newTab'],
         notice:      ['variant', 'icon', 'text', 'linkText', 'href', 'newTab'],
+        /* A feature box is this builder's call-to-action: icon or image, a
+           heading, body copy and an action. The ONE thing it could not do
+           was offer a second, quieter action beside the first -- so that is
+           what was added, rather than a CTA element that would have been
+           this one with a different name. */
         featureBox:  ['icon', 'image', 'imageAlt', 'title', 'titleLevel', 'text',
-                      'linkText', 'href', 'newTab'],
+                      'linkText', 'href', 'newTab',
+                      'linkText2', 'href2', 'newTab2'],
         faq:         ['single'],
         socialLinks: [],
 
@@ -1728,11 +1768,29 @@
            ends up read by the wrong reader. */
         list:        ['ordered', 'rich'],
         table:       ['caption', 'cols', 'header'],
-        toc:         ['title', 'titleLevel', 'depth', 'ordered']
+        toc:         ['title', 'titleLevel', 'depth', 'ordered'],
+
+        /* ---- Phase 2B ----
+           Each of these is a repeating list of items plus a handful of
+           scalars about the whole element, which is the shape the sanitiser
+           already knows how to clean. None of them needs JavaScript to put
+           its content on the page. */
+        testimonials: ['headingLevel'],
+        stats:        ['headingLevel'],
+        plans:        ['headingLevel', 'featureLabel'],
+        gallery:      ['captions'],
+        progress:     ['label', 'value', 'max', 'showValue'],
+        tabs:         ['rich'],
+        carousel:     ['autoplay', 'interval', 'captions'],
+        video:        ['url', 'title', 'caption', 'poster']
     };
 
     /* Which content keys hold a URL, and which hold a repeating list. */
-    var PB_URL_KEYS = { src: 1, href: 1, image: 1, buttonHref: 1, url: 1 };
+    var PB_URL_KEYS = { src: 1, href: 1, image: 1, buttonHref: 1, url: 1,
+                        /* Phase 2B: the feature box's second action, and a
+                           plan card's. Listed here so they go through
+                           pbUrl() like every other address. */
+                        href2: 1, ctaHref: 1 };
 
     /* Content keys whose value is a name from a list rather than free text.
        The renderer already refuses an unrecognised one at render time, but
@@ -1747,7 +1805,11 @@
         platform:   function () { return PB_SOCIAL; },
         level:      function () { return PB_ALL_LEVELS; },
         tag:        function () { return PB_TEXT_TAGS; },
-        depth:      function () { return PB_TOC_DEPTHS; }
+        depth:      function () { return PB_TOC_DEPTHS; },
+        /* Phase 2B. The heading inside a testimonial, a stat or a plan is a
+           real heading, so its level is an author's choice -- validated
+           against the same list every other level is. */
+        headingLevel: function () { return PB_HEADING_LEVELS; }
     };
 
     var PB_ALL_LEVELS = { h1: 1, h2: 1, h3: 1, h4: 1, h5: 1, h6: 1 };
@@ -1764,12 +1826,31 @@
        key. An array of cells would need a second kind of cleaning. */
     var PB_TABLE_MAX_COLS = 8;
     var PB_TABLE_KEYS = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8'];
+    /* How many feature rows a plan card can list, for the same reason a
+       table row has named cells: a scalar cannot hold a newline. */
+    var PB_PLAN_FEATURES = 6;
 
     var PB_ITEM_KEYS = {
         faq:         ['question', 'answer', 'open'],
         socialLinks: ['platform', 'url', 'label'],
         list:        ['text'],
-        table:       PB_TABLE_KEYS
+        table:       PB_TABLE_KEYS,
+
+        /* Phase 2B. `image`/`src` are already URL keys, so they go through
+           pbUrl() with every other address in this file. */
+        testimonials: ['quote', 'name', 'role', 'company', 'image'],
+        stats:        ['value', 'label', 'prefix', 'suffix'],
+        gallery:      ['src', 'alt', 'caption'],
+        /* A plan's feature rows are named cells for the same reason a
+           table's are: pbScalar() refuses a control character, so a
+           newline-delimited list cannot be stored at all, and an array of
+           strings would need a second kind of cleaning. Six is a cap on a
+           pricing card, not a limit on what can be said. */
+        plans:        ['title', 'subtitle', 'price', 'period', 'highlight',
+                       'ctaText', 'ctaHref', 'ctaNewTab',
+                       'f1', 'f2', 'f3', 'f4', 'f5', 'f6'],
+        tabs:         ['label', 'text', 'open'],
+        carousel:     ['title', 'text', 'image', 'alt', 'href', 'linkText']
     };
 
     /* A row that lost one of these is not a row the renderer could draw, so
@@ -1783,7 +1864,20 @@
            real data, not a broken row. A row with NOTHING in it is still
            dropped, because the loop below keeps only rows that kept a
            value. */
-        table:       []
+        table:       [],
+
+        /* Phase 2B. Each names the one thing without which the row is not
+           the thing it claims to be: a testimonial with no quote, a stat
+           with no number, an image with no source. A plan needs a title,
+           because that is what a reader chooses between. */
+        testimonials: ['quote'],
+        stats:        ['value'],
+        gallery:      ['src'],
+        plans:        ['title'],
+        /* A tab with no label is a tab nobody can press. A slide with
+           neither words nor a picture is an empty slide. */
+        tabs:         ['label'],
+        carousel:     []
     };
 
     /* A single stored value: kept as a boolean, a finite number or a string
@@ -1859,6 +1953,18 @@
             if (v === null) continue;
             v = str(v);
             if (!v) continue;
+            /* A key whose value is a NAME from a list is validated against
+               that list, for the same reason pbCleanContent() validates an
+               icon name: the renderer already refuses an unrecognised one,
+               but an import is the moment to drop it, so the stored data
+               only ever holds values the builder's own controls could have
+               set. "constructor" as a flex direction is inert either way;
+               it is also pointless to keep. */
+            if (Object.prototype.hasOwnProperty.call(PB_STYLE_ENUMS, k)) {
+                if (!pbPick(PB_STYLE_ENUMS[k], v.toLowerCase())) continue;
+                out[k] = v.toLowerCase();
+                continue;
+            }
             /* A global design reference is legal here; anything else has to
                pass the ordinary value check. */
             if (v.charAt(0) === '@') {
@@ -1870,6 +1976,45 @@
             out[k] = typeof raw[k] === 'number' ? raw[k] : v;
         }
         return out;
+    }
+
+    /* Does this object hold anything? Used to keep a cleaned container as
+       small as it was: an empty style map is not written at all. */
+    /* The hide-on-this-size classes for a node, or ''.
+
+       Sections have had this since V2. Elements and containers had not,
+       which meant an author could hide a whole band on a phone but not the
+       one button inside it that did not fit. Same three booleans, same
+       absent-means-shown rule, and the same CSS -- so there is one idea of
+       what hidden means rather than three.
+
+       Written only when something is actually hidden, so a node that was
+       never given visibility data gets no class and renders as before. */
+    /* The three booleans, kept only where one of them is false. Returning
+       null for "nothing to say" is what keeps an untouched node's stored
+       shape unchanged. */
+    function pbCleanVisibility(raw) {
+        if (!raw || typeof raw !== 'object') return null;
+        var out = {}, any = false, keys = ['desktop', 'tablet', 'mobile'];
+        for (var i = 0; i < keys.length; i++) {
+            if (raw[keys[i]] === false) { out[keys[i]] = false; any = true; }
+        }
+        return any ? out : null;
+    }
+
+    function pbHideClasses(vis) {
+        if (!vis || typeof vis !== 'object') return '';
+        var out = '';
+        if (vis.desktop === false) out += ' pb-hide-desktop';
+        if (vis.tablet  === false) out += ' pb-hide-tablet';
+        if (vis.mobile  === false) out += ' pb-hide-mobile';
+        return out;
+    }
+
+    function pbHasKeys(o) {
+        if (!o || typeof o !== 'object') return false;
+        for (var k in o) { if (Object.prototype.hasOwnProperty.call(o, k)) return true; }
+        return false;
     }
 
     function pbCleanResponsive(raw, allow) {
@@ -1896,12 +2041,33 @@
             responsive: pbCleanResponsive(raw.responsive, allow)
         };
         if (raw.enabled === false) out.enabled = false;
+        /* Hidden on a screen size, as a section can be. Written only when
+           something is hidden, so an element saved before this existed
+           cleans to the bytes it always did. */
+        var evis = pbCleanVisibility(raw.visibility);
+        if (evis) out.visibility = evis;
         if (type === 'columns') {
             var cols = ((raw.content || {}).columns);
             var kept = [];
             if (isArr(cols)) {
                 for (var i = 0; i < cols.length && i < 12; i++) {
-                    kept.push({ elements: pbCleanElements((cols[i] || {}).elements, depth + 1) });
+                    var src = cols[i] || {};
+                    /* A container carries style of its own now. The keys
+                       are written only when there is something in them, so
+                       a container saved before this existed cleans to the
+                       same bytes it always did. */
+                    var box = { elements: pbCleanElements(src.elements, depth + 1) };
+                    var cvis = pbCleanVisibility(src.visibility);
+                    if (cvis) box.visibility = cvis;
+                    var cstyle = pbCleanStyle(src.style, PB_CONTAINER_STYLE_KEYS);
+                    if (pbHasKeys(cstyle)) box.style = cstyle;
+                    var cresp = pbCleanResponsive(src.responsive, PB_CONTAINER_STYLE_KEYS);
+                    if (pbHasKeys(cresp.tablet) || pbHasKeys(cresp.mobile)) {
+                        box.responsive = {};
+                        if (pbHasKeys(cresp.tablet)) box.responsive.tablet = cresp.tablet;
+                        if (pbHasKeys(cresp.mobile)) box.responsive.mobile = cresp.mobile;
+                    }
+                    kept.push(box);
                 }
             }
             out.content.columns = kept;
@@ -2249,6 +2415,53 @@
     /* The block tags a text element may be. Both are ordinary prose
        containers; neither can hold anything the renderer does not build. */
     var PB_TEXT_TAGS = { p: 1, blockquote: 1 };
+
+    /* ---- the only video hosts this builder will embed ----
+
+       An <iframe> runs a third party's code in the page, so the address it
+       is given can never be the author's string. Each entry recognises the
+       addresses that host uses and returns the ID out of it; the embed URL
+       is then BUILT from that id and a constant, so the only part of it
+       that came from the record is an id matched by one of these patterns.
+
+       Anything else -- another host, a shortened link, an address with a
+       query string that happens to contain one of these -- yields nothing
+       and the element falls back to a plain link.
+
+       The nocookie and dnt forms are used where the host offers one: an
+       embed should not set a tracking cookie on a visitor who only read a
+       page. */
+    var PB_VIDEO_HOSTS = [
+        { name: 'YouTube',
+          re: [/^https?:\/\/(?:www\.)?youtube(?:-nocookie)?\.com\/watch\?v=([A-Za-z0-9_-]{6,20})/,
+               /^https?:\/\/(?:www\.)?youtube(?:-nocookie)?\.com\/embed\/([A-Za-z0-9_-]{6,20})/,
+               /^https?:\/\/youtu\.be\/([A-Za-z0-9_-]{6,20})/],
+          embed: function (id) { return 'https://www.youtube-nocookie.com/embed/' + id; },
+          watch: function (id) { return 'https://www.youtube.com/watch?v=' + id; } },
+        { name: 'Vimeo',
+          re: [/^https?:\/\/(?:www\.)?vimeo\.com\/(\d{6,12})/,
+               /^https?:\/\/player\.vimeo\.com\/video\/(\d{6,12})/],
+          embed: function (id) { return 'https://player.vimeo.com/video/' + id + '?dnt=1'; },
+          watch: function (id) { return 'https://vimeo.com/' + id; } }
+    ];
+
+    /* { host, id, embed, watch } for an address one of them recognises,
+       otherwise null. */
+    function pbVideoRef(raw) {
+        var u = str(raw);
+        if (!u) return null;
+        for (var i = 0; i < PB_VIDEO_HOSTS.length; i++) {
+            var h = PB_VIDEO_HOSTS[i];
+            for (var j = 0; j < h.re.length; j++) {
+                var m = h.re[j].exec(u);
+                if (m && m[1]) {
+                    return { host: h.name, id: m[1],
+                             embed: h.embed(m[1]), watch: h.watch(m[1]) };
+                }
+            }
+        }
+        return null;
+    }
     /* How deep a table of contents goes, as the deepest level it lists.
        The value is the number the renderer compares against, so the
        allow-list and the limit are one thing rather than two. */
@@ -2270,6 +2483,14 @@
        the table of contents has to work out the SAME id from the section
        tree, without having rendered anything. One rule, read twice, so a
        link can never point at an id the heading did not get. */
+    /* A container's CSS address: its columns element plus its index. '' when
+       the element id is not one an attribute selector could hold, which is
+       the same condition that leaves an element without generated CSS. */
+    function pbContainerRef(el, index) {
+        var base = pbCssId(el && el.id);
+        return base ? base + '-' + index : '';
+    }
+
     function pbAnchorId(elId) {
         var base = pbCssId(elId);
         return base ? 'pb-' + base + '-h' : '';
@@ -2282,6 +2503,48 @@
         center: ['center', 'center'],
         right:  ['flex-end', 'end']
     };
+
+    /* ---- container layout ----
+
+       Each of these is a NAME, and what reaches the CSS is the constant
+       stored against it -- the same rule PB_COL_LAYOUTS follows, for the
+       same reason: no author-entered text can ever land in the property.
+       An unrecognised name emits nothing, which leaves the shipped default
+       in css/sections.css in charge.
+
+       The keys are the wire format stored in a container's style, so they
+       are part of the saved data: do not rename one.
+
+       The names are the author's words, not CSS's. "start" and "between"
+       are what a person picking an alignment means; flex-start and
+       space-between are what the browser needs, and the translation lives
+       here rather than in the admin. */
+    var PB_DIRECTIONS = { column: 'column', row: 'row',
+                          'column-reverse': 'column-reverse', 'row-reverse': 'row-reverse' };
+    var PB_JUSTIFY = { start: 'flex-start', center: 'center', end: 'flex-end',
+                       between: 'space-between', around: 'space-around',
+                       evenly: 'space-evenly' };
+    var PB_ALIGN_ITEMS = { stretch: 'stretch', start: 'flex-start', center: 'center',
+                           end: 'flex-end', baseline: 'baseline' };
+    var PB_WRAP = { nowrap: 'nowrap', wrap: 'wrap' };
+
+    /* Which style keys are a name from a list rather than a measurement.
+       pbDecls() reads this, so the guard is on the RENDER path -- the one
+       place the whole-tree sanitiser deliberately does not run. */
+    var PB_STYLE_ENUMS = { direction: PB_DIRECTIONS, justify: PB_JUSTIFY,
+                           alignItems: PB_ALIGN_ITEMS, wrap: PB_WRAP };
+
+    /* What a CONTAINER inside a columns element can be given.
+
+       Same rule as PB_EL_STYLE_KEYS: a key is here only because the
+       .pb-column rule in css/sections.css reads it, so the admin cannot
+       offer a control that does nothing. `typography` is deliberately
+       absent -- a container's children each carry .pb-el, which resets the
+       element namespace, so a role set here would reach nothing. */
+    var PB_CONTAINER_STYLE_KEYS = ['direction', 'justify', 'alignItems', 'wrap', 'gap',
+                                   'bg', 'color', 'padding', 'margin',
+                                   'maxWidth', 'minWidth', 'height',
+                                   'border', 'radius', 'shadow', 'align'];
 
     var PB_SECTION_CLASS = {
         hero:      'pb-hero',
@@ -2705,8 +2968,18 @@
             var cols = (el.content || {}).columns;
             if (!isArr(cols) || !cols.length) return null;
             var wrap = pbEl('div', 'pb-el pb-columns');
+            /* A container is addressed by its POSITION, not by an id of its
+               own: pbContainerRef() is the one place that decides what that
+               address looks like, and pbElementCSS() asks the same question
+               to write the rule. Position is also how the admin already
+               addresses a container, so moving one moves its style with it
+               and a duplicated columns element -- which gets a fresh
+               element id -- gets fresh container rules for free. */
             for (var i = 0; i < cols.length; i++) {
                 var col = pbEl('div', 'pb-column');
+                col.className += pbHideClasses((cols[i] || {}).visibility);
+                var ref = pbContainerRef(el, i);
+                if (ref) col.setAttribute('data-col', ref);
                 pbRenderElements(col, (cols[i] || {}).elements, depth + 1);
                 wrap.appendChild(col);
             }
@@ -2803,8 +3076,17 @@
                 if (img) { img.className += ' pb-feature-img'; box.appendChild(img); }
             }
             if (str(c.title)) {
-                var lvl = pbPick(PB_HEADING_LEVELS, String(c.titleLevel || 'h3').toLowerCase())
-                    ? String(c.titleLevel).toLowerCase() : 'h3';
+                /* The default was tested and then THROWN AWAY: the guard
+                   checked `c.titleLevel || 'h3'` and the branch then read
+                   c.titleLevel on its own, so a feature box with no level
+                   -- which is every one the admin adds, since its blank
+                   content sets none -- resolved to the string "undefined"
+                   and rendered <undefined>. The title was visible and was
+                   not a heading: nothing in the page outline, nothing
+                   announced as a heading, nothing for a crawler. One value,
+                   worked out once. */
+                var want = str(c.titleLevel).toLowerCase() || 'h3';
+                var lvl = pbPick(PB_HEADING_LEVELS, want) ? want : 'h3';
                 var h = pbEl(lvl, 'pb-feature-title');
                 h.textContent = str(c.title);
                 box.appendChild(h);
@@ -2814,13 +3096,24 @@
                 t.textContent = str(c.text);
                 box.appendChild(t);
             }
-            var href = pbUrl(c.href);
-            if (href && str(c.linkText)) {
-                var a = pbEl('a', 'pb-feature-link');
-                a.setAttribute('href', href);
-                if (c.newTab) { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); }
-                a.textContent = str(c.linkText);
-                box.appendChild(a);
+            /* One or two actions. The second is drawn only when it has both
+               an address pbUrl() allows and words to put on it -- the same
+               condition as the first, because a link with no text is not a
+               link anyone can use. They sit in a row of their own so two
+               actions read as a pair rather than as a sentence. */
+            var acts = [[c.href, c.linkText, c.newTab, 'pb-feature-link'],
+                        [c.href2, c.linkText2, c.newTab2, 'pb-feature-link pb-feature-link2']];
+            var row = null;
+            for (var ai = 0; ai < acts.length; ai++) {
+                var ahref = pbUrl(acts[ai][0]);
+                var atext = str(acts[ai][1]);
+                if (!ahref || !atext) continue;
+                if (!row) { row = pbEl('div', 'pb-feature-actions'); box.appendChild(row); }
+                var a = pbEl('a', acts[ai][3]);
+                a.setAttribute('href', ahref);
+                if (acts[ai][2]) { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); }
+                a.textContent = atext;
+                row.appendChild(a);
             }
             return pbId(box, el);
         },
@@ -3070,9 +3363,580 @@
             }
             nav.appendChild(list);
             return pbId(nav, el);
+        },
+
+        /* ---------------- Phase 2B elements ----------------
+
+           Every one of these puts its content in the HTML with no
+           JavaScript at all. That is not a coincidence: a testimonial, a
+           number, a price and a caption are the words a page is FOR, and a
+           page whose words arrive after a script is a page a crawler reads
+           empty. Interaction can be added on top; content cannot be added
+           on top. */
+
+        /* Quotes with an attribution. <figure> + <blockquote> + <figcaption>
+           is what HTML has for exactly this, and it is what a screen reader
+           announces as a quotation rather than as two unrelated paragraphs.
+
+           NO review or rating schema is produced here, and none should be:
+           a testimonial an author typed is not a verified review, and
+           marking it up as one would be a claim this element has no way to
+           stand behind. */
+        testimonials: function (el) {
+            var c = el.content || {};
+            var items = isArr(c.items) ? c.items : [];
+            var wrap = pbEl('div', 'pb-el pb-testimonials');
+            var made = 0;
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i] || {};
+                var quote = str(it.quote);
+                if (!quote) continue;
+                var fig = pbEl('figure', 'pb-tm');
+                var bq = pbEl('blockquote', 'pb-tm-quote');
+                var p = pbEl('p', 'pb-tm-text');
+                p.textContent = quote;
+                bq.appendChild(p);
+                fig.appendChild(bq);
+
+                var cap = pbEl('figcaption', 'pb-tm-by');
+                var img = pbUrl(it.image) ? PB_ELEMENTS.image({ content: {
+                    src: it.image, alt: str(it.name) } }) : null;
+                if (img) { img.className += ' pb-tm-face'; cap.appendChild(img); }
+                var who = pbEl('div', 'pb-tm-who');
+                if (str(it.name)) {
+                    var n = pbEl('span', 'pb-tm-name');
+                    n.textContent = str(it.name);
+                    who.appendChild(n);
+                }
+                /* Role and company read as one line when both are set, so
+                   the markup joins them rather than leaving the CSS to. */
+                var meta = [str(it.role), str(it.company)].filter(Boolean).join(', ');
+                if (meta) {
+                    var m = pbEl('span', 'pb-tm-role');
+                    m.textContent = meta;
+                    who.appendChild(m);
+                }
+                if (who.childNodes.length) cap.appendChild(who);
+                if (cap.childNodes.length) fig.appendChild(cap);
+                wrap.appendChild(fig);
+                made += 1;
+            }
+            if (!made) return null;
+            return pbId(wrap, el);
+        },
+
+        /* A row of numbers. The value is TEXT in the HTML -- there is no
+           count-up animation, and that is deliberate: the simplest way to
+           guarantee the number a crawler reads is the number an author
+           typed is for nothing to compute it. */
+        stats: function (el) {
+            var c = el.content || {};
+            var items = isArr(c.items) ? c.items : [];
+            var lvl = pbPick(PB_HEADING_LEVELS, str(c.headingLevel).toLowerCase())
+                ? str(c.headingLevel).toLowerCase() : '';
+            var wrap = pbEl('div', 'pb-el pb-stats');
+            var made = 0;
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i] || {};
+                var value = str(it.value);
+                if (!value) continue;
+                var box = pbEl('div', 'pb-stat');
+                var v = pbEl('div', 'pb-stat-value');
+                if (str(it.prefix)) {
+                    var pre = pbEl('span', 'pb-stat-affix');
+                    pre.textContent = str(it.prefix);
+                    v.appendChild(pre);
+                }
+                var num = pbEl('span', 'pb-stat-num');
+                num.textContent = value;
+                v.appendChild(num);
+                if (str(it.suffix)) {
+                    var suf = pbEl('span', 'pb-stat-affix');
+                    suf.textContent = str(it.suffix);
+                    v.appendChild(suf);
+                }
+                box.appendChild(v);
+                if (str(it.label)) {
+                    /* A stat's label is a heading only if the author asked
+                       for one. Left alone it is a <div>, because twenty
+                       numbers in a row are not twenty sections of a page. */
+                    var lab = pbEl(lvl || 'div', 'pb-stat-label');
+                    lab.textContent = str(it.label);
+                    box.appendChild(lab);
+                }
+                wrap.appendChild(box);
+                made += 1;
+            }
+            if (!made) return null;
+            return pbId(wrap, el);
+        },
+
+        /* Pricing or comparison cards. Feature rows are a real <ul>, the
+           price is text, and the action is an ordinary link through
+           pbUrl(). Nothing here invents a currency, a number or a claim:
+           every word comes from the record. */
+        plans: function (el) {
+            var c = el.content || {};
+            var items = isArr(c.items) ? c.items : [];
+            var lvl = pbPick(PB_HEADING_LEVELS, str(c.headingLevel).toLowerCase())
+                ? str(c.headingLevel).toLowerCase() : 'h3';
+            var wrap = pbEl('div', 'pb-el pb-plans');
+            var made = 0;
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i] || {};
+                var title = str(it.title);
+                if (!title) continue;
+                /* The highlighted card is marked in the markup as well as
+                   in the styling, so what it is does not depend on colour
+                   alone. */
+                var hi = it.highlight === true;
+                var box = pbEl('div', 'pb-plan' + (hi ? ' pb-plan-hi' : ''));
+                if (hi) box.setAttribute('data-highlight', 'true');
+                var h = pbEl(lvl, 'pb-plan-title');
+                h.textContent = title;
+                box.appendChild(h);
+                if (str(it.subtitle)) {
+                    var sub = pbEl('p', 'pb-plan-sub');
+                    sub.textContent = str(it.subtitle);
+                    box.appendChild(sub);
+                }
+                if (str(it.price)) {
+                    var pr = pbEl('div', 'pb-plan-price');
+                    var pn = pbEl('span', 'pb-plan-amount');
+                    pn.textContent = str(it.price);
+                    pr.appendChild(pn);
+                    if (str(it.period)) {
+                        var pe = pbEl('span', 'pb-plan-period');
+                        pe.textContent = str(it.period);
+                        pr.appendChild(pe);
+                    }
+                    box.appendChild(pr);
+                }
+                var feats = pbEl('ul', 'pb-plan-features');
+                var fmade = 0;
+                for (var f = 1; f <= PB_PLAN_FEATURES; f++) {
+                    var ft = str(it['f' + f]);
+                    if (!ft) continue;
+                    var li = pbEl('li', 'pb-plan-feature');
+                    li.textContent = ft;
+                    feats.appendChild(li);
+                    fmade += 1;
+                }
+                if (fmade) box.appendChild(feats);
+                var chref = pbUrl(it.ctaHref);
+                var ctext = str(it.ctaText);
+                if (chref && ctext) {
+                    var a = pbEl('a', 'pb-plan-cta');
+                    a.setAttribute('href', chref);
+                    if (it.ctaNewTab) {
+                        a.setAttribute('target', '_blank');
+                        a.setAttribute('rel', 'noopener');
+                    }
+                    a.textContent = ctext;
+                    box.appendChild(a);
+                }
+                wrap.appendChild(box);
+                made += 1;
+            }
+            if (!made) return null;
+            return pbId(wrap, el);
+        },
+
+        /* A grid of images. Each one is a <figure>, so a caption is tied to
+           its picture rather than floating under it, and every image goes
+           through the same image renderer as a standalone one -- so lazy
+           loading, decoding and the alt attribute are not written twice.
+
+           There is no lightbox. One would be a click handler, a focus trap
+           and an escape key for a feature nobody asked to be modal, and a
+           plain image that opens nothing is not broken. */
+        gallery: function (el) {
+            var c = el.content || {};
+            var items = isArr(c.items) ? c.items : [];
+            var showCaps = c.captions !== false;
+            var wrap = pbEl('div', 'pb-el pb-gallery');
+            var made = 0;
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i] || {};
+                var img = PB_ELEMENTS.image({ content: { src: it.src, alt: it.alt } });
+                if (!img) continue;              /* no usable source */
+                img.className += ' pb-gal-img';
+                var fig = pbEl('figure', 'pb-gal-item');
+                fig.appendChild(img);
+                var cap = str(it.caption);
+                if (cap && showCaps) {
+                    var fc = pbEl('figcaption', 'pb-gal-cap');
+                    fc.textContent = cap;
+                    fig.appendChild(fc);
+                }
+                wrap.appendChild(fig);
+                made += 1;
+            }
+            if (!made) return null;
+            return pbId(wrap, el);
+        },
+
+        /* A progress indicator, as the native <progress> element.
+
+           WHY NATIVE. The usual way to draw one is a div whose width is set
+           from the value -- which means an inline style built from stored
+           content, and this file does not write inline styles. <progress>
+           needs none: the browser draws the fill from the attributes, it is
+           announced correctly with no ARIA to get wrong, and it degrades to
+           its own text content where it is unsupported.
+
+           The value is also printed as WORDS beside the bar, so what it
+           says does not depend on seeing a coloured bar at all. */
+        progress: function (el) {
+            var c = el.content || {};
+            var max = parseFloat(c.max);
+            if (!(max > 0)) max = 100;
+            var value = parseFloat(c.value);
+            if (!isFinite(value)) return null;        /* nothing to report */
+            if (value < 0) value = 0;
+            if (value > max) value = max;
+            var pct = Math.round(value / max * 100);
+
+            var wrap = pbEl('div', 'pb-el pb-progress');
+            var label = str(c.label);
+            var bar = pbEl('progress', 'pb-progress-bar');
+            bar.setAttribute('max', String(max));
+            bar.setAttribute('value', String(value));
+            /* The element's own text is what a browser without <progress>
+               shows, and what some readers announce. */
+            bar.textContent = pct + '%';
+
+            var head = pbEl('div', 'pb-progress-head');
+            if (label) {
+                var id = pbDomId(el, 'pl');
+                var lab = pbEl('span', 'pb-progress-label');
+                lab.setAttribute('id', id);
+                lab.textContent = label;
+                head.appendChild(lab);
+                bar.setAttribute('aria-labelledby', id);
+            }
+            if (c.showValue !== false) {
+                var out = pbEl('span', 'pb-progress-value');
+                out.textContent = pct + '%';
+                head.appendChild(out);
+            }
+            if (head.childNodes.length) wrap.appendChild(head);
+            wrap.appendChild(bar);
+            return pbId(wrap, el);
+        },
+
+        /* ---- tabs ----
+
+           EVERY PANEL IS IN THE HTML. The inactive ones carry `hidden`,
+           which is display and not absence -- exactly what the FAQ element
+           has always done, and what keeps the words readable to a crawler
+           while the page does not show four panels stacked on first paint.
+
+           The ARIA is the pattern as specified, not a sprinkling of
+           attributes: a tablist of real <button>s, each owning its panel
+           through aria-controls, each panel pointing back with
+           aria-labelledby, one tab in the tab order at a time (the selected
+           one, tabindex 0; the rest -1) and the arrow keys moving between
+           them. A <button> is focusable and handles Enter and Space itself,
+           so there is no key handling to write for those and none to get
+           wrong. */
+        tabs: function (el) {
+            var c = el.content || {};
+            var items = isArr(c.items) ? c.items : [];
+            var rows = [];
+            for (var i = 0; i < items.length; i++) {
+                if (str((items[i] || {}).label)) rows.push(items[i]);
+            }
+            if (!rows.length) return null;
+
+            var wrap = pbEl('div', 'pb-el pb-tabs');
+            var list = pbEl('div', 'pb-tablist');
+            list.setAttribute('role', 'tablist');
+            wrap.appendChild(list);
+            var panels = pbEl('div', 'pb-tabpanels');
+            wrap.appendChild(panels);
+
+            /* The first tab marked open wins; with none marked, the first. */
+            var active = 0;
+            for (i = 0; i < rows.length; i++) {
+                if (rows[i].open === true) { active = i; break; }
+            }
+
+            var btns = [], pans = [];
+            for (i = 0; i < rows.length; i++) {
+                var tabId = pbDomId(el, 't' + i);
+                var panId = pbDomId(el, 'tp' + i);
+                var on = i === active;
+
+                var btn = pbEl('button', 'pb-tab');
+                btn.setAttribute('type', 'button');
+                btn.setAttribute('role', 'tab');
+                btn.setAttribute('id', tabId);
+                btn.setAttribute('aria-controls', panId);
+                btn.setAttribute('aria-selected', on ? 'true' : 'false');
+                btn.setAttribute('tabindex', on ? '0' : '-1');
+                btn.textContent = str(rows[i].label);
+                list.appendChild(btn);
+                btns.push(btn);
+
+                var pan = pbEl('div', 'pb-tabpanel');
+                pan.setAttribute('role', 'tabpanel');
+                pan.setAttribute('id', panId);
+                pan.setAttribute('aria-labelledby', tabId);
+                /* Scrollable panels need to be focusable, or a keyboard
+                   user who tabs past the list cannot reach the content. */
+                pan.setAttribute('tabindex', '0');
+                if (!on) pan.hidden = true;
+                var body = pbEl('p', 'pb-tab-text');
+                pbTextInto(body, rows[i].text, c);
+                pan.appendChild(body);
+                panels.appendChild(pan);
+                pans.push(pan);
+            }
+
+            for (i = 0; i < btns.length; i++) {
+                btns[i].addEventListener('click', pbTabPick(btns, pans, i));
+                btns[i].addEventListener('keydown', pbTabKeys(btns, pans, i));
+            }
+            return pbId(wrap, el);
+        },
+
+        /* ---- carousel ----
+
+           IT WORKS WITH NO JAVASCRIPT AT ALL. The slides are a row that
+           scrolls, with CSS scroll snapping, so a visitor can swipe or
+           scroll through them and a keyboard user can scroll the strip,
+           before a single line of script has run. The buttons and the
+           optional autoplay are enhancements on top of something that
+           already works -- which is the opposite of the usual slider, where
+           the content does not exist until the library loads.
+
+           Autoplay never starts for a visitor who asked for less motion,
+           and when it is on there is a pause control, because motion a
+           reader cannot stop is motion that makes a page unusable. */
+        carousel: function (el) {
+            var c = el.content || {};
+            var items = isArr(c.items) ? c.items : [];
+            var wrap = pbEl('div', 'pb-el pb-carousel');
+            var strip = pbEl('div', 'pb-car-strip');
+            /* A scrolling region needs a name and a way in from the
+               keyboard, or its content is unreachable without a mouse. */
+            strip.setAttribute('tabindex', '0');
+            strip.setAttribute('role', 'group');
+            strip.setAttribute('aria-roledescription', 'carousel');
+            strip.setAttribute('aria-label', 'Slides');
+
+            var made = 0;
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i] || {};
+                var img = pbUrl(it.image)
+                    ? PB_ELEMENTS.image({ content: { src: it.image, alt: str(it.alt) } })
+                    : null;
+                var title = str(it.title), text = str(it.text);
+                if (!img && !title && !text) continue;      /* an empty slide */
+                var slide = pbEl('div', 'pb-car-slide');
+                slide.setAttribute('role', 'group');
+                slide.setAttribute('aria-roledescription', 'slide');
+                if (img) { img.className += ' pb-car-img'; slide.appendChild(img); }
+                if (title) {
+                    var h = pbEl('h3', 'pb-car-title');
+                    h.textContent = title;
+                    slide.appendChild(h);
+                }
+                if (text) {
+                    var p = pbEl('p', 'pb-car-text');
+                    p.textContent = text;
+                    slide.appendChild(p);
+                }
+                var href = pbUrl(it.href);
+                if (href && str(it.linkText)) {
+                    var a = pbEl('a', 'pb-car-link');
+                    a.setAttribute('href', href);
+                    a.textContent = str(it.linkText);
+                    slide.appendChild(a);
+                }
+                strip.appendChild(slide);
+                made += 1;
+            }
+            if (!made) return null;
+            wrap.appendChild(strip);
+
+            /* One slide needs no controls, and a strip that cannot scroll
+               should not offer buttons that do nothing. */
+            if (made > 1) {
+                var bar = pbEl('div', 'pb-car-controls');
+                var prev = pbCarBtn('Previous slide', 'pb-car-prev');
+                var next = pbCarBtn('Next slide', 'pb-car-next');
+                bar.appendChild(prev);
+                if (c.autoplay === true) {
+                    var play = pbCarBtn('Pause the slideshow', 'pb-car-pause');
+                    play.setAttribute('aria-pressed', 'false');
+                    bar.appendChild(play);
+                    pbCarAuto(strip, play, c.interval);
+                }
+                bar.appendChild(next);
+                wrap.appendChild(bar);
+                prev.addEventListener('click', pbCarStep(strip, -1));
+                next.addEventListener('click', pbCarStep(strip, 1));
+            }
+            return pbId(wrap, el);
+        },
+
+        /* ---- video ----
+
+           An <iframe> runs a third party's code in the page, so the address
+           is never the author's string: pbVideoRef() matches it against the
+           hosts this builder embeds and returns an ID, and the src is BUILT
+           from that id and a constant.
+
+           An address no host recognises does not become an iframe. It
+           becomes a link, if pbUrl() allows it, and nothing otherwise --
+           because the one thing worse than not embedding a video is
+           embedding whatever was typed.
+
+           The iframe is sandboxed to what a player needs and nothing else,
+           referrer policy is tightened, and it loads lazily so a video
+           further down a page costs nothing until it is reached. */
+        video: function (el) {
+            var c = el.content || {};
+            var ref = pbVideoRef(c.url);
+            var title = str(c.title);
+            var caption = str(c.caption);
+            var fig = pbEl('figure', 'pb-el pb-video');
+
+            if (ref) {
+                var frame = pbEl('div', 'pb-video-frame');
+                var f = pbEl('iframe', 'pb-video-embed');
+                f.setAttribute('src', ref.embed);
+                /* A frame with no name is announced as "frame" and nothing
+                   else, so this is not decoration. */
+                f.setAttribute('title', title || (ref.host + ' video'));
+                f.setAttribute('loading', 'lazy');
+                f.setAttribute('allowfullscreen', '');
+                f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+                f.setAttribute('allow', 'fullscreen; picture-in-picture; encrypted-media');
+                f.setAttribute('sandbox',
+                    'allow-scripts allow-same-origin allow-presentation allow-popups');
+                frame.appendChild(f);
+                fig.appendChild(frame);
+            } else {
+                /* No recognised host. A link to it is still useful; an
+                   iframe pointed at it would not be. */
+                var href = pbUrl(c.url);
+                if (!href) return null;
+                var a = pbEl('a', 'pb-video-link');
+                a.setAttribute('href', href);
+                a.setAttribute('rel', 'noopener');
+                a.textContent = title || 'Watch the video';
+                fig.appendChild(a);
+            }
+
+            if (caption) {
+                var cap = pbEl('figcaption', 'pb-video-cap');
+                cap.textContent = caption;
+                fig.appendChild(cap);
+            }
+            return pbId(fig, el);
         }
 
     };
+
+    /* ---- the interaction the two interactive elements need ----
+
+       Kept out of the renderers for the same reason pbFaqToggle is: a
+       closure that captures exactly what it needs and nothing else. Nodes
+       are rebuilt on every repaint, so none of these can accumulate. */
+
+    function pbTabShow(btns, pans, want) {
+        for (var i = 0; i < btns.length; i++) {
+            var on = i === want;
+            btns[i].setAttribute('aria-selected', on ? 'true' : 'false');
+            btns[i].setAttribute('tabindex', on ? '0' : '-1');
+            pans[i].hidden = !on;
+        }
+    }
+
+    function pbTabPick(btns, pans, i) {
+        return function () { pbTabShow(btns, pans, i); };
+    }
+
+    /* Left/Right move, Home/End jump, and focus follows selection -- which
+       is the behaviour the pattern specifies for tabs that show their panel
+       immediately rather than on Enter. */
+    function pbTabKeys(btns, pans, i) {
+        return function (e) {
+            var key = e && e.key, to = -1;
+            if (key === 'ArrowRight') to = (i + 1) % btns.length;
+            else if (key === 'ArrowLeft') to = (i - 1 + btns.length) % btns.length;
+            else if (key === 'Home') to = 0;
+            else if (key === 'End') to = btns.length - 1;
+            if (to < 0) return;
+            if (e.preventDefault) e.preventDefault();
+            pbTabShow(btns, pans, to);
+            if (btns[to].focus) btns[to].focus();
+        };
+    }
+
+    /* One slide's width, so a step lands on a slide rather than a guess. */
+    function pbCarBtn(label, cls) {
+        var b = pbEl('button', 'pb-car-btn ' + cls);
+        b.setAttribute('type', 'button');
+        b.setAttribute('aria-label', label);
+        return b;
+    }
+
+    function pbCarStep(strip, dir) {
+        return function () {
+            var first = strip.querySelector ? strip.querySelector('.pb-car-slide') : null;
+            var by = first ? first.getBoundingClientRect().width : strip.clientWidth;
+            if (!by) by = strip.clientWidth;
+            strip.scrollBy({ left: dir * by, behavior: 'smooth' });
+        };
+    }
+
+    function pbCarAuto(strip, button, interval) {
+        /* NOTHING TIMED HAPPENS DURING A RENDER.
+
+           The static build runs this very file in Node against
+           tools/lib/minidom.js, where there is no event loop and no
+           visitor -- and where setInterval does not exist at all, so
+           starting the slideshow here threw and took the whole bake down
+           with it. A bake produces markup; a slideshow needs a page.
+
+           The listener below is still attached, because minidom accepts and
+           discards those, which means the baked markup carries the pause
+           button and the real page wires it up on load. */
+        if (typeof setInterval !== 'function' || typeof clearInterval !== 'function') return;
+
+        /* Never for a visitor who asked for less motion. */
+        var reduce = window.matchMedia &&
+            window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        var ms = parseInt(interval, 10);
+        if (!(ms >= 2000)) ms = 6000;      /* a floor: a slide nobody can read is not a slide */
+        var timer = null;
+        function stop() {
+            if (timer) { clearInterval(timer); timer = null; }
+            button.setAttribute('aria-pressed', 'true');
+            button.setAttribute('aria-label', 'Play the slideshow');
+        }
+        function start() {
+            if (timer) return;
+            timer = setInterval(function () {
+                /* At the end, back to the beginning. */
+                var max = strip.scrollWidth - strip.clientWidth - 2;
+                if (strip.scrollLeft >= max) strip.scrollTo({ left: 0, behavior: 'smooth' });
+                else pbCarStep(strip, 1)();
+            }, ms);
+            button.setAttribute('aria-pressed', 'false');
+            button.setAttribute('aria-label', 'Pause the slideshow');
+        }
+        button.addEventListener('click', function () { timer ? stop() : start(); });
+        /* Moving under a reader's cursor or focus is the other way motion
+           becomes a problem, so it stops for both. */
+        strip.addEventListener('mouseenter', stop);
+        strip.addEventListener('focusin', stop);
+        if (!reduce) start(); else stop();
+    }
 
     /* The FAQ's one piece of interaction. Kept out of the factory so the
        closure captures exactly what it needs and nothing else. */
@@ -3113,6 +3977,11 @@
             if (typeof make !== 'function') continue;  /* unknown type: skip, never throw */
             var node = make(el, depth);
             if (!node) continue;
+            /* After the renderer, because an element that draws nothing
+               has nothing to hide -- and because className is what every
+               renderer here builds, so this cannot fight one. */
+            var hide = pbHideClasses(el.visibility);
+            if (hide) node.className += hide;
             host.appendChild(node);
         }
     }
@@ -3184,6 +4053,12 @@
                 if (!lay) continue;
                 v = lay[0];
                 prop = PB_COL_PROP[tier === 'tablet' || tier === 'mobile' ? tier : ''];
+            } else if (Object.prototype.hasOwnProperty.call(PB_STYLE_ENUMS, k)) {
+                /* A name, not a measurement: the constant in the map is
+                   what gets emitted, so an unknown or hostile value emits
+                   nothing at all rather than reaching the property. */
+                v = pbPick(PB_STYLE_ENUMS[k], str(style[k]).toLowerCase());
+                if (!v) continue;
             } else if (k === 'bgImage') {
                 var u = pbCssUrl(style[k]);
                 if (!u) continue;
@@ -3238,7 +4113,16 @@
             var cols = (el.content || {}).columns;
             if (isArr(cols)) {
                 for (j = 0; j < cols.length; j++) {
-                    css += pbElementCSS((cols[j] || {}).elements, depth + 1);
+                    var box = cols[j] || {};
+                    /* Three classes' worth of specificity, so a container's
+                       own rule beats the shipped .pb-columns .pb-column one
+                       whatever order the stylesheets happen to load in. */
+                    var ref = pbContainerRef(el, j);
+                    if (ref) {
+                        css += pbScopedCSS('.pb-columns .pb-column[data-col="' + ref + '"]',
+                                           box, PB_EL_TOKENS, PB_CONTAINER_STYLE_KEYS);
+                    }
+                    css += pbElementCSS(box.elements, depth + 1);
                 }
             }
         }
@@ -3391,10 +4275,7 @@
             var cls = pbPick(PB_SECTION_CLASS, sec.type) || 'pb-generic';
             var node = pbEl('section', 'pb-section ' + cls);
             if (sec.id) node.setAttribute('data-sec', String(sec.id));
-            var vis = sec.visibility || {};
-            if (vis.desktop === false) node.className += ' pb-hide-desktop';
-            if (vis.tablet  === false) node.className += ' pb-hide-tablet';
-            if (vis.mobile  === false) node.className += ' pb-hide-mobile';
+            node.className += pbHideClasses(sec.visibility);
             var inner = pbEl('div', 'pb-inner');
             pbRenderElements(inner, sec.elements, 0);
             node.appendChild(inner);
@@ -4020,6 +4901,100 @@
               tSec('text', [
                   tEl('notice', { text: 'Tell readers where to go if their question is not here.',
                                   variant: 'info', icon: 'question' })
+              ])
+          ]; } },
+
+        /* ---- Phase 2B ----
+
+           Two more starters, added to this registry rather than beside it.
+           They exist for a reason beyond saving an author some clicks: a
+           template is the only place in this file that shows how the
+           elements are meant to go TOGETHER, and the elements added in this
+           phase had nowhere demonstrating that.
+
+           Same rules as every template above. Placeholder copy only --
+           nothing here states a fact, quotes a real person, names a price
+           or claims a number, because a template that ships an invented
+           statistic is a template that publishes one. No h1, for the reason
+           given above the registry. Every link is '#'. */
+
+        { id: 'pricing', name: 'Pricing page', version: PB_TEMPLATE_VERSION,
+          description: 'A heading, three plans to compare, a FAQ and a closing banner.',
+          sections: function () { return [
+              tSec('text', [
+                  tEl('heading', { text: 'Choose a plan', level: 'h2' }, { typography: '@h1' }),
+                  tEl('text', { text: 'A sentence saying what the plans have in common.' })
+              ]),
+              tSec('text', [
+                  tEl('plans', { items: [
+                      { title: 'First plan', subtitle: 'Who it suits', price: '0', period: '/mo',
+                        f1: 'What is included', f2: 'And this', f3: 'And this',
+                        ctaText: 'Choose', ctaHref: '#' },
+                      { title: 'Second plan', subtitle: 'Who it suits', price: '00', period: '/mo',
+                        highlight: true,
+                        f1: 'Everything above', f2: 'Plus this', f3: 'And this',
+                        ctaText: 'Choose', ctaHref: '#' },
+                      { title: 'Third plan', subtitle: 'Who it suits', price: '000', period: '/mo',
+                        f1: 'Everything above', f2: 'Plus this', f3: 'And this',
+                        ctaText: 'Choose', ctaHref: '#' }
+                  ] })
+              ]),
+              tSec('text', [
+                  tEl('heading', { text: 'Questions about the plans', level: 'h2' }),
+                  tEl('faq', { single: false, items: [
+                      { question: 'First question?', answer: 'Answer.' },
+                      { question: 'Second question?', answer: 'Answer.' }
+                  ] })
+              ]),
+              tSec('banner', [
+                  tEl('featureBox', { title: 'Still deciding?',
+                                      text: 'Say what to do next.',
+                                      linkText: 'Primary action', href: '#',
+                                      linkText2: 'Or ask a question', href2: '#' })
+              ])
+          ]; } },
+
+        { id: 'showcase', name: 'Showcase page', version: PB_TEMPLATE_VERSION,
+          description: 'A contents list, numbers, a gallery, quotes and a closing call to action.',
+          sections: function () { return [
+              tSec('text', [
+                  tEl('heading', { text: 'What this page shows', level: 'h2' },
+                      { typography: '@h1' }),
+                  tEl('text', { text: 'One or two sentences introducing it.' }),
+                  tEl('toc', { title: 'On this page', depth: 'h3' })
+              ]),
+              tSec('text', [
+                  tEl('heading', { text: 'By the numbers', level: 'h2' }),
+                  /* Zeroes, not plausible-looking figures: a placeholder a
+                     reader could mistake for a real statistic is worse than
+                     an obvious blank. */
+                  tEl('stats', { items: [
+                      { value: '0', label: 'What this counts' },
+                      { value: '0', label: 'And this' },
+                      { value: '0', label: 'And this' }
+                  ] })
+              ]),
+              tSec('text', [
+                  tEl('heading', { text: 'Pictures', level: 'h2' }),
+                  /* Deliberately empty: the gallery says what to add rather
+                     than shipping somebody else's photographs. */
+                  tEl('text', { text: 'Add images to the gallery below in Page Builder.' }),
+                  tEl('gallery', { items: [] })
+              ]),
+              tSec('text', [
+                  tEl('heading', { text: 'What people say', level: 'h2' }),
+                  tEl('testimonials', { items: [
+                      { quote: 'Replace this with something somebody actually said.',
+                        name: 'Their name', role: 'Their role' },
+                      { quote: 'And this with another.',
+                        name: 'Their name', role: 'Their role' }
+                  ] })
+              ]),
+              tSec('banner', [
+                  tEl('featureBox', { title: 'Next step',
+                                      text: 'Say what you want a reader to do.',
+                                      linkText: 'Primary action', href: '#',
+                                      linkText2: 'Secondary action', href2: '#' })
               ])
           ]; } }
     ];
@@ -5501,6 +6476,13 @@
             safeCssUrl: pbCssUrl,
             elementStyleKeys: PB_EL_STYLE_KEYS,
             sectionStyleKeys: PB_SEC_STYLE_KEYS,
+            /* What a container inside a columns element can be given, and
+               the name lists its layout controls choose from. Exported for
+               the same reason icons and column presets are: the admin
+               builds its controls from the renderer's own lists. */
+            containerStyleKeys: PB_CONTAINER_STYLE_KEYS,
+            layoutNames: { direction: PB_DIRECTIONS, justify: PB_JUSTIFY,
+                           alignItems: PB_ALIGN_ITEMS, wrap: PB_WRAP },
             icons: PB_ICONS,
             social: PB_SOCIAL,
             /* Phase 2A allow-lists, exported for the same reason icons and
@@ -5510,6 +6492,12 @@
             textTags: PB_TEXT_TAGS,
             tocDepths: PB_TOC_DEPTHS,
             tableMaxCols: PB_TABLE_MAX_COLS,
+            /* Which video addresses become an embed, answered by the one
+               function that decides it -- so the admin can tell an author
+               what will happen to the address they pasted without holding a
+               second copy of the patterns. */
+            videoRef: pbVideoRef,
+            videoHosts: PB_VIDEO_HOSTS.map(function (h) { return h.name; }),
             colLayouts: PB_COL_LAYOUTS,
             /* Global design (stage 6). `roleColor`/`roleTypo` resolve a role
                the way the stylesheet does, which is what lets the admin show

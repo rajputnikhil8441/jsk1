@@ -1628,7 +1628,16 @@ window.PBAdmin = function (host) {
         /* Phase 2A */
         ['list',        'List'],
         ['table',       'Table'],
-        ['toc',         'Table of contents']
+        ['toc',         'Table of contents'],
+        /* Phase 2B */
+        ['testimonials', 'Testimonials'],
+        ['stats',        'Stats'],
+        ['plans',        'Pricing / comparison'],
+        ['gallery',      'Gallery'],
+        ['progress',     'Progress bar'],
+        ['tabs',         'Tabs'],
+        ['carousel',     'Carousel'],
+        ['video',        'Video']
     ];
 
     /* Choice lists come from the renderer's own allow-lists, so the admin
@@ -1677,7 +1686,12 @@ window.PBAdmin = function (host) {
                   ['titleLevel', 'Heading level', 'select', ['h2', 'h3', 'h4', 'h5', 'h6']],
                   ['text', 'Description', 'area'],
                   ['linkText', 'Link text', 'text'], ['href', 'Links to', 'pageLink'],
-                  ['newTab', 'Open in a new tab', 'bool']],
+                  ['newTab', 'Open in a new tab', 'bool'],
+                  /* A second, quieter action -- which is what made a
+                     separate CTA element unnecessary. */
+                  ['linkText2', 'Second link text', 'text'],
+                  ['href2', 'Second link goes to', 'pageLink'],
+                  ['newTab2', 'Open the second in a new tab', 'bool']],
         faq:     [['single', 'Only one answer open at a time', 'bool']],
         socialLinks: [],
 
@@ -1692,7 +1706,26 @@ window.PBAdmin = function (host) {
         toc:     [['title', 'Heading above it (optional)', 'text'],
                   ['titleLevel', 'Heading level', 'select', ['h2', 'h3', 'h4', 'h5', 'h6']],
                   ['depth', 'Include down to', 'tocDepth'],
-                  ['ordered', 'Numbered', 'bool']]
+                  ['ordered', 'Numbered', 'bool']],
+
+        /* Phase 2B. The rows themselves are repeating items, below. */
+        testimonials: [['headingLevel', 'Name as a heading', 'select',
+                          [['', 'Not a heading'], ['h3', 'H3'], ['h4', 'H4'], ['h5', 'H5']]]],
+        stats:        [['headingLevel', 'Label as a heading', 'select',
+                          [['', 'Not a heading'], ['h3', 'H3'], ['h4', 'H4'], ['h5', 'H5']]]],
+        plans:        [['headingLevel', 'Plan name heading level', 'select',
+                          [['', 'H3'], ['h2', 'H2'], ['h4', 'H4'], ['h5', 'H5']]]],
+        gallery:      [['captions', 'Show captions', 'bool']],
+        progress:     [['label', 'Label', 'text'],
+                       ['value', 'Value', 'num'],
+                       ['max', 'Out of', 'num'],
+                       ['showValue', 'Show the percentage', 'bool']],
+        tabs:         [['rich', 'Allow basic formatting', 'bool']],
+        carousel:     [['autoplay', 'Move through them on its own', 'bool'],
+                       ['interval', 'Seconds on each (minimum 2)', 'num']],
+        video:        [['url', 'Video address', 'text'],
+                       ['title', 'Title (what a screen reader announces)', 'text'],
+                       ['caption', 'Caption', 'text']]
     };
 
     /* Repeating sub-items: which element types have them, what one blank
@@ -1745,6 +1778,64 @@ window.PBAdmin = function (host) {
                 }
                 return out;
             }
+        },
+
+        testimonials: {
+            key: 'items', label: 'Quotes', addLabel: 'Add a quote',
+            blank: function () { return { quote: 'What they said.', name: 'Their name' }; },
+            title: function (it) { return String((it && it.name) || (it && it.quote) || 'Quote'); },
+            fields: [['quote', 'Quote', 'area'], ['name', 'Name', 'text'],
+                     ['role', 'Role', 'text'], ['company', 'Company', 'text'],
+                     ['image', 'Photo', 'asset']]
+        },
+
+        stats: {
+            key: 'items', label: 'Numbers', addLabel: 'Add a number',
+            blank: function () { return { value: '100', label: 'What it counts' }; },
+            title: function (it) { return String((it && it.label) || (it && it.value) || 'Stat'); },
+            fields: [['value', 'Number', 'text'], ['label', 'Label', 'text'],
+                     ['prefix', 'Before it', 'text'], ['suffix', 'After it', 'text']]
+        },
+
+        plans: {
+            key: 'items', label: 'Plans', addLabel: 'Add a plan',
+            blank: function () { return { title: 'Plan name', f1: 'What is included' }; },
+            title: function (it) { return String((it && it.title) || 'Plan'); },
+            fields: function () {
+                var out = [['title', 'Name', 'text'], ['subtitle', 'Under the name', 'text'],
+                           ['price', 'Price', 'text'], ['period', 'Per', 'text'],
+                           ['highlight', 'Mark as recommended', 'bool']];
+                for (var i = 1; i <= 6; i++) out.push(['f' + i, 'Feature ' + i, 'text']);
+                out.push(['ctaText', 'Button label', 'text']);
+                out.push(['ctaHref', 'Button links to', 'pageLink']);
+                out.push(['ctaNewTab', 'Open in a new tab', 'bool']);
+                return out;
+            }
+        },
+
+        gallery: {
+            key: 'items', label: 'Images', addLabel: 'Add an image',
+            blank: function () { return { src: '', alt: '' }; },
+            title: function (it) { return String((it && it.caption) || (it && it.alt) || 'Image'); },
+            fields: [['src', 'Image', 'asset'], ['alt', 'Alt text', 'text'],
+                     ['caption', 'Caption', 'text']]
+        },
+
+        tabs: {
+            key: 'items', label: 'Tabs', addLabel: 'Add a tab',
+            blank: function () { return { label: 'New tab', text: 'What is in it.' }; },
+            title: function (it) { return String((it && it.label) || 'Tab'); },
+            fields: [['label', 'Tab label', 'text'], ['text', 'What is in it', 'area'],
+                     ['open', 'Open this one first', 'bool']]
+        },
+
+        carousel: {
+            key: 'items', label: 'Slides', addLabel: 'Add a slide',
+            blank: function () { return { title: 'Slide title', text: 'What it says.' }; },
+            title: function (it) { return String((it && it.title) || 'Slide'); },
+            fields: [['title', 'Title', 'text'], ['text', 'Text', 'area'],
+                     ['image', 'Image', 'asset'], ['alt', 'Image alt text', 'text'],
+                     ['linkText', 'Link text', 'text'], ['href', 'Links to', 'pageLink']]
         }
     };
 
@@ -1756,6 +1847,34 @@ window.PBAdmin = function (host) {
        copied: the same rule icons and platforms follow, so the admin can
        never count to a depth the renderer does not honour. */
     function pbTocDepths() { return CMS.sections.tocDepths || { h2: 2, h3: 3, h4: 4 }; }
+
+    /* The options for one layout control, read from the renderer's own name
+       list so the two can never drift. A blank first option means "leave
+       it", which for a container is the shipped default -- the same
+       inherit-by-absence rule every other style control follows.
+
+       The labels are the author's words for the names; the names themselves
+       are the wire format and are not shown. */
+    var PB_LAYOUT_LABELS = {
+        direction:  { column: 'Downwards (a column)', row: 'Across (a row)',
+                      'column-reverse': 'Downwards, reversed',
+                      'row-reverse': 'Across, reversed' },
+        justify:    { start: 'At the start', center: 'Centred', end: 'At the end',
+                      between: 'Space between', around: 'Space around',
+                      evenly: 'Space evenly' },
+        alignItems: { stretch: 'Stretch to fill', start: 'At the start',
+                      center: 'Centred', end: 'At the end',
+                      baseline: 'On their baseline' },
+        wrap:       { nowrap: 'Keep on one line', wrap: 'Wrap onto more lines' }
+    };
+
+    function pbLayoutOptions(key) {
+        var names = (CMS.sections.layoutNames || {})[key] || {};
+        var labels = PB_LAYOUT_LABELS[key] || {};
+        var out = [['', '(inherit)']];
+        Object.keys(names).forEach(function (n) { out.push([n, labels[n] || n]); });
+        return out;
+    }
 
     /* The depth control's options, in level order, labelled. */
     function pbTocDepthOptions() {
@@ -1820,7 +1939,15 @@ window.PBAdmin = function (host) {
         ['lineStyle',  'Line style',        'select',
             [['', '(inherit)'], ['solid', 'Solid'], ['dashed', 'Dashed'],
              ['dotted', 'Dotted'], ['double', 'Double']]],
-        ['lineColor',  'Line colour',       'colorRef']
+        ['lineColor',  'Line colour',       'colorRef'],
+        /* Container layout. Each is a name from the renderer's own list,
+           resolved in pbFieldFor so the admin cannot offer a value the
+           renderer would refuse. */
+        ['direction',  'Stack items',       'layoutName'],
+        ['justify',    'Distribute along',  'layoutName'],
+        ['alignItems', 'Align across',      'layoutName'],
+        ['wrap',       'Wrap items',        'layoutName'],
+        ['minWidth',   'Min width (px)',    'num']
     ];
 
     /* ---------- Stage 5: the seven control groups ----------
@@ -1828,7 +1955,8 @@ window.PBAdmin = function (host) {
        group; anything not listed falls into "More" so a new control can
        never become invisible, and a test asserts that "More" is empty. */
     var PB_STYLE_GROUPS = [
-        ['layout',     'Layout',     ['columns', 'align', 'maxWidth', 'height', 'gap']],
+        ['layout',     'Layout',     ['columns', 'direction', 'justify', 'alignItems', 'wrap',
+                                      'align', 'maxWidth', 'minWidth', 'height', 'gap']],
         ['spacing',    'Spacing',    ['padding', 'margin']],
         ['typography', 'Typography', ['typography', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing']],
         ['colors',     'Colors',     ['color', 'bg']],
@@ -1913,6 +2041,21 @@ window.PBAdmin = function (host) {
         return (CMS.sections.elementStyleKeys || {})[type] || [];
     }
 
+    /* A container's controls, from the renderer. Same contract as
+       pbStyleKeysFor: if the CSS does not read it, it is not offered. */
+    function pbContainerStyleKeys() {
+        return CMS.sections.containerStyleKeys || [];
+    }
+
+    /* On a container these keys mean something more specific than they do
+       on an element, and saying so is the difference between a control an
+       author understands and one they experiment with. */
+    var PB_CONTAINER_LABELS = {
+        gap:    'Space between items (px)',
+        align:  'Text alignment',
+        height: 'Min height (px)'
+    };
+
     function pbSectionStyleKeys() {
         return CMS.sections.sectionStyleKeys || [];
     }
@@ -1930,7 +2073,18 @@ window.PBAdmin = function (host) {
         socialLinks: { fontSize: 'Icon size (px)', gap: 'Space between icons (px)' },
         list:        { gap: 'Space between items (px)' },
         table:       { padding: 'Space inside cells (px)' },
-        toc:         { gap: 'Space between entries (px)' }
+        toc:         { gap: 'Space between entries (px)' },
+        testimonials: { columns: 'Quotes per row', gap: 'Space between quotes (px)',
+                        fontSize: 'Quote size (px)' },
+        stats:       { columns: 'Numbers per row', gap: 'Space between numbers (px)',
+                      fontSize: 'Number size (px)' },
+        plans:       { columns: 'Cards per row', gap: 'Space between cards (px)' },
+        gallery:     { columns: 'Images per row', gap: 'Space between images (px)',
+                      minWidth: 'Smallest image width (px)' },
+        progress:    { gap: 'Space above the bar (px)', fontSize: 'Label size (px)' },
+        tabs:        { gap: 'Space below the tabs (px)' },
+        carousel:    { gap: 'Space between slides (px)', minWidth: 'Slide width (px)' },
+        video:       { gap: 'Space above the caption (px)' }
     };
 
     var PB_DEVICES = [['base', 'Desktop'], ['tablet', 'Tablet'], ['mobile', 'Mobile']];
@@ -2854,6 +3008,7 @@ window.PBAdmin = function (host) {
         if (spec[2] === 'iconSelect')   spec = [spec[0], spec[1], 'select', [''].concat(pbIconNames())];
         if (spec[2] === 'socialSelect') spec = [spec[0], spec[1], 'select', pbSocialNames()];
         if (spec[2] === 'tocDepth')     spec = [spec[0], spec[1], 'select', pbTocDepthOptions()];
+        if (spec[2] === 'layoutName')   spec = [spec[0], spec[1], 'select', pbLayoutOptions(spec[0])];
         if (spec[2] === 'colsSelect') {
             spec = [spec[0], spec[1], 'select', pbColOptions((ctx && ctx.device) || 'base')];
         }
@@ -3004,8 +3159,13 @@ window.PBAdmin = function (host) {
         return n;
     }
 
-    function pbDesignEditor(host, node, keys, labels, onLayout) {
-        var device = pbDevice[node.id] || 'base';
+    /* `stateKey` is which entry in pbDevice remembers the open device tab.
+       It defaults to the node's id, which is what a section or an element
+       has. A CONTAINER has none -- it is a position in an array -- so its
+       caller passes one, or every container on the page would share a tab. */
+    function pbDesignEditor(host, node, keys, labels, onLayout, stateKey) {
+        var dkey = stateKey || node.id;
+        var device = pbDevice[dkey] || 'base';
 
         var tabs = document.createElement('div');
         tabs.className = 'pb-devtabs';
@@ -3028,9 +3188,11 @@ window.PBAdmin = function (host) {
             b.addEventListener('click', function () {
                 /* Choosing which breakpoint to EDIT. It writes nothing --
                    the value only changes when a control is used. */
-                pbDevice[node.id] = d[0];
+                pbDevice[dkey] = d[0];
                 host.innerHTML = '';
-                pbDesignEditor(host, node, keys, labels, onLayout);
+                /* dkey is threaded through the rebuild, or a container would
+                   lose which tab it was on the moment one was chosen. */
+                pbDesignEditor(host, node, keys, labels, onLayout, dkey);
             });
             tabs.appendChild(b);
         });
@@ -3175,14 +3337,31 @@ window.PBAdmin = function (host) {
         }
     }
 
-    function pbVisibilityEditor(host, sec) {
+    /* Works on a section, an element or a container -- the renderer reads
+       the same three booleans off all three now, so there is one editor
+       rather than three. `what` is only the wording. */
+    function pbVisibilityEditor(host, sec, what) {
         var box = document.createElement('div');
         box.className = 'pb-vis';
         var lead = document.createElement('p');
         lead.className = 'hint';
-        lead.textContent = 'Hide this section on a screen size without deleting it.';
+        lead.textContent = 'Hide this ' + (what || 'section') + ' on a screen size without ' +
+            'deleting it. It stays in the page a crawler reads \u2014 this hides it at one ' +
+            'screen size, it does not remove it.';
         box.appendChild(lead);
-        if (!sec.visibility) sec.visibility = { desktop: true, tablet: true, mobile: true };
+        /* RENDERING THIS PANEL MUST NOT WRITE ANYTHING.
+
+           It used to create sec.visibility up front. On a section that was
+           invisible -- the sanitiser gives every section all three keys
+           anyway -- but an ELEMENT has none until something is hidden, so
+           opening a card added a key the element never had: the draft went
+           dirty because an author looked at it, and two nodes that should
+           have been deep-identical no longer were.
+           tests/test_pagebuilder_dnd.js caught exactly that.
+
+           So the checkboxes READ with a default and the object is created
+           only when one is actually unticked -- which is the same
+           absent-means-shown rule the renderer and the cleaner follow. */
         [['desktop', 'Show on desktop'], ['tablet', 'Show on tablet'], ['mobile', 'Show on mobile']]
             .forEach(function (v) {
                 var l = document.createElement('label');
@@ -3190,8 +3369,13 @@ window.PBAdmin = function (host) {
                 var cb = document.createElement('input');
                 cb.type = 'checkbox';
                 cb.setAttribute('data-vis', v[0]);
-                cb.checked = sec.visibility[v[0]] !== false;
+                cb.checked = !(sec.visibility && sec.visibility[v[0]] === false);
                 cb.addEventListener('change', function () {
+                    if (!sec.visibility) {
+                        /* Still nothing hidden: nothing to store. */
+                        if (cb.checked) return;
+                        sec.visibility = {};
+                    }
                     sec.visibility[v[0]] = cb.checked;
                     pbPersist();
                     pbPaintPreview();
@@ -3265,7 +3449,37 @@ window.PBAdmin = function (host) {
            with none there is nothing to list and it draws nothing. The
            hint below says that, rather than leaving an author staring at
            an element that appears to be broken. */
-        toc:   function () { return { title: 'On this page', depth: 'h3' }; }
+        toc:   function () { return { title: 'On this page', depth: 'h3' }; },
+
+        /* Phase 2B. Each of these refuses to draw without rows, so each
+           ships with enough to be visible at once. The gallery is the
+           exception and is deliberate: like a lone image, it has nothing to
+           show until a file is named. */
+        testimonials: function () {
+            return { items: [{ quote: 'This is what someone said about the site.',
+                               name: 'Their name', role: 'Their role' }] };
+        },
+        stats: function () {
+            return { items: [{ value: '100', label: 'What it counts' },
+                             { value: '24', label: 'Something else', suffix: '/7' }] };
+        },
+        plans: function () {
+            return { items: [{ title: 'Plan name', price: '0', period: '/mo',
+                               f1: 'What is included', f2: 'And this' }] };
+        },
+        gallery: function () { return { items: [] }; },
+        progress: function () { return { label: 'Progress', value: 60, max: 100 }; },
+        tabs: function () {
+            return { items: [{ label: 'First tab', text: 'What is in the first tab.' },
+                             { label: 'Second tab', text: 'What is in the second.' }] };
+        },
+        carousel: function () {
+            return { items: [{ title: 'First slide', text: 'What it says.' },
+                             { title: 'Second slide', text: 'And this one.' }] };
+        },
+        /* A video has nothing to show until an address is given, like an
+           image with no file. The hint on the card says which hosts work. */
+        video: function () { return { url: '' }; }
     };
 
     function pbBlankElement(type) {
@@ -3480,6 +3694,40 @@ window.PBAdmin = function (host) {
                 });
                 h.appendChild(rm);
                 box.appendChild(h);
+
+                /* The container's own Design panel. A container is a real
+                   box now -- it can have a background, padding, a border,
+                   and its own direction and alignment for the elements
+                   inside it -- and the keys offered are the renderer's own
+                   containerStyleKeys, so none of them can do nothing.
+
+                   The device tab's state key is the columns element plus
+                   this container's position, because a container has no id
+                   of its own. */
+                var cdesign = document.createElement('details');
+                cdesign.className = 'pb-details pb-col-design';
+                cdesign.innerHTML = '<summary>Container design and visibility</summary>';
+                var ckey = el.id + ':col' + ci;
+                cdesign.open = !!pbDesignOpen[ckey];
+                cdesign.addEventListener('toggle', function () {
+                    pbDesignOpen[ckey] = cdesign.open;
+                });
+                /* ONE panel, not two. A column box sits inside an element
+                   card inside a section, and every collapsed row added here
+                   pushes everything below it further down -- which is a cost
+                   an author pays on every page, and which was enough to
+                   stretch the admin's own drag fixture past a 1900px
+                   viewport. Design and visibility share the panel. */
+                var chost = document.createElement('div');
+                pbDesignEditor(chost, col, pbContainerStyleKeys(), PB_CONTAINER_LABELS,
+                    function () { pbPaintPreview(); }, ckey);
+                cdesign.appendChild(chost);
+                var cvhost = document.createElement('div');
+                cvhost.className = 'pb-col-vis';
+                pbVisibilityEditor(cvhost, col, 'container');
+                cdesign.appendChild(cvhost);
+                box.appendChild(cdesign);
+
                 if (!col.elements) col.elements = [];
                 pbElementList(box, col.elements, depth + 1,
                     { sec: addr.sec, el: el.id, col: ci });
@@ -3528,6 +3776,28 @@ window.PBAdmin = function (host) {
                     'Nothing else is markup — typed HTML stays visible as text, ' +
                     'and a link address that is not allowed leaves the words behind.';
                 body.appendChild(rh);
+            }
+
+            /* A video's address is the one field in this builder whose
+               value decides whether a third party's code runs in the page,
+               so the card says exactly what will happen to it. */
+            if (el.type === 'video') {
+                var vh = document.createElement('p');
+                vh.className = 'hint';
+                vh.setAttribute('data-hint', 'video');
+                var vurl = String((el.content || {}).url || '').trim();
+                var vok = !!(CMS.sections.videoRef && CMS.sections.videoRef(vurl));
+                vh.textContent = !vurl
+                    ? 'Paste a YouTube or Vimeo address. Those two are embedded; any other ' +
+                      'address becomes an ordinary link instead, because an embed runs ' +
+                      'someone else\u2019s code in your page.'
+                    : vok
+                        ? 'Recognised \u2014 this will be embedded as a player, with no ' +
+                          'tracking cookie set on a visitor who only reads the page.'
+                        : 'Not a YouTube or Vimeo address, so this will be shown as a link ' +
+                          'rather than embedded. That is deliberate: only those two are ' +
+                          'put in a frame.';
+                body.appendChild(vh);
             }
 
             /* A table of contents is the one element whose content is the
@@ -3600,6 +3870,25 @@ window.PBAdmin = function (host) {
             });
         design.appendChild(dhost);
         body.appendChild(design);
+
+        /* Hide on a screen size. Its own panel rather than a row inside
+           Design, because it is not a style: it is whether the thing is
+           there at all at that width.
+
+           AFTER Design, deliberately. Design is the first .pb-details in a
+           card and a good deal of the admin's own test suite reaches it
+           that way; putting this first silently moved what "the design
+           panel" meant. It is also the order an author works in. */
+        var vis = document.createElement('details');
+        vis.className = 'pb-details pb-el-vis';
+        vis.innerHTML = '<summary>Visibility</summary>';
+        var vkey = el.id + ':vis';
+        vis.open = !!pbDesignOpen[vkey];
+        vis.addEventListener('toggle', function () { pbDesignOpen[vkey] = vis.open; });
+        var vhost = document.createElement('div');
+        pbVisibilityEditor(vhost, el, 'element');
+        vis.appendChild(vhost);
+        body.appendChild(vis);
 
         card.appendChild(body);
         return card;
