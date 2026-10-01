@@ -1217,28 +1217,14 @@
         if (title) document.title = title;
         if (!page) return;
 
-        setMeta('name', 'description', computeDescription(page));
-        setMeta('name', 'robots', robotsValue(page));
-        setLink('canonical', pageUrl(page));
-
-        setMeta('property', 'og:site_name', get('seo.siteName', ''));
-        setMeta('property', 'og:title', computeOg(page, 'title'));
-        setMeta('property', 'og:description', computeOg(page, 'description'));
-        setMeta('property', 'og:url', pageUrl(page));
-        setMeta('property', 'og:image', crawlableImage(computeOg(page, 'image')));
-
-        setMeta('name', 'twitter:card', get('seo.twitterCard', ''));
-        setMeta('name', 'twitter:site', get('seo.twitterSite', ''));
-        setMeta('name', 'twitter:title', computeTwitter(page, 'title'));
-        setMeta('name', 'twitter:description', computeTwitter(page, 'description'));
-        setMeta('name', 'twitter:image', crawlableImage(computeTwitter(page, 'image')));
-
-        /* Verification tags are created only when a code is present. */
-        setMeta('name', 'google-site-verification', get('seo.verification.google', ''));
-        setMeta('name', 'msvalidate.01', get('seo.verification.bing', ''));
-        setMeta('name', 'yandex-verification', get('seo.verification.yandex', ''));
-
-        paintSchema(page);
+        /* The values come from seoTags() -- the same structure a build reads
+           -- so this function APPLIES the SEO set and no longer also decides
+           it. setMeta and setLink keep their own rule that an empty value
+           leaves the tag the HTML shipped alone. */
+        var tags = seoTags(page);
+        tags.metas.forEach(function (m) { setMeta(m.attr, m.name, m.content); });
+        tags.links.forEach(function (l) { setLink(l.rel, l.href); });
+        writeSchema(tags.jsonLd);
     }
 
     /* ========================================================
@@ -1249,12 +1235,19 @@
        block that is switched off is emptied rather than left stale.
     ======================================================== */
 
+    /* The one place @context is added, so a block read by a build and a block
+       written into a page are the same JSON rather than nearly the same. */
+    function ldContext(obj) {
+        if (!obj) return null;
+        obj['@context'] = 'https://schema.org';
+        return obj;
+    }
+
     function writeLd(id, obj) {
         var el = document.getElementById(id);
         if (!el) return;
         if (!obj) { el.textContent = '{}'; return; }
-        obj['@context'] = 'https://schema.org';
-        el.textContent = JSON.stringify(obj, null, 2);
+        el.textContent = JSON.stringify(ldContext(obj), null, 2);
     }
 
     function buildOrganization() {
@@ -1311,10 +1304,19 @@
 
     /* Breadcrumb schema is only emitted when the page actually shows a
        breadcrumb — Google requires the markup to match what is visible. */
-    function buildBreadcrumb(page) {
+    /* opts.breadcrumbNav answers "does this page show a breadcrumb trail?"
+       without a DOM. Left out, the question is answered exactly as it always
+       was -- by looking for the element -- so a browser behaves identically.
+       It exists because a caller with no document (a build reading this file
+       in Node) knows the answer from the HTML it is about to write and cannot
+       get it from querySelector. */
+    function buildBreadcrumb(page, opts) {
         if (!page || !page.schema || !page.schema.breadcrumb) return null;
         if (!page.breadcrumb || !page.breadcrumb.show) return null;
-        if (!document.querySelector('.breadcrumb')) return null;
+        var hasNav = (opts && opts.breadcrumbNav !== undefined)
+            ? !!opts.breadcrumbNav
+            : !!document.querySelector('.breadcrumb');
+        if (!hasNav) return null;
         var base = str(get('seo.baseUrl', '')).replace(/\/+$/, '');
         var label = str(page.breadcrumb.label) || str(page.label);
         if (!base || !label) return null;
@@ -1350,11 +1352,84 @@
         if (page) paintSchema(page);
     }
 
+    /* The four blocks, as data, keyed by the element each one belongs in. */
+    function schemaBlocks(page, opts) {
+        return {
+            ldOrganization: ldContext(buildOrganization()),
+            ldWebSite:      ldContext(buildWebSite()),
+            ldPage:         ldContext(buildWebPage(page)),
+            ldBreadcrumb:   ldContext(buildBreadcrumb(page, opts))
+        };
+    }
+
+    function writeSchema(blocks) {
+        writeLd('ldOrganization', blocks.ldOrganization);
+        writeLd('ldWebSite', blocks.ldWebSite);
+        writeLd('ldPage', blocks.ldPage);
+        writeLd('ldBreadcrumb', blocks.ldBreadcrumb);
+    }
+
     function paintSchema(page) {
-        writeLd('ldOrganization', buildOrganization());
-        writeLd('ldWebSite', buildWebSite());
-        writeLd('ldPage', buildWebPage(page));
-        writeLd('ldBreadcrumb', buildBreadcrumb(page));
+        writeSchema(schemaBlocks(page));
+    }
+
+    /* ========================================================
+       EVERY SEO VALUE THIS FILE WOULD PAINT, AS DATA
+       --------------------------------------------------------
+       WHY. paintSeo() below computes a page's title, description, robots,
+       canonical, Open Graph, Twitter and JSON-LD and writes them into the
+       document. A static build needs the SAME values to put in the HTML it
+       generates, and the one thing it must not do is work them out again:
+       two implementations of "what is this page's title" is two answers, and
+       the one a crawler reads would be the wrong one.
+
+       So the set is defined once, here, as data. paintSeo() applies it to a
+       document; anything else -- a build running this file in Node, the
+       admin's preview -- reads the same structure and does what it likes
+       with it. There is no second algorithm to keep in step because there is
+       no second algorithm.
+
+       It touches no DOM. Hand it a page record (CMS.seo.page(slug) finds
+       one) and it returns what that page's tags should say.
+
+       Nothing brand-specific appears here or can: every value comes from the
+       merged CMS record of whichever brand resolved, through get() and the
+       page record. A brand name, domain or id would be data, and data lives
+       in the record, not in this file.
+    ======================================================== */
+    function seoTags(page, opts) {
+        var metas = [];
+        function meta(attr, name, content) {
+            metas.push({ attr: attr, name: name, content: str(content) });
+        }
+
+        meta('name', 'description', computeDescription(page));
+        meta('name', 'robots', robotsValue(page));
+
+        meta('property', 'og:site_name', get('seo.siteName', ''));
+        meta('property', 'og:title', computeOg(page, 'title'));
+        meta('property', 'og:description', computeOg(page, 'description'));
+        meta('property', 'og:url', pageUrl(page));
+        meta('property', 'og:image', crawlableImage(computeOg(page, 'image')));
+
+        meta('name', 'twitter:card', get('seo.twitterCard', ''));
+        meta('name', 'twitter:site', get('seo.twitterSite', ''));
+        meta('name', 'twitter:title', computeTwitter(page, 'title'));
+        meta('name', 'twitter:description', computeTwitter(page, 'description'));
+        meta('name', 'twitter:image', crawlableImage(computeTwitter(page, 'image')));
+
+        /* Verification tags: only ever written when a code is present, which
+           the empty-value rule below already guarantees. */
+        meta('name', 'google-site-verification', get('seo.verification.google', ''));
+        meta('name', 'msvalidate.01', get('seo.verification.bing', ''));
+        meta('name', 'yandex-verification', get('seo.verification.yandex', ''));
+
+        return {
+            title: computeTitle(page),
+            metas: metas,
+            links: [{ rel: 'canonical', href: pageUrl(page) }],
+            jsonLd: schemaBlocks(page, opts)
+        };
     }
 
     /* ========================================================
@@ -4888,6 +4963,44 @@
         applyBody: applyBody,
         paintVars: paintVars,
         paintSeo: paintSeo,
+
+        /* ----------------------------------------------------------------
+           THE SEO COMPUTATIONS, NAMED.
+
+           Every entry is a REFERENCE to the function paintSeo() itself uses
+           -- not a wrapper, not a reimplementation -- so a second caller
+           cannot compute a page's title, description, canonical, social tags
+           or structured data differently from the page a visitor is served.
+           `tags` is the whole set as data and is what paintSeo() applies.
+
+           The flat seo*For aliases below are the earlier spelling of the
+           same references. js/admin.js reads them, so they stay.
+           ---------------------------------------------------------------- */
+        seo: {
+            title: computeTitle,
+            description: computeDescription,
+            og: computeOg,
+            twitter: computeTwitter,
+            robots: robotsValue,
+            url: pageUrl,
+            jsonLd: schemaBlocks,
+            breadcrumb: buildBreadcrumb,
+
+            /* Everything paintSeo() would write, as data:
+               { title, metas:[{attr,name,content}], links:[{rel,href}],
+                 jsonLd:{ldOrganization,ldWebSite,ldPage,ldBreadcrumb} } */
+            tags: seoTags,
+
+            /* The page record a slug resolves to. Takes the slug explicitly,
+               so a caller without a document can ask. */
+            page: pageData,
+
+            /* The two URL filters the tags above apply, exposed so a caller
+               treats an image or a relative URL exactly as the tags do. */
+            image: crawlableImage,
+            absUrl: absUrl
+        },
+
         seoUrlFor: pageUrl,
         seoTitleFor: computeTitle,
         seoDescriptionFor: computeDescription,
