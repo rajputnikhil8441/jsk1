@@ -48,7 +48,8 @@ const sec = (id, type, extra) => Object.assign({ id, type, enabled: true, elemen
 
 const TYPES = ['heading', 'text', 'image', 'button', 'card', 'columns', 'divider',
                'spacer', 'icon', 'notice', 'featureBox', 'faq', 'socialLinks',
-               'list', 'table', 'toc'];
+               'list', 'table', 'toc',
+               'testimonials', 'stats', 'plans', 'gallery', 'progress'];
 /* An image with no source is the one type that is meant to start empty:
    there is nothing to show until a file is named.
 

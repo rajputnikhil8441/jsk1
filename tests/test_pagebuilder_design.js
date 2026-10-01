@@ -71,7 +71,15 @@ const CONTENT = {
                  items: [{ c1: 'Column A', c2: 'Column B' },
                          { c1: 'Row one', c2: 'Value one' },
                          { c1: 'Row two', c2: 'Value two' }] },
-  toc:         { title: 'On this page', depth: 'h3' }
+  toc:         { title: 'On this page', depth: 'h3' },
+  testimonials: { items: [{ quote: 'A quote', name: 'A name', role: 'A role' },
+                          { quote: 'Another quote', name: 'Another name' }] },
+  stats:       { items: [{ value: '100', label: 'One' }, { value: '200', label: 'Two' }] },
+  plans:       { items: [{ title: 'Basic', price: '0', f1: 'A feature' },
+                         { title: 'Pro', price: '9', f1: 'A feature', highlight: true }] },
+  gallery:     { items: [{ src: 'assets/images/favicon.png', alt: 'a', caption: 'c' },
+                         { src: 'assets/images/favicon.png', alt: 'b' }] },
+  progress:    { label: 'Done', value: 60, max: 100 }
 };
 
 /* A table of contents is the one type whose content is the rest of the
@@ -394,7 +402,8 @@ const fingerprint = (p, sel) => p.$eval(sel, (root, props) => {
     await p.click(`${SEC} .pb-subtab[data-view="content"]`); await p.waitForTimeout(350);
     const TYPES = ['heading', 'text', 'image', 'button', 'card', 'columns', 'divider',
                    'spacer', 'icon', 'notice', 'featureBox', 'faq', 'socialLinks',
-                   'list', 'table', 'toc'];
+                   'list', 'table', 'toc',
+                   'testimonials', 'stats', 'plans', 'gallery', 'progress'];
     const ids = {};
     for (const t of TYPES) {
       await p.click(`${TOP} > .pb-add-el > .pb-addbtn[data-el-type="${t}"]`);

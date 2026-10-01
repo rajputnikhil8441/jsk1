@@ -1628,7 +1628,13 @@ window.PBAdmin = function (host) {
         /* Phase 2A */
         ['list',        'List'],
         ['table',       'Table'],
-        ['toc',         'Table of contents']
+        ['toc',         'Table of contents'],
+        /* Phase 2B */
+        ['testimonials', 'Testimonials'],
+        ['stats',        'Stats'],
+        ['plans',        'Pricing / comparison'],
+        ['gallery',      'Gallery'],
+        ['progress',     'Progress bar']
     ];
 
     /* Choice lists come from the renderer's own allow-lists, so the admin
@@ -1677,7 +1683,12 @@ window.PBAdmin = function (host) {
                   ['titleLevel', 'Heading level', 'select', ['h2', 'h3', 'h4', 'h5', 'h6']],
                   ['text', 'Description', 'area'],
                   ['linkText', 'Link text', 'text'], ['href', 'Links to', 'pageLink'],
-                  ['newTab', 'Open in a new tab', 'bool']],
+                  ['newTab', 'Open in a new tab', 'bool'],
+                  /* A second, quieter action -- which is what made a
+                     separate CTA element unnecessary. */
+                  ['linkText2', 'Second link text', 'text'],
+                  ['href2', 'Second link goes to', 'pageLink'],
+                  ['newTab2', 'Open the second in a new tab', 'bool']],
         faq:     [['single', 'Only one answer open at a time', 'bool']],
         socialLinks: [],
 
@@ -1692,7 +1703,20 @@ window.PBAdmin = function (host) {
         toc:     [['title', 'Heading above it (optional)', 'text'],
                   ['titleLevel', 'Heading level', 'select', ['h2', 'h3', 'h4', 'h5', 'h6']],
                   ['depth', 'Include down to', 'tocDepth'],
-                  ['ordered', 'Numbered', 'bool']]
+                  ['ordered', 'Numbered', 'bool']],
+
+        /* Phase 2B. The rows themselves are repeating items, below. */
+        testimonials: [['headingLevel', 'Name as a heading', 'select',
+                          [['', 'Not a heading'], ['h3', 'H3'], ['h4', 'H4'], ['h5', 'H5']]]],
+        stats:        [['headingLevel', 'Label as a heading', 'select',
+                          [['', 'Not a heading'], ['h3', 'H3'], ['h4', 'H4'], ['h5', 'H5']]]],
+        plans:        [['headingLevel', 'Plan name heading level', 'select',
+                          [['', 'H3'], ['h2', 'H2'], ['h4', 'H4'], ['h5', 'H5']]]],
+        gallery:      [['captions', 'Show captions', 'bool']],
+        progress:     [['label', 'Label', 'text'],
+                       ['value', 'Value', 'num'],
+                       ['max', 'Out of', 'num'],
+                       ['showValue', 'Show the percentage', 'bool']]
     };
 
     /* Repeating sub-items: which element types have them, what one blank
@@ -1745,6 +1769,47 @@ window.PBAdmin = function (host) {
                 }
                 return out;
             }
+        },
+
+        testimonials: {
+            key: 'items', label: 'Quotes', addLabel: 'Add a quote',
+            blank: function () { return { quote: 'What they said.', name: 'Their name' }; },
+            title: function (it) { return String((it && it.name) || (it && it.quote) || 'Quote'); },
+            fields: [['quote', 'Quote', 'area'], ['name', 'Name', 'text'],
+                     ['role', 'Role', 'text'], ['company', 'Company', 'text'],
+                     ['image', 'Photo', 'asset']]
+        },
+
+        stats: {
+            key: 'items', label: 'Numbers', addLabel: 'Add a number',
+            blank: function () { return { value: '100', label: 'What it counts' }; },
+            title: function (it) { return String((it && it.label) || (it && it.value) || 'Stat'); },
+            fields: [['value', 'Number', 'text'], ['label', 'Label', 'text'],
+                     ['prefix', 'Before it', 'text'], ['suffix', 'After it', 'text']]
+        },
+
+        plans: {
+            key: 'items', label: 'Plans', addLabel: 'Add a plan',
+            blank: function () { return { title: 'Plan name', f1: 'What is included' }; },
+            title: function (it) { return String((it && it.title) || 'Plan'); },
+            fields: function () {
+                var out = [['title', 'Name', 'text'], ['subtitle', 'Under the name', 'text'],
+                           ['price', 'Price', 'text'], ['period', 'Per', 'text'],
+                           ['highlight', 'Mark as recommended', 'bool']];
+                for (var i = 1; i <= 6; i++) out.push(['f' + i, 'Feature ' + i, 'text']);
+                out.push(['ctaText', 'Button label', 'text']);
+                out.push(['ctaHref', 'Button links to', 'pageLink']);
+                out.push(['ctaNewTab', 'Open in a new tab', 'bool']);
+                return out;
+            }
+        },
+
+        gallery: {
+            key: 'items', label: 'Images', addLabel: 'Add an image',
+            blank: function () { return { src: '', alt: '' }; },
+            title: function (it) { return String((it && it.caption) || (it && it.alt) || 'Image'); },
+            fields: [['src', 'Image', 'asset'], ['alt', 'Alt text', 'text'],
+                     ['caption', 'Caption', 'text']]
         }
     };
 
@@ -1982,7 +2047,15 @@ window.PBAdmin = function (host) {
         socialLinks: { fontSize: 'Icon size (px)', gap: 'Space between icons (px)' },
         list:        { gap: 'Space between items (px)' },
         table:       { padding: 'Space inside cells (px)' },
-        toc:         { gap: 'Space between entries (px)' }
+        toc:         { gap: 'Space between entries (px)' },
+        testimonials: { columns: 'Quotes per row', gap: 'Space between quotes (px)',
+                        fontSize: 'Quote size (px)' },
+        stats:       { columns: 'Numbers per row', gap: 'Space between numbers (px)',
+                      fontSize: 'Number size (px)' },
+        plans:       { columns: 'Cards per row', gap: 'Space between cards (px)' },
+        gallery:     { columns: 'Images per row', gap: 'Space between images (px)',
+                      minWidth: 'Smallest image width (px)' },
+        progress:    { gap: 'Space above the bar (px)', fontSize: 'Label size (px)' }
     };
 
     var PB_DEVICES = [['base', 'Desktop'], ['tablet', 'Tablet'], ['mobile', 'Mobile']];
@@ -3247,7 +3320,19 @@ window.PBAdmin = function (host) {
             'deleting it. It stays in the page a crawler reads \u2014 this hides it at one ' +
             'screen size, it does not remove it.';
         box.appendChild(lead);
-        if (!sec.visibility) sec.visibility = { desktop: true, tablet: true, mobile: true };
+        /* RENDERING THIS PANEL MUST NOT WRITE ANYTHING.
+
+           It used to create sec.visibility up front. On a section that was
+           invisible -- the sanitiser gives every section all three keys
+           anyway -- but an ELEMENT has none until something is hidden, so
+           opening a card added a key the element never had: the draft went
+           dirty because an author looked at it, and two nodes that should
+           have been deep-identical no longer were.
+           tests/test_pagebuilder_dnd.js caught exactly that.
+
+           So the checkboxes READ with a default and the object is created
+           only when one is actually unticked -- which is the same
+           absent-means-shown rule the renderer and the cleaner follow. */
         [['desktop', 'Show on desktop'], ['tablet', 'Show on tablet'], ['mobile', 'Show on mobile']]
             .forEach(function (v) {
                 var l = document.createElement('label');
@@ -3255,8 +3340,13 @@ window.PBAdmin = function (host) {
                 var cb = document.createElement('input');
                 cb.type = 'checkbox';
                 cb.setAttribute('data-vis', v[0]);
-                cb.checked = sec.visibility[v[0]] !== false;
+                cb.checked = !(sec.visibility && sec.visibility[v[0]] === false);
                 cb.addEventListener('change', function () {
+                    if (!sec.visibility) {
+                        /* Still nothing hidden: nothing to store. */
+                        if (cb.checked) return;
+                        sec.visibility = {};
+                    }
                     sec.visibility[v[0]] = cb.checked;
                     pbPersist();
                     pbPaintPreview();
@@ -3330,7 +3420,26 @@ window.PBAdmin = function (host) {
            with none there is nothing to list and it draws nothing. The
            hint below says that, rather than leaving an author staring at
            an element that appears to be broken. */
-        toc:   function () { return { title: 'On this page', depth: 'h3' }; }
+        toc:   function () { return { title: 'On this page', depth: 'h3' }; },
+
+        /* Phase 2B. Each of these refuses to draw without rows, so each
+           ships with enough to be visible at once. The gallery is the
+           exception and is deliberate: like a lone image, it has nothing to
+           show until a file is named. */
+        testimonials: function () {
+            return { items: [{ quote: 'This is what someone said about the site.',
+                               name: 'Their name', role: 'Their role' }] };
+        },
+        stats: function () {
+            return { items: [{ value: '100', label: 'What it counts' },
+                             { value: '24', label: 'Something else', suffix: '/7' }] };
+        },
+        plans: function () {
+            return { items: [{ title: 'Plan name', price: '0', period: '/mo',
+                               f1: 'What is included', f2: 'And this' }] };
+        },
+        gallery: function () { return { items: [] }; },
+        progress: function () { return { label: 'Progress', value: 60, max: 100 }; }
     };
 
     function pbBlankElement(type) {

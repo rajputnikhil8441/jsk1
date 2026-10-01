@@ -769,3 +769,264 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
    top of the viewport. Browser-level, and costs nothing on a page with no
    contents list on it. */
 .pb-heading { scroll-margin-top: 16px; }
+
+
+/* ---------- testimonials ----------
+   A <figure> per quote, laid out on the same 13 track presets the columns
+   element uses, so there is one column control in this builder and not two.
+   The default is auto-fill, which reflows without being told to. */
+
+.pb-el.pb-testimonials {
+    display: grid;
+    grid-template-columns: var(--pbe-cols, repeat(auto-fit, minmax(260px, 1fr)));
+    gap: var(--pbe-gap, 16px);
+    background: var(--pbe-bg, transparent);
+    color: var(--pbe-color, inherit);
+    font-size: var(--pbe-font-size, 15px);
+    font-weight: var(--pbe-font-weight, 400);
+    letter-spacing: var(--pbe-letter-spacing, inherit);
+    text-align: var(--pbe-align, inherit);
+    padding: var(--pbe-padding, 0);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+}
+
+.pb-testimonials .pb-tm {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 0;
+    padding: 16px;
+    border: 1px solid rgba(0, 0, 0, .12);
+    border-radius: 8px;
+}
+
+.pb-testimonials .pb-tm-quote { margin: 0; }
+
+.pb-testimonials .pb-tm-text {
+    margin: 0;
+    color: inherit;
+    line-height: var(--pbe-line-height, 1.55);
+    white-space: pre-line;
+}
+
+.pb-testimonials .pb-tm-by {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: auto;      /* attributions line up even if quotes differ in length */
+}
+
+.pb-testimonials .pb-tm-face {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.pb-testimonials .pb-tm-who { display: flex; flex-direction: column; }
+.pb-testimonials .pb-tm-name { font-weight: 600; color: inherit; }
+.pb-testimonials .pb-tm-role { font-size: .9em; opacity: .75; color: inherit; }
+
+
+/* ---------- stats ---------- */
+
+.pb-el.pb-stats {
+    display: grid;
+    grid-template-columns: var(--pbe-cols, repeat(auto-fit, minmax(140px, 1fr)));
+    gap: var(--pbe-gap, 16px);
+    background: var(--pbe-bg, transparent);
+    color: var(--pbe-color, inherit);
+    letter-spacing: var(--pbe-letter-spacing, inherit);
+    text-align: var(--pbe-align, center);
+    padding: var(--pbe-padding, 0);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+}
+
+.pb-stats .pb-stat { display: flex; flex-direction: column; gap: 4px; }
+
+.pb-stats .pb-stat-value {
+    font-size: var(--pbe-font-size, 32px);
+    font-weight: var(--pbe-font-weight, 700);
+    line-height: var(--pbe-line-height, 1.1);
+    color: inherit;
+}
+
+/* A prefix or suffix is part of the number, so it is sized with it and only
+   slightly quieter -- not a separate label. */
+.pb-stats .pb-stat-affix { font-size: .7em; opacity: .8; }
+
+.pb-stats .pb-stat-label {
+    margin: 0;
+    font-size: .95rem;
+    font-weight: 400;
+    color: inherit;
+    opacity: .8;
+}
+
+
+/* ---------- plans / pricing ---------- */
+
+.pb-el.pb-plans {
+    display: grid;
+    grid-template-columns: var(--pbe-cols, repeat(auto-fit, minmax(230px, 1fr)));
+    gap: var(--pbe-gap, 16px);
+    background: var(--pbe-bg, transparent);
+    color: var(--pbe-color, inherit);
+    font-size: var(--pbe-font-size, 15px);
+    letter-spacing: var(--pbe-letter-spacing, inherit);
+    text-align: var(--pbe-align, inherit);
+    padding: var(--pbe-padding, 0);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+}
+
+.pb-plans .pb-plan {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 18px;
+    border: 1px solid rgba(0, 0, 0, .14);
+    border-radius: 10px;
+}
+
+/* The highlighted card is drawn differently AND carries data-highlight in
+   the markup, so which one is recommended does not depend on seeing a
+   colour. */
+.pb-plans .pb-plan-hi {
+    border-width: 2px;
+    border-color: currentColor;
+}
+
+.pb-plans .pb-plan-title {
+    margin: 0;
+    font-size: 1.15em;
+    font-weight: 700;
+    color: inherit;
+}
+
+.pb-plans .pb-plan-sub { margin: 0; font-size: .92em; opacity: .75; color: inherit; }
+
+.pb-plans .pb-plan-price {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+.pb-plans .pb-plan-amount { font-size: 1.9em; font-weight: 700; line-height: 1.1; }
+.pb-plans .pb-plan-period { font-size: .85em; opacity: .7; }
+
+.pb-plans .pb-plan-features {
+    list-style-position: outside;
+    margin: 0;
+    padding-inline-start: 1.2em;
+    line-height: var(--pbe-line-height, 1.6);
+}
+
+.pb-plans .pb-plan-feature { color: inherit; }
+
+.pb-plans .pb-plan-cta {
+    margin-top: auto;          /* actions line up across cards of any height */
+    align-self: flex-start;
+    color: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.pb-plans .pb-plan-cta:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+
+/* ---------- gallery ----------
+   minWidth drives the smallest tile, so one control changes how many fit
+   per row at every width without a breakpoint being named. */
+
+.pb-el.pb-gallery {
+    display: grid;
+    grid-template-columns:
+        var(--pbe-cols, repeat(auto-fill, minmax(var(--pbe-min-width, 180px), 1fr)));
+    gap: var(--pbe-gap, 10px);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    text-align: var(--pbe-align, inherit);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+}
+
+.pb-gallery .pb-gal-item { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+
+.pb-gallery .pb-gal-img {
+    width: 100%;
+    height: auto;
+    border-radius: inherit;
+    object-fit: cover;
+}
+
+.pb-gallery .pb-gal-cap { font-size: .88em; opacity: .8; color: inherit; }
+
+
+/* ---------- progress ----------
+   The native element, so the fill is drawn by the browser from its
+   attributes rather than from an inline style built out of stored content.
+   accent-color is the one line that themes it in every current browser. */
+
+.pb-el.pb-progress {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pbe-gap, 6px);
+    background: var(--pbe-bg, transparent);
+    color: var(--pbe-color, inherit);
+    font-size: var(--pbe-font-size, 14px);
+    font-weight: var(--pbe-font-weight, 400);
+    letter-spacing: var(--pbe-letter-spacing, inherit);
+    text-align: var(--pbe-align, inherit);
+    padding: var(--pbe-padding, 0);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+}
+
+.pb-progress .pb-progress-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    line-height: var(--pbe-line-height, 1.4);
+}
+
+.pb-progress .pb-progress-label { font-weight: 600; color: inherit; }
+.pb-progress .pb-progress-value { opacity: .8; color: inherit; font-variant-numeric: tabular-nums; }
+
+.pb-progress .pb-progress-bar {
+    width: 100%;
+    height: 10px;
+    accent-color: currentColor;
+    border-radius: 999px;
+}
+
+
+/* ---------- a feature box with two actions ---------- */
+
+.pb-feature .pb-feature-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+}
+
+/* The second action is the quieter one: same size, less weight, so the pair
+   reads as a primary and an alternative rather than as two equals. */
+.pb-feature .pb-feature-link2 { font-weight: 400; opacity: .85; }

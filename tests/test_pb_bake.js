@@ -148,6 +148,30 @@ const FIXTURE = [
         style: {}, responsive: {} },
       { id: 'el_h4a', type: 'heading', content: { text: 'Too deep to list', level: 'h4' },
         style: {}, responsive: {} },
+      /* Phase 2B. All five are here because the claim that matters for each
+         is the same one: the words are in the HTML before any JavaScript.
+         Ampersands and angle brackets are in the content on purpose. */
+      { id: 'el_tm', type: 'testimonials', style: {}, responsive: {}, content: { items: [
+          { quote: 'Fast & simple', name: 'A <Person>', role: 'Manager', company: 'Acme' },
+          { name: 'no quote, dropped' } ] } },
+      { id: 'el_st', type: 'stats', style: {}, responsive: {}, content: { headingLevel: 'h4',
+        items: [ { value: '1200', label: 'Members & guests', prefix: '+', suffix: 'k' },
+                 { label: 'no value, dropped' } ] } },
+      { id: 'el_pl', type: 'plans', style: {}, responsive: {}, content: { items: [
+          { title: 'Starter & co', price: '0', period: '/mo', f1: 'One brand',
+            ctaText: 'Choose', ctaHref: 'contact.html' },
+          { title: 'Pro', price: '29', highlight: true, f1: 'More' },
+          { subtitle: 'no title, dropped' } ] } },
+      { id: 'el_ga', type: 'gallery', style: {}, responsive: {}, content: { items: [
+          { src: 'assets/images/logo.png', alt: 'Logo & mark', caption: 'A caption & more' },
+          { src: 'javascript:alert(1)', alt: 'refused' },
+          { alt: 'no src, dropped' } ] } },
+      { id: 'el_pg', type: 'progress', style: {}, responsive: {},
+        content: { label: 'Setup & config', value: '70', max: '100' } },
+      { id: 'el_cta', type: 'featureBox', style: {}, responsive: {},
+        content: { icon: 'star', title: 'Ready?', text: 'Two ways in.',
+                   linkText: 'Sign up', href: 'register.html',
+                   linkText2: 'Talk to us', href2: 'contact.html', newTab2: true } },
       /* Phase 2B: a styled container. Here for the byte-for-byte comparison
          like everything else, and because a container's style is the first
          thing in this builder that is addressed by POSITION rather than by
@@ -416,6 +440,81 @@ function buildBrand(brandsDir, id, outDir) {
       node.css.indexOf('data-col="el_box-1"') === -1, true);
     check('  and the content of both is in the static HTML either way',
       node.html.includes('>in a styled box<') && node.html.includes('>in a plain box<'), true);
+
+    /* ---- Phase 2B: five elements, and none of them needs JavaScript ----
+
+       The one claim worth asserting for each is that its WORDS are in the
+       response body. Section A has already proved this markup is identical
+       to what the browser builds, so these read the baked string. */
+    check('a testimonial bakes as figure + blockquote + figcaption',
+      /<figure class="pb-tm"><blockquote class="pb-tm-quote"><p class="pb-tm-text">Fast &amp; simple<\/p><\/blockquote>/
+        .test(node.html) &&
+      node.html.includes('<figcaption class="pb-tm-by">'), true);
+    check('  with the attribution as text, and NO review or rating schema',
+      node.html.includes('A &lt;Person&gt;') && node.html.includes('>Manager, Acme<') &&
+      !/aggregateRating|"Review"|ratingValue|reviewRating/i.test(node.html), true);
+    check('  and a quote-less item is dropped',
+      !node.html.includes('no quote, dropped'), true);
+
+    check('a stat bakes its number as text, not as something to animate',
+      /<span class="pb-stat-num">1200<\/span>/.test(node.html) &&
+      node.html.includes('<span class="pb-stat-affix">+</span>'), true);
+    check('  its label is a real heading when asked for',
+      node.html.includes('<h4 class="pb-stat-label">Members &amp; guests</h4>'), true);
+    check('  and a value-less item is dropped', !node.html.includes('no value, dropped'), true);
+
+    check('a plan bakes a heading, a price and a real <ul> of features',
+      node.html.includes('<h3 class="pb-plan-title">Starter &amp; co</h3>') &&
+      /<ul class="pb-plan-features"><li class="pb-plan-feature">One brand<\/li>/.test(node.html), true);
+    check('  the recommended one says so in the MARKUP, not only in colour',
+      /<div class="pb-plan pb-plan-hi" data-highlight="true">/.test(node.html), true);
+    check('  its action is an ordinary crawlable link',
+      node.html.includes('<a class="pb-plan-cta" href="contact.html">Choose</a>'), true);
+    check('  and a title-less plan is dropped', !node.html.includes('no title, dropped'), true);
+
+    check('a gallery bakes figure + img + figcaption, with alt text kept',
+      /<figure class="pb-gal-item"><img class="pb-el pb-img pb-gal-img"/.test(node.html) &&
+      node.html.includes('alt="Logo &amp; mark"') &&
+      node.html.includes('<figcaption class="pb-gal-cap">A caption &amp; more</figcaption>'), true);
+    /* Scoped to the gallery's own markup: the fixture elsewhere carries the
+       literal text "javascript:alert(1)" on purpose, because an address
+       with brackets in it never looks like a link mark to the inline reader
+       and stays as the plain words it already was. A document-wide search
+       for that string would be a check on the wrong element. */
+    {
+      const gal = (node.html.match(/<div class="pb-el pb-gallery"[\s\S]*?<\/div>(?=<div class="pb-el pb-progress")/) || [''])[0];
+      check('  it refuses an unsafe source outright rather than drawing it',
+        gal.length > 0 && !/src="\s*(javascript|data|vbscript):/i.test(gal) &&
+        !gal.includes('refused'), gal.slice(0, 200));
+      check('  and an item with no source at all is dropped',
+        !gal.includes('no src, dropped') &&
+        (gal.match(/<figure class="pb-gal-item">/g) || []).length === 1, gal.slice(0, 200));
+    }
+    check('  and lazy loading comes from the one image renderer, not a copy',
+      (node.html.match(/class="pb-el pb-img pb-gal-img" src="[^"]*" alt="[^"]*" loading="lazy" decoding="async"/g) || []).length === 1,
+      true);
+
+    check('progress bakes the NATIVE element, so no inline style is needed',
+      /<progress class="pb-progress-bar" max="100" value="70"/.test(node.html) &&
+      !/<progress[^>]*style=/.test(node.html), true);
+    check('  it is labelled, and says its value in words as well',
+      /<progress[^>]*aria-labelledby="pb-el_pg-pl"/.test(node.html) &&
+      node.html.includes('<span class="pb-progress-value">70%</span>') &&
+      node.html.includes('>70%</progress>'), true);
+    check('  and the label it points at is really in the same HTML',
+      node.html.includes('id="pb-el_pg-pl"'), true);
+
+    check('a feature box bakes BOTH actions, each through pbUrl',
+      /<div class="pb-feature-actions">/.test(node.html) &&
+      node.html.includes('<a class="pb-feature-link" href="register.html">Sign up</a>') &&
+      /<a class="pb-feature-link pb-feature-link2" href="contact.html" target="_blank" rel="noopener">Talk to us<\/a>/
+        .test(node.html), true);
+    /* The bug this fixture would have caught years earlier: the default
+       heading level was tested and then thrown away, so a feature box with
+       no explicit level rendered <undefined> and had no heading at all. */
+    check('  and its title is a REAL heading with no level set',
+      node.html.includes('<h3 class="pb-feature-title">Ready?</h3>') &&
+      node.html.indexOf('<undefined') === -1, true);
 
     check('no page errors', errs.length === 0, errs);
     await ctx.close();

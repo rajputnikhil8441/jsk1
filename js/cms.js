@@ -1663,7 +1663,25 @@
                       'border', 'radius', 'shadow'],
         toc:         ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
                       'align', 'bg', 'padding', 'margin', 'maxWidth', 'gap',
-                      'border', 'radius', 'shadow']
+                      'border', 'radius', 'shadow'],
+
+        /* Phase 2B. `columns` appears on the three that lay their items out
+           in a grid, so they reuse the existing 13 track presets rather
+           than inventing a column control of their own. */
+        testimonials: ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight',
+                       'letterSpacing', 'align', 'bg', 'padding', 'margin', 'maxWidth',
+                       'gap', 'columns', 'border', 'radius', 'shadow'],
+        stats:        ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight',
+                       'letterSpacing', 'align', 'bg', 'padding', 'margin', 'maxWidth',
+                       'gap', 'columns', 'border', 'radius', 'shadow'],
+        plans:        ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight',
+                       'letterSpacing', 'align', 'bg', 'padding', 'margin', 'maxWidth',
+                       'gap', 'columns', 'border', 'radius', 'shadow'],
+        gallery:      ['align', 'margin', 'maxWidth', 'gap', 'columns', 'minWidth',
+                       'border', 'radius', 'shadow'],
+        progress:     ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight',
+                       'letterSpacing', 'align', 'bg', 'padding', 'margin', 'maxWidth',
+                       'gap', 'border', 'radius', 'shadow']
     };
 
     /* The keys a SECTION reacts to. Derived from the section token map, so
@@ -1723,8 +1741,14 @@
         spacer:      [],
         icon:        ['icon', 'label', 'href', 'newTab'],
         notice:      ['variant', 'icon', 'text', 'linkText', 'href', 'newTab'],
+        /* A feature box is this builder's call-to-action: icon or image, a
+           heading, body copy and an action. The ONE thing it could not do
+           was offer a second, quieter action beside the first -- so that is
+           what was added, rather than a CTA element that would have been
+           this one with a different name. */
         featureBox:  ['icon', 'image', 'imageAlt', 'title', 'titleLevel', 'text',
-                      'linkText', 'href', 'newTab'],
+                      'linkText', 'href', 'newTab',
+                      'linkText2', 'href2', 'newTab2'],
         faq:         ['single'],
         socialLinks: [],
 
@@ -1737,11 +1761,26 @@
            ends up read by the wrong reader. */
         list:        ['ordered', 'rich'],
         table:       ['caption', 'cols', 'header'],
-        toc:         ['title', 'titleLevel', 'depth', 'ordered']
+        toc:         ['title', 'titleLevel', 'depth', 'ordered'],
+
+        /* ---- Phase 2B ----
+           Each of these is a repeating list of items plus a handful of
+           scalars about the whole element, which is the shape the sanitiser
+           already knows how to clean. None of them needs JavaScript to put
+           its content on the page. */
+        testimonials: ['headingLevel'],
+        stats:        ['headingLevel'],
+        plans:        ['headingLevel', 'featureLabel'],
+        gallery:      ['captions'],
+        progress:     ['label', 'value', 'max', 'showValue']
     };
 
     /* Which content keys hold a URL, and which hold a repeating list. */
-    var PB_URL_KEYS = { src: 1, href: 1, image: 1, buttonHref: 1, url: 1 };
+    var PB_URL_KEYS = { src: 1, href: 1, image: 1, buttonHref: 1, url: 1,
+                        /* Phase 2B: the feature box's second action, and a
+                           plan card's. Listed here so they go through
+                           pbUrl() like every other address. */
+                        href2: 1, ctaHref: 1 };
 
     /* Content keys whose value is a name from a list rather than free text.
        The renderer already refuses an unrecognised one at render time, but
@@ -1756,7 +1795,11 @@
         platform:   function () { return PB_SOCIAL; },
         level:      function () { return PB_ALL_LEVELS; },
         tag:        function () { return PB_TEXT_TAGS; },
-        depth:      function () { return PB_TOC_DEPTHS; }
+        depth:      function () { return PB_TOC_DEPTHS; },
+        /* Phase 2B. The heading inside a testimonial, a stat or a plan is a
+           real heading, so its level is an author's choice -- validated
+           against the same list every other level is. */
+        headingLevel: function () { return PB_HEADING_LEVELS; }
     };
 
     var PB_ALL_LEVELS = { h1: 1, h2: 1, h3: 1, h4: 1, h5: 1, h6: 1 };
@@ -1773,12 +1816,29 @@
        key. An array of cells would need a second kind of cleaning. */
     var PB_TABLE_MAX_COLS = 8;
     var PB_TABLE_KEYS = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8'];
+    /* How many feature rows a plan card can list, for the same reason a
+       table row has named cells: a scalar cannot hold a newline. */
+    var PB_PLAN_FEATURES = 6;
 
     var PB_ITEM_KEYS = {
         faq:         ['question', 'answer', 'open'],
         socialLinks: ['platform', 'url', 'label'],
         list:        ['text'],
-        table:       PB_TABLE_KEYS
+        table:       PB_TABLE_KEYS,
+
+        /* Phase 2B. `image`/`src` are already URL keys, so they go through
+           pbUrl() with every other address in this file. */
+        testimonials: ['quote', 'name', 'role', 'company', 'image'],
+        stats:        ['value', 'label', 'prefix', 'suffix'],
+        gallery:      ['src', 'alt', 'caption'],
+        /* A plan's feature rows are named cells for the same reason a
+           table's are: pbScalar() refuses a control character, so a
+           newline-delimited list cannot be stored at all, and an array of
+           strings would need a second kind of cleaning. Six is a cap on a
+           pricing card, not a limit on what can be said. */
+        plans:        ['title', 'subtitle', 'price', 'period', 'highlight',
+                       'ctaText', 'ctaHref', 'ctaNewTab',
+                       'f1', 'f2', 'f3', 'f4', 'f5', 'f6']
     };
 
     /* A row that lost one of these is not a row the renderer could draw, so
@@ -1792,7 +1852,16 @@
            real data, not a broken row. A row with NOTHING in it is still
            dropped, because the loop below keeps only rows that kept a
            value. */
-        table:       []
+        table:       [],
+
+        /* Phase 2B. Each names the one thing without which the row is not
+           the thing it claims to be: a testimonial with no quote, a stat
+           with no number, an image with no source. A plan needs a title,
+           because that is what a reader chooses between. */
+        testimonials: ['quote'],
+        stats:        ['value'],
+        gallery:      ['src'],
+        plans:        ['title']
     };
 
     /* A single stored value: kept as a boolean, a finite number or a string
@@ -2944,8 +3013,17 @@
                 if (img) { img.className += ' pb-feature-img'; box.appendChild(img); }
             }
             if (str(c.title)) {
-                var lvl = pbPick(PB_HEADING_LEVELS, String(c.titleLevel || 'h3').toLowerCase())
-                    ? String(c.titleLevel).toLowerCase() : 'h3';
+                /* The default was tested and then THROWN AWAY: the guard
+                   checked `c.titleLevel || 'h3'` and the branch then read
+                   c.titleLevel on its own, so a feature box with no level
+                   -- which is every one the admin adds, since its blank
+                   content sets none -- resolved to the string "undefined"
+                   and rendered <undefined>. The title was visible and was
+                   not a heading: nothing in the page outline, nothing
+                   announced as a heading, nothing for a crawler. One value,
+                   worked out once. */
+                var want = str(c.titleLevel).toLowerCase() || 'h3';
+                var lvl = pbPick(PB_HEADING_LEVELS, want) ? want : 'h3';
                 var h = pbEl(lvl, 'pb-feature-title');
                 h.textContent = str(c.title);
                 box.appendChild(h);
@@ -2955,13 +3033,24 @@
                 t.textContent = str(c.text);
                 box.appendChild(t);
             }
-            var href = pbUrl(c.href);
-            if (href && str(c.linkText)) {
-                var a = pbEl('a', 'pb-feature-link');
-                a.setAttribute('href', href);
-                if (c.newTab) { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); }
-                a.textContent = str(c.linkText);
-                box.appendChild(a);
+            /* One or two actions. The second is drawn only when it has both
+               an address pbUrl() allows and words to put on it -- the same
+               condition as the first, because a link with no text is not a
+               link anyone can use. They sit in a row of their own so two
+               actions read as a pair rather than as a sentence. */
+            var acts = [[c.href, c.linkText, c.newTab, 'pb-feature-link'],
+                        [c.href2, c.linkText2, c.newTab2, 'pb-feature-link pb-feature-link2']];
+            var row = null;
+            for (var ai = 0; ai < acts.length; ai++) {
+                var ahref = pbUrl(acts[ai][0]);
+                var atext = str(acts[ai][1]);
+                if (!ahref || !atext) continue;
+                if (!row) { row = pbEl('div', 'pb-feature-actions'); box.appendChild(row); }
+                var a = pbEl('a', acts[ai][3]);
+                a.setAttribute('href', ahref);
+                if (acts[ai][2]) { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); }
+                a.textContent = atext;
+                row.appendChild(a);
             }
             return pbId(box, el);
         },
@@ -3211,6 +3300,266 @@
             }
             nav.appendChild(list);
             return pbId(nav, el);
+        },
+
+        /* ---------------- Phase 2B elements ----------------
+
+           Every one of these puts its content in the HTML with no
+           JavaScript at all. That is not a coincidence: a testimonial, a
+           number, a price and a caption are the words a page is FOR, and a
+           page whose words arrive after a script is a page a crawler reads
+           empty. Interaction can be added on top; content cannot be added
+           on top. */
+
+        /* Quotes with an attribution. <figure> + <blockquote> + <figcaption>
+           is what HTML has for exactly this, and it is what a screen reader
+           announces as a quotation rather than as two unrelated paragraphs.
+
+           NO review or rating schema is produced here, and none should be:
+           a testimonial an author typed is not a verified review, and
+           marking it up as one would be a claim this element has no way to
+           stand behind. */
+        testimonials: function (el) {
+            var c = el.content || {};
+            var items = isArr(c.items) ? c.items : [];
+            var wrap = pbEl('div', 'pb-el pb-testimonials');
+            var made = 0;
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i] || {};
+                var quote = str(it.quote);
+                if (!quote) continue;
+                var fig = pbEl('figure', 'pb-tm');
+                var bq = pbEl('blockquote', 'pb-tm-quote');
+                var p = pbEl('p', 'pb-tm-text');
+                p.textContent = quote;
+                bq.appendChild(p);
+                fig.appendChild(bq);
+
+                var cap = pbEl('figcaption', 'pb-tm-by');
+                var img = pbUrl(it.image) ? PB_ELEMENTS.image({ content: {
+                    src: it.image, alt: str(it.name) } }) : null;
+                if (img) { img.className += ' pb-tm-face'; cap.appendChild(img); }
+                var who = pbEl('div', 'pb-tm-who');
+                if (str(it.name)) {
+                    var n = pbEl('span', 'pb-tm-name');
+                    n.textContent = str(it.name);
+                    who.appendChild(n);
+                }
+                /* Role and company read as one line when both are set, so
+                   the markup joins them rather than leaving the CSS to. */
+                var meta = [str(it.role), str(it.company)].filter(Boolean).join(', ');
+                if (meta) {
+                    var m = pbEl('span', 'pb-tm-role');
+                    m.textContent = meta;
+                    who.appendChild(m);
+                }
+                if (who.childNodes.length) cap.appendChild(who);
+                if (cap.childNodes.length) fig.appendChild(cap);
+                wrap.appendChild(fig);
+                made += 1;
+            }
+            if (!made) return null;
+            return pbId(wrap, el);
+        },
+
+        /* A row of numbers. The value is TEXT in the HTML -- there is no
+           count-up animation, and that is deliberate: the simplest way to
+           guarantee the number a crawler reads is the number an author
+           typed is for nothing to compute it. */
+        stats: function (el) {
+            var c = el.content || {};
+            var items = isArr(c.items) ? c.items : [];
+            var lvl = pbPick(PB_HEADING_LEVELS, str(c.headingLevel).toLowerCase())
+                ? str(c.headingLevel).toLowerCase() : '';
+            var wrap = pbEl('div', 'pb-el pb-stats');
+            var made = 0;
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i] || {};
+                var value = str(it.value);
+                if (!value) continue;
+                var box = pbEl('div', 'pb-stat');
+                var v = pbEl('div', 'pb-stat-value');
+                if (str(it.prefix)) {
+                    var pre = pbEl('span', 'pb-stat-affix');
+                    pre.textContent = str(it.prefix);
+                    v.appendChild(pre);
+                }
+                var num = pbEl('span', 'pb-stat-num');
+                num.textContent = value;
+                v.appendChild(num);
+                if (str(it.suffix)) {
+                    var suf = pbEl('span', 'pb-stat-affix');
+                    suf.textContent = str(it.suffix);
+                    v.appendChild(suf);
+                }
+                box.appendChild(v);
+                if (str(it.label)) {
+                    /* A stat's label is a heading only if the author asked
+                       for one. Left alone it is a <div>, because twenty
+                       numbers in a row are not twenty sections of a page. */
+                    var lab = pbEl(lvl || 'div', 'pb-stat-label');
+                    lab.textContent = str(it.label);
+                    box.appendChild(lab);
+                }
+                wrap.appendChild(box);
+                made += 1;
+            }
+            if (!made) return null;
+            return pbId(wrap, el);
+        },
+
+        /* Pricing or comparison cards. Feature rows are a real <ul>, the
+           price is text, and the action is an ordinary link through
+           pbUrl(). Nothing here invents a currency, a number or a claim:
+           every word comes from the record. */
+        plans: function (el) {
+            var c = el.content || {};
+            var items = isArr(c.items) ? c.items : [];
+            var lvl = pbPick(PB_HEADING_LEVELS, str(c.headingLevel).toLowerCase())
+                ? str(c.headingLevel).toLowerCase() : 'h3';
+            var wrap = pbEl('div', 'pb-el pb-plans');
+            var made = 0;
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i] || {};
+                var title = str(it.title);
+                if (!title) continue;
+                /* The highlighted card is marked in the markup as well as
+                   in the styling, so what it is does not depend on colour
+                   alone. */
+                var hi = it.highlight === true;
+                var box = pbEl('div', 'pb-plan' + (hi ? ' pb-plan-hi' : ''));
+                if (hi) box.setAttribute('data-highlight', 'true');
+                var h = pbEl(lvl, 'pb-plan-title');
+                h.textContent = title;
+                box.appendChild(h);
+                if (str(it.subtitle)) {
+                    var sub = pbEl('p', 'pb-plan-sub');
+                    sub.textContent = str(it.subtitle);
+                    box.appendChild(sub);
+                }
+                if (str(it.price)) {
+                    var pr = pbEl('div', 'pb-plan-price');
+                    var pn = pbEl('span', 'pb-plan-amount');
+                    pn.textContent = str(it.price);
+                    pr.appendChild(pn);
+                    if (str(it.period)) {
+                        var pe = pbEl('span', 'pb-plan-period');
+                        pe.textContent = str(it.period);
+                        pr.appendChild(pe);
+                    }
+                    box.appendChild(pr);
+                }
+                var feats = pbEl('ul', 'pb-plan-features');
+                var fmade = 0;
+                for (var f = 1; f <= PB_PLAN_FEATURES; f++) {
+                    var ft = str(it['f' + f]);
+                    if (!ft) continue;
+                    var li = pbEl('li', 'pb-plan-feature');
+                    li.textContent = ft;
+                    feats.appendChild(li);
+                    fmade += 1;
+                }
+                if (fmade) box.appendChild(feats);
+                var chref = pbUrl(it.ctaHref);
+                var ctext = str(it.ctaText);
+                if (chref && ctext) {
+                    var a = pbEl('a', 'pb-plan-cta');
+                    a.setAttribute('href', chref);
+                    if (it.ctaNewTab) {
+                        a.setAttribute('target', '_blank');
+                        a.setAttribute('rel', 'noopener');
+                    }
+                    a.textContent = ctext;
+                    box.appendChild(a);
+                }
+                wrap.appendChild(box);
+                made += 1;
+            }
+            if (!made) return null;
+            return pbId(wrap, el);
+        },
+
+        /* A grid of images. Each one is a <figure>, so a caption is tied to
+           its picture rather than floating under it, and every image goes
+           through the same image renderer as a standalone one -- so lazy
+           loading, decoding and the alt attribute are not written twice.
+
+           There is no lightbox. One would be a click handler, a focus trap
+           and an escape key for a feature nobody asked to be modal, and a
+           plain image that opens nothing is not broken. */
+        gallery: function (el) {
+            var c = el.content || {};
+            var items = isArr(c.items) ? c.items : [];
+            var showCaps = c.captions !== false;
+            var wrap = pbEl('div', 'pb-el pb-gallery');
+            var made = 0;
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i] || {};
+                var img = PB_ELEMENTS.image({ content: { src: it.src, alt: it.alt } });
+                if (!img) continue;              /* no usable source */
+                img.className += ' pb-gal-img';
+                var fig = pbEl('figure', 'pb-gal-item');
+                fig.appendChild(img);
+                var cap = str(it.caption);
+                if (cap && showCaps) {
+                    var fc = pbEl('figcaption', 'pb-gal-cap');
+                    fc.textContent = cap;
+                    fig.appendChild(fc);
+                }
+                wrap.appendChild(fig);
+                made += 1;
+            }
+            if (!made) return null;
+            return pbId(wrap, el);
+        },
+
+        /* A progress indicator, as the native <progress> element.
+
+           WHY NATIVE. The usual way to draw one is a div whose width is set
+           from the value -- which means an inline style built from stored
+           content, and this file does not write inline styles. <progress>
+           needs none: the browser draws the fill from the attributes, it is
+           announced correctly with no ARIA to get wrong, and it degrades to
+           its own text content where it is unsupported.
+
+           The value is also printed as WORDS beside the bar, so what it
+           says does not depend on seeing a coloured bar at all. */
+        progress: function (el) {
+            var c = el.content || {};
+            var max = parseFloat(c.max);
+            if (!(max > 0)) max = 100;
+            var value = parseFloat(c.value);
+            if (!isFinite(value)) return null;        /* nothing to report */
+            if (value < 0) value = 0;
+            if (value > max) value = max;
+            var pct = Math.round(value / max * 100);
+
+            var wrap = pbEl('div', 'pb-el pb-progress');
+            var label = str(c.label);
+            var bar = pbEl('progress', 'pb-progress-bar');
+            bar.setAttribute('max', String(max));
+            bar.setAttribute('value', String(value));
+            /* The element's own text is what a browser without <progress>
+               shows, and what some readers announce. */
+            bar.textContent = pct + '%';
+
+            var head = pbEl('div', 'pb-progress-head');
+            if (label) {
+                var id = pbDomId(el, 'pl');
+                var lab = pbEl('span', 'pb-progress-label');
+                lab.setAttribute('id', id);
+                lab.textContent = label;
+                head.appendChild(lab);
+                bar.setAttribute('aria-labelledby', id);
+            }
+            if (c.showValue !== false) {
+                var out = pbEl('span', 'pb-progress-value');
+                out.textContent = pct + '%';
+                head.appendChild(out);
+            }
+            if (head.childNodes.length) wrap.appendChild(head);
+            wrap.appendChild(bar);
+            return pbId(wrap, el);
         }
 
     };

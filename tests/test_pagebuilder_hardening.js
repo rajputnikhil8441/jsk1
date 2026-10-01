@@ -363,7 +363,8 @@ const shot = p => p.evaluate(() => {
   {
     const TYPES = ['heading', 'text', 'image', 'button', 'card', 'columns', 'divider',
                    'spacer', 'icon', 'notice', 'featureBox', 'faq', 'socialLinks',
-                   'list', 'table', 'toc'];
+                   'list', 'table', 'toc',
+                   'testimonials', 'stats', 'plans', 'gallery', 'progress'];
     const HOSTILE = {
       text: '<img src=x onerror=window.__pwned=1>', level: 'javascript:',
       src: 'javascript:alert(1)', alt: '"><script>window.__pwned=2</script>',
@@ -379,6 +380,16 @@ const shot = p => p.evaluate(() => {
       cols: 'constructor', caption: '<script>window.__pwned=9</script>', ordered: 'yes',
       header: 'maybe', depth: '__proto__', tag: 'script', rich: 'yes',
       titleLevel: 'toString',
+      /* Phase 2B content keys. headingLevel is an allow-listed name, the
+         progress numbers are not numbers, and the second action's address
+         is a scheme pbUrl() refuses. */
+      headingLevel: 'constructor', captions: 'yes', showValue: 'maybe',
+      value: 'valueOf', max: '-0', label: '<b>x</b>',
+      linkText2: 'x', href2: 'javascript:window.__pwned=7',
+      quote: '<script>window.__pwned=8</script>', prefix: 'x', suffix: 'x',
+      role: 'x', company: 'x', period: 'x', subtitle: 'x',
+      ctaText: 'x', ctaHref: 'data:text/html,<script>x</script>',
+      f1: '<img src=x onerror=window.__pwned=10>', caption: 'x',
       items: [{ question: '<script>q</script>', answer: 'a' },
               { platform: 'constructor', url: 'javascript:x' },
               { text: '<img src=x onerror=window.__pwned=5>' },
