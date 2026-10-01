@@ -63,6 +63,7 @@
    ============================================================ */
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const vm = require('vm');
 const { execFileSync } = require('child_process');
@@ -107,8 +108,17 @@ function planSite(opts) {
     const sharedRoot = opts.sharedRoot;
     /* opts.published, when the caller has read the brand's published CMS
        record, is handed straight through: one bake, two possible sources. */
+    /* opts.cmsPages, when the caller read the brand's CMS record, is the
+       page records the generator turns into files of their own -- the ones
+       no committed template covers. Handed through rather than read here:
+       one reader, one siteId guard, one snapshot. */
     const plan = kit.planBrand({ brandsDir: opts.brandsDir, templatesDir: opts.templatesDir,
-                                 id: opts.id, env: opts.env, published: opts.published });
+                                 id: opts.id, env: opts.env, published: opts.published,
+                                 cmsPages: opts.cmsPages,
+                                 /* The record itself, so the generator can ask the CMS
+                                    engine for a page's computed SEO over the same
+                                    snapshot the HTML and the sitemap come from. */
+                                 row: opts.row && opts.row.data ? opts.row.data : null });
 
     const shared = [];
     for (const d of SHARED_DIRS) {
@@ -181,8 +191,13 @@ function planSite(opts) {
     /* No sitemap for a review host. See the note at the top. */
     const seo = plan.brand.noindex ? ['robots.txt'] : ['sitemap.xml', 'robots.txt'];
 
+    /* opts.row, when the caller read the brand's CMS record, is carried to
+       layer 4 so the sitemap is built from THE SAME SNAPSHOT as the HTML.
+       Layer 4 used to fetch the row again on its own, a second read at a
+       second instant: a publish landing between them produced a sitemap
+       describing content the pages did not have. */
     return { plan, shared, overlay, overlaySource, overlayDir, overlayDirs,
-             generated, warnings, seo, sharedRoot };
+             generated, warnings, seo, sharedRoot, row: opts.row || null };
 }
 
 /* A review host's robots.txt. Fixed rather than generated: there is nothing
@@ -239,13 +254,33 @@ function assemble(site, outRoot, opts) {
        resolver rather than from a second lookup here. */
     const seoCfg = path.join(site.plan.brand.dir, 'seo-config.json');
     const args = [path.join(site.sharedRoot, 'tools', 'build-seo-files.js'),
-        '--brand', site.plan.brand.domain, '--out', dest, '--config', seoCfg];
+        '--brand', site.plan.brand.domain, '--out', dest, '--config', seoCfg,
+        /* The pages this build actually wrote, so no URL is advertised that
+           would 404. dest is read as it now stands on disk, which is what
+           will be deployed -- not what the plan intended. */
+        '--generated-from', dest];
+
+    /* The row this build already read, handed down rather than fetched
+       again. Written outside the artifact: anything inside it would be
+       published and verify() would rightly call it an unexpected file. */
+    let snapshot = null;
+    if (site.row && site.row.data) {
+        snapshot = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sitekit-row-')), 'row.json');
+        fs.writeFileSync(snapshot, JSON.stringify({ data: site.row.data,
+            updated_at: site.row.updatedAt || '' }), 'utf8');
+        args.push('--row', snapshot);
+    }
+
     let seoLog = '';
     try {
         seoLog = execFileSync(process.execPath, args, { cwd: site.sharedRoot, encoding: 'utf8' });
     } catch (e) {
         throw new kit.BrandError('Generating sitemap.xml and robots.txt for "' + site.plan.brand.id +
             '" failed:\n' + ((e.stdout || '') + (e.stderr || '')).trim());
+    } finally {
+        if (snapshot) {
+            try { fs.rmSync(path.dirname(snapshot), { recursive: true, force: true }); } catch (e) {}
+        }
     }
     return { dir: dest, seoLog: seoLog };
 }
@@ -304,8 +339,27 @@ function verify(site, dest) {
         }
     } else {
         if (!fs.existsSync(smap)) problems.push('missing: sitemap.xml');
-        else if (fs.readFileSync(smap, 'utf8').indexOf('https://' + brand.domain) === -1) {
-            problems.push('sitemap.xml does not point at ' + brand.domain);
+        else {
+            const xml = fs.readFileSync(smap, 'utf8');
+            if (xml.indexOf('https://' + brand.domain) === -1) {
+                problems.push('sitemap.xml does not point at ' + brand.domain);
+            }
+            /* EVERY ADVERTISED URL MUST BE A FILE THIS SITE SERVES.
+               The generator is already told what was generated and filters
+               on it; this is the independent check on the finished artifact,
+               because the one thing a sitemap must never do is send a
+               crawler to a 404. Read back from the bytes being published
+               rather than from the plan that produced them. */
+            const base = 'https://' + brand.domain;
+            (xml.match(/<loc>([^<]*)<\/loc>/g) || []).forEach(function (m) {
+                const loc = m.replace(/^<loc>|<\/loc>$/g, '');
+                if (loc.indexOf(base) !== 0) return;          /* the domain check above owns this */
+                const rest = loc.slice(base.length).replace(/^\//, '');
+                const file = rest === '' ? 'index.html' : rest;
+                if (actual.indexOf(file) === -1) {
+                    problems.push('sitemap.xml advertises ' + loc + ' but this site has no ' + file);
+                }
+            });
         }
     }
 

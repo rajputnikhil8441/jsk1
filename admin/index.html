@@ -785,10 +785,12 @@
                 <h2>Create a page</h2>
                 <p class="hint">
                     This site is static, so a genuinely new address needs a real
-                    <code>.html</code> file next to the others. The admin creates the page's
-                    content and SEO here and hands you the finished file to add once — after
-                    that everything on it is editable from <strong>Pages</strong> like any
-                    other page.
+                    <code>.html</code> file. The build writes it for you: create the page here,
+                    publish, and the next deploy generates <code>&lt;slug&gt;.html</code> from
+                    the site's shared page template, bakes this page's SEO into it and adds it
+                    to <code>sitemap.xml</code>. Everything on it stays editable from
+                    <strong>Pages</strong> like any other page, including whether it is
+                    published or still a draft.
                 </p>
                 <p class="hint">
                     Make a page because a real question deserves its own answer. Near-duplicate

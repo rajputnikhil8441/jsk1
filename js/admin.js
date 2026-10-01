@@ -2326,6 +2326,15 @@
             head.appendChild(open);
         }
 
+        /* ---- PUBLICATION, for a page the CMS created ----
+           Only these pages have a lifecycle to switch. The pages that ship
+           with the site are generated from their own committed templates, so
+           marking one draft would not take it off the site -- the build says
+           so out loud if anyone tries, and offering the control here would
+           imply otherwise. CMS.DEFAULTS is shared engine data, not a brand's,
+           so this distinction is the same for every brand. */
+        if (!(CMS.DEFAULTS.pages || {})[key]) head.appendChild(pageStatusField(page));
+
         var grid = document.createElement('div');
         grid.className = 'grid2';
         PAGE_FIELDS.forEach(function (f) { grid.appendChild(pageField(page, f)); });
@@ -2631,6 +2640,40 @@
         note.textContent = 'Or paste any full https:// address. A data: or blob: URL is never written to the tag.';
         bar.appendChild(note);
         field.appendChild(bar);
+    }
+
+    /* Draft or published, for a page the CMS created.
+
+       Published is what an absent status already means to the build, so an
+       older record opens as published and saving does not change what it is.
+       Anything the build does not recognise is treated as a draft rather than
+       published by accident, which is why this writes one of two exact
+       words. */
+    function pageStatusField(page) {
+        var wrap = document.createElement('label');
+        wrap.className = 'f';
+        var span = document.createElement('span');
+        span.innerHTML = 'Publication<br><small style="opacity:.6">A draft page is not ' +
+            'generated and is not listed in sitemap.xml. Published pages become ' +
+            '<code>&lt;slug&gt;.html</code> on the next deploy.</small>';
+        var sel = document.createElement('select');
+        [['published', 'Published'], ['draft', 'Draft']].forEach(function (o) {
+            var opt = document.createElement('option');
+            opt.value = o[0];
+            opt.textContent = o[1];
+            sel.appendChild(opt);
+        });
+        var current = String(page.status == null ? '' : page.status).trim().toLowerCase();
+        sel.value = (current === '' || current === 'published') ? 'published' : 'draft';
+        sel.addEventListener('change', function () {
+            page.status = sel.value;
+            markDirty();
+            buildPages();
+            buildSeo();
+        });
+        wrap.appendChild(span);
+        wrap.appendChild(sel);
+        return wrap;
     }
 
     function pageField(page, def) {
@@ -3750,6 +3793,10 @@
                 breadcrumb: { label: sstr(newPageDraft.label) || slug, show: true },
                 schema: { webPage: true, breadcrumb: true, contactPage: false },
                 inSitemap: true,
+                /* Said explicitly rather than left to the build's default for
+                   a record that has none. A page is created to be published;
+                   the switch below is how it stops being. */
+                status: 'published',
                 updatedAt: todayIso(),
                 /* the generated stub carries a <div data-cms-sections>, so the
                    Page Builder can offer this page too */
@@ -3759,7 +3806,14 @@
             buildBuilder();
             $('#btnDownloadPage').hidden = false;
             $('#btnDownloadPage').setAttribute('data-key', slug);
-            toast('Page created in the CMS. Download the HTML file and add it to the site.');
+            /* No longer "download this and add it to the site": the build
+               generates <slug>.html from templates/cms-page.html for any
+               published page with no committed template of its own. The
+               download button stays as the escape hatch for turning a page
+               into a committed template, which is a developer's choice and
+               no longer a requirement. */
+            toast('Page created. Publish, and the next deploy will generate ' +
+                  CMS.data().pages[slug].url + ' and add it to the sitemap.');
             newPageDraft = null;
             buildPages();
             buildSeo();

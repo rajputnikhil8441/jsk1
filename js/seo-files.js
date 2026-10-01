@@ -77,40 +77,131 @@
         return /^\d{4}-\d\d-\d\d$/.test(d) ? d : '';
     }
 
-    /* Which pages belong in the sitemap.
+    /* ------------------------------------------------------------
+       DID THE BUILD ACTUALLY PRODUCE THIS PAGE?
+
+       A sitemap exists to invite a crawl, so every URL in it has to be a
+       URL that answers. A CMS page record can say inSitemap: true while
+       no static file for it was generated: the record is data, the file
+       is a build artifact, and nothing made the two agree. Advertising
+       that URL puts a 404 in a search engine's queue and spends the
+       site's crawl budget on it.
+
+       So a caller that KNOWS what a build produced passes the list in,
+       and a page with no file is left out and reported. A caller that
+       cannot know -- /admin's preview, which has no build -- passes
+       nothing and gets the record's own answer, exactly as before. The
+       library cannot discover this for itself, which is why it is a
+       parameter rather than a lookup.
+
+       The homepage is the one mapping that is not an identity: its
+       sitemap entry is the bare base URL (file ''), and the file a static
+       host serves for it is index.html.
+       ------------------------------------------------------------ */
+    var HOME_FILE = 'index.html';
+
+    /* Accepts an array of file names or an object keyed by them, so a
+       caller can hand over whichever it already has. */
+    function generatedIndex(list) {
+        if (!list) return null;
+        var idx = {}, i;
+        if (typeof list.length === 'number') {
+            for (i = 0; i < list.length; i++) idx[str(list[i])] = 1;
+        } else {
+            for (i in list) {
+                if (Object.prototype.hasOwnProperty.call(list, i)) idx[str(i)] = 1;
+            }
+        }
+        return idx;
+    }
+
+    function wasGenerated(idx, file) {
+        if (!idx) return true;              /* nobody told us: do not judge */
+        return !!idx[file === '' ? HOME_FILE : file];
+    }
+
+    /* ------------------------------------------------------------
+       IS THIS PAGE PUBLISHED?
+
+       The same three rules tools/lib/pbbake.js applies when it decides
+       which pages a build generates, so the sitemap and the page set
+       cannot disagree:
+
+         'published'      published
+         absent or empty  published -- every record written before the
+                          lifecycle existed is a live page
+         anything else    not published, including a value this version
+                          does not recognise
+
+       A draft page already has no generated file, so a build would leave
+       it out anyway. This is here for the caller that has no build: the
+       admin's sitemap preview, which would otherwise show a URL the next
+       deploy is never going to publish.
+       ------------------------------------------------------------ */
+    function isPublished(p) {
+        var s = (p && p.status != null) ? String(p.status).trim().toLowerCase() : '';
+        return s === '' || s === 'published';
+    }
+
+    /* Which pages belong in the sitemap, and which do not and why.
 
        Left out, deliberately and always:
          - a page marked noindex (robots.index === false);
          - a page marked inSitemap: false;
          - a page whose url is not a plain .html file name;
+         - a page the build did not generate, when the caller said what it
+           generated;
          - /admin/, which is not a CMS page at all and has no entry.
        login.html and register.html are noindex in the shipped record,
        so they fall out by the first rule rather than by name -- a site
        that legitimately wants its sign-in page indexed only has to say
-       so, and nothing here has to change. */
-    function sitemapPages(data) {
+       so, and nothing here has to change.
+
+       Returns { included, excluded, filtered }. Every exclusion carries
+       the page key, the file it wanted and the reason, so a build can say
+       out loud what it left out instead of a URL quietly vanishing. */
+    function sitemapAudit(data, opts) {
         var pages = (data && data.pages) || {};
-        var rows = [], seen = {}, k;
+        var idx = generatedIndex(opts && opts.generated);
+        var included = [], excluded = [], seen = {}, k;
+        function drop(key, p, file, why) {
+            excluded.push({ key: key, file: file, url: str(p && p.url), why: why });
+        }
         for (k in pages) {
             if (!Object.prototype.hasOwnProperty.call(pages, k)) continue;
             var p = pages[k];
             if (!p || typeof p !== 'object') continue;
+            if (!isPublished(p)) {
+                drop(k, p, pageFile(p), 'its status is "' + str(p.status) + '", not published');
+                continue;
+            }
             var robots = p.robots || {};
-            if (robots.index === false) continue;
-            if (p.inSitemap === false) continue;
+            if (robots.index === false) { drop(k, p, pageFile(p), 'noindex'); continue; }
+            if (p.inSitemap === false) { drop(k, p, pageFile(p), 'inSitemap is false'); continue; }
             var file = pageFile(p);
-            if (file === null) continue;
-            if (Object.prototype.hasOwnProperty.call(seen, file)) continue;
+            if (file === null) { drop(k, p, null, 'its url is not a plain .html file name'); continue; }
+            if (Object.prototype.hasOwnProperty.call(seen, file)) {
+                drop(k, p, file, 'another page already claims this url'); continue;
+            }
+            if (!wasGenerated(idx, file)) {
+                drop(k, p, file, 'the build generated no static file for it');
+                continue;
+            }
             seen[file] = 1;
-            rows.push({ key: k, file: file, lastmod: lastmod(p) });
+            included.push({ key: k, file: file, lastmod: lastmod(p) });
         }
         /* Homepage first, then alphabetical by file name. */
-        rows.sort(function (a, b) {
+        included.sort(function (a, b) {
             if (a.file === '') return -1;
             if (b.file === '') return 1;
             return a.file < b.file ? -1 : a.file > b.file ? 1 : 0;
         });
-        return rows;
+        excluded.sort(function (a, b) { return a.key < b.key ? -1 : a.key > b.key ? 1 : 0; });
+        return { included: included, excluded: excluded, filtered: !!idx };
+    }
+
+    function sitemapPages(data, opts) {
+        return sitemapAudit(data, opts).included;
     }
 
     var SITEMAP_NOTE =
@@ -123,12 +214,12 @@
         '  To change it, edit the pages in /admin > SEO and deploy.\n' +
         '-->\n';
 
-    function sitemap(data) {
+    function sitemap(data, opts) {
         var base = baseUrl(data);
         if (!base) return null;          /* no base URL = no honest sitemap */
         var out = '<?xml version="1.0" encoding="UTF-8"?>\n' + SITEMAP_NOTE +
                   '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
-        sitemapPages(data).forEach(function (p) {
+        sitemapPages(data, opts).forEach(function (p) {
             out += '  <url>\n    <loc>' + xmlEscape(base + '/' + p.file) + '</loc>\n';
             if (p.lastmod) out += '    <lastmod>' + p.lastmod + '</lastmod>\n';
             out += '  </url>\n';
@@ -189,6 +280,7 @@
         sitemap: sitemap,
         robots: robots,
         sitemapPages: sitemapPages,
+        sitemapAudit: sitemapAudit,
         robotsExtra: robotsExtra,
         baseUrl: baseUrl
     };

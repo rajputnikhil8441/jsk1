@@ -156,6 +156,88 @@ async function serve(relPath) {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+/* ============================================================
+   WHAT ELSE THE DEPLOYED HTML HAS TO CARRY
+   ------------------------------------------------------------
+   The mount check above answers one question: is the published Page
+   Builder content in the bytes the site returns? These answer the rest of
+   it, and all of them the same way -- by comparing the ARTIFACT THAT WAS
+   DEPLOYED with the RESPONSE THE SITE GIVES. The artifact is the
+   expectation, so nothing here knows a brand, a domain, a page or an SEO
+   value, and a new brand needs no change.
+
+   Only tags the artifact actually has are compared. A page with no
+   og:image is not failed for a missing og:image; a site with no sitemap is
+   required NOT to serve one.
+   ============================================================ */
+
+/* One attribute of the tag identified by `sel`, read with the quote-aware
+   scanner above so a value containing ">" cannot end the tag early. */
+function tagWith(html, name, sel) {
+    for (let i = 0; i < html.length; i++) {
+        if (html[i] !== '<') continue;
+        const t = tagAt(html, i);
+        if (!t) continue;
+        if (!t.close && t.name === name) {
+            const tag = html.slice(i, t.end);
+            if (sel.test(tag)) return tag;
+        }
+        i = t.end - 1;
+    }
+    return null;
+}
+function attrOf(tag, attr) {
+    if (!tag) return null;
+    const m = new RegExp('\\b' + attr + '="([^"]*)"').exec(tag);
+    return m ? m[1] : null;
+}
+const metaContent = (html, attr, name) =>
+    attrOf(tagWith(html, 'meta', new RegExp('\\b' + attr + '="' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '"')), 'content');
+const linkHref = (html, rel) =>
+    attrOf(tagWith(html, 'link', new RegExp('\\brel="' + rel + '"')), 'href');
+function titleText(html) {
+    const m = /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html);
+    return m ? m[1].trim() : null;
+}
+function ldBlocks(html) {
+    const out = {};
+    const re = /<script[^>]*\bid="(ld[A-Za-z]+)"[^>]*>([\s\S]*?)<\/script>/g;
+    let m;
+    while ((m = re.exec(html))) out[m[1]] = m[2].trim();
+    return out;
+}
+
+/* The SEO a page carries, as data. Keys absent from the artifact are
+   absent here too, so they are never compared. */
+function seoOf(html) {
+    const out = {};
+    const t = titleText(html);
+    if (t !== null) out['<title>'] = t;
+    [['name', 'description'], ['name', 'robots'],
+     ['property', 'og:title'], ['property', 'og:description'],
+     ['property', 'og:url'], ['property', 'og:image'], ['property', 'og:site_name'],
+     ['name', 'twitter:card'], ['name', 'twitter:title'],
+     ['name', 'twitter:description'], ['name', 'twitter:image']].forEach(([a, n]) => {
+        const v = metaContent(html, a, n);
+        if (v !== null) out[a === 'property' ? n : n] = v;
+    });
+    const canon = linkHref(html, 'canonical');
+    if (canon !== null) out['canonical'] = canon;
+    const ld = ldBlocks(html);
+    Object.keys(ld).forEach(id => { out['ld:' + id] = ld[id]; });
+    return out;
+}
+
+/* The host a URL names, or '' if it names none. */
+function hostOf(u) {
+    try { return new URL(String(u)).host; } catch (e) { return ''; }
+}
+
+function locsOf(xml) {
+    return (xml.match(/<loc>([^<]*)<\/loc>/g) || []).map(m => m.replace(/<\/?loc>/g, ''));
+}
+
+
 async function main() {
     if (!SITE || (!BASE && !SERVED)) {
         fail('usage: node tools/verify-deployed.js --site DIR --url BASE [--served DIR]');
@@ -180,10 +262,10 @@ async function main() {
     if (!want.length) {
         log('Baked     : nothing -- no page in ' + SITE + ' carries a data-cms-baked mount,');
         log('            so there is no baked content to find in the served HTML.');
-        return 0;
+        return await verifyRest(0);
     }
-    log('Baked     : ' + want.length + ' mount(s) across ' +
-        new Set(want.map(w => w.page)).size + ' page(s)');
+    const mountedPages = new Set(want.map(w => w.page)).size;
+    log('Baked     : ' + want.length + ' mount(s) across ' + mountedPages + ' page(s)');
 
     /* A just-created deployment can take a moment to be the one served, so a
        miss is retried before it is called a failure. A hit is final. */
@@ -210,19 +292,159 @@ async function main() {
         missing = still;
     }
 
-    if (!missing.length) {
+    if (missing.length) {
         log('');
-        log('Verified  : every baked mount is present in the served HTML, before any ' +
-            'JavaScript runs.');
-        return 0;
+        const unreachable = missing.every(m => /^(HTTP |request failed|not served)/.test(m.why));
+        missing.forEach(m => fail(m.page + ' ("' + m.slug + '"): ' + m.why));
+        fail(missing.length + ' baked mount(s) are not in the HTML the site returns. The published ' +
+             'CMS content exists only after JavaScript runs, which is exactly what baking is for.');
+        return unreachable ? 2 : 1;
+    }
+    log('');
+    log('Verified  : every baked mount is present in the served HTML, before any ' +
+        'JavaScript runs.');
+    return await verifyRest(mountedPages);
+}
+
+/* ------------------------------------------------------------
+   THE REST OF THE DEPLOYMENT, PAST THE MOUNTS
+
+   Every finding carries a KIND, so a red step says WHICH failure this is
+   rather than only that something is wrong:
+
+     unreachable        the site did not answer
+     missing-html       a page the build generated is not served
+     stale              the page is served, but it is not this build's
+     missing-seo        a tag the artifact carries is absent from the response
+     cross-host         a URL in the served page points at another host
+     sitemap-mismatch   the sitemap is missing, differs, or names a page
+                        that is not served
+     noindex-leak       a review host is not protected as its artifact says
+   ------------------------------------------------------------ */
+async function verifyRest(mountedPages) {
+    const findings = [];
+    const add = (kind, where, detail) => findings.push({ kind, where, detail });
+
+    const pages = htmlFiles(SITE).filter(f => f.indexOf('/') === -1);
+    /* The host this deployment answers on. From --url when there is one, and
+       otherwise from the artifact's own canonical -- so an offline check can
+       still tell a cross-host URL from a local one. */
+    let baseHost = BASE ? hostOf(BASE) : '';
+    if (!baseHost) {
+        for (const f of pages) {
+            const h = hostOf(linkHref(fs.readFileSync(path.join(SITE, f), 'utf8'), 'canonical'));
+            if (h) { baseHost = h; break; }
+        }
+    }
+
+    let seoChecked = 0, pagesChecked = 0;
+    for (const rel of pages) {
+        const built = fs.readFileSync(path.join(SITE, rel), 'utf8');
+        const got = await serve(rel);
+        if (!got.ok) { add('missing-html', rel, got.why); continue; }
+        pagesChecked++;
+
+        const wantSeo = seoOf(built), gotSeo = seoOf(got.body);
+        const keys = Object.keys(wantSeo);
+        let bad = 0;
+        keys.forEach(k => {
+            if (!(k in gotSeo)) { add('missing-seo', rel, k + ' is not in the served page'); bad++; return; }
+            if (gotSeo[k] !== wantSeo[k]) {
+                add('stale', rel, k + ': built ' + JSON.stringify(wantSeo[k].slice(0, 90)) +
+                    ', served ' + JSON.stringify(String(gotSeo[k]).slice(0, 90)));
+                bad++;
+            }
+        });
+        seoChecked += keys.length;
+
+        /* A URL in the served page that names another host is either a stale
+           deploy or one brand's page carrying another's address. */
+        if (baseHost) {
+            [['canonical', gotSeo['canonical']], ['og:url', gotSeo['og:url']]].forEach(([k, v]) => {
+                const h = hostOf(v);
+                if (h && h !== baseHost) {
+                    add('cross-host', rel, k + ' points at ' + h + ', not ' + baseHost);
+                    bad++;
+                }
+            });
+        }
+
+        /* A review host says noindex in its artifact; the served page must
+           agree, or the review copy is indexable. */
+        if (wantSeo['robots'] === 'noindex,nofollow' && gotSeo['robots'] !== 'noindex,nofollow') {
+            add('noindex-leak', rel, 'the artifact is noindex,nofollow but the served page says ' +
+                JSON.stringify(String(gotSeo['robots'])));
+            bad++;
+        }
+        if (!bad) log('  OK      ' + rel + '  ' + keys.length + ' SEO value(s) match the artifact');
+    }
+
+    /* ---------- the sitemap, and the absence of one ---------- */
+    const smapBuilt = path.join(SITE, 'sitemap.xml');
+    if (fs.existsSync(smapBuilt)) {
+        const built = fs.readFileSync(smapBuilt, 'utf8');
+        const got = await serve('sitemap.xml');
+        if (!got.ok) add('sitemap-mismatch', 'sitemap.xml', 'not served: ' + got.why);
+        else if (got.body.trim() !== built.trim()) {
+            add('sitemap-mismatch', 'sitemap.xml', 'the served sitemap is not the one that was built');
+        } else {
+            const locs = locsOf(built);
+            for (const loc of locs) {
+                const h = hostOf(loc);
+                if (baseHost && h && h !== baseHost) {
+                    add('cross-host', 'sitemap.xml', loc + ' is not on ' + baseHost); continue;
+                }
+                const rest = h ? loc.slice(loc.indexOf(h) + h.length).replace(/^\//, '') : loc.replace(/^\//, '');
+                const file = rest === '' ? 'index.html' : rest;
+                if (pages.indexOf(file) === -1) {
+                    add('sitemap-mismatch', 'sitemap.xml', loc + ' has no generated page behind it');
+                    continue;
+                }
+                const r = await serve(file);
+                if (!r.ok) add('sitemap-mismatch', 'sitemap.xml', loc + ' is advertised but ' + r.why);
+            }
+            log('  OK      sitemap.xml  ' + locs.length + ' URL(s), each served and each a built page');
+        }
+    } else {
+        /* No sitemap in the artifact is a decision, not an omission: a review
+           host must not invite a crawl. The deployment has to agree. */
+        const got = await serve('sitemap.xml');
+        if (got.ok) add('noindex-leak', 'sitemap.xml',
+            'the artifact publishes no sitemap, but the site serves one');
+        else log('  OK      sitemap.xml  absent from the artifact and not served');
+    }
+
+    /* ---------- robots.txt ---------- */
+    const robBuilt = path.join(SITE, 'robots.txt');
+    if (fs.existsSync(robBuilt)) {
+        const built = fs.readFileSync(robBuilt, 'utf8');
+        const got = await serve('robots.txt');
+        if (!got.ok) add('missing-html', 'robots.txt', got.why);
+        else if (got.body.trim() !== built.trim()) {
+            add('stale', 'robots.txt', 'the served robots.txt is not the one that was built');
+        } else {
+            log('  OK      robots.txt   matches the artifact' +
+                (/^Disallow: \/$/m.test(built) ? '   (blocks everything -- a review host)' : ''));
+        }
     }
 
     log('');
-    const unreachable = missing.every(m => /^(HTTP |request failed|not served)/.test(m.why));
-    missing.forEach(m => fail(m.page + ' ("' + m.slug + '"): ' + m.why));
-    fail(missing.length + ' baked mount(s) are not in the HTML the site returns. The published ' +
-         'CMS content exists only after JavaScript runs, which is exactly what baking is for.');
-    return unreachable ? 2 : 1;
+    log('Checked   : ' + pagesChecked + '/' + pages.length + ' page(s), ' + seoChecked +
+        ' SEO value(s), ' + mountedPages + ' page(s) with baked content');
+    if (!findings.length) {
+        log('Verified  : the deployed HTML, its SEO and its sitemap are the ones that were ' +
+            'built. No JavaScript was executed.');
+        return 0;
+    }
+
+    const kinds = {};
+    findings.forEach(f => { kinds[f.kind] = (kinds[f.kind] || 0) + 1; });
+    findings.forEach(f => fail('[' + f.kind + '] ' + f.where + ': ' + f.detail));
+    fail(findings.length + ' problem(s) with the deployed site: ' +
+         Object.keys(kinds).sort().map(k => k + ' x' + kinds[k]).join(', ') + '.');
+    /* Nothing answered at all is "could not check"; anything else is a real
+       difference between what was built and what is served. */
+    return findings.every(f => f.kind === 'missing-html' || f.kind === 'unreachable') ? 2 : 1;
 }
 
 main().then(code => process.exit(code), e => {

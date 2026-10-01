@@ -19,13 +19,14 @@
    no new permission is requested: the job still only needs
    `contents: read`.
 
-   WHAT REMAINS DEVELOPER-CONTROLLED
-   A deploy has to happen. Saving in /admin does not start one.
-   Someone with repository access runs the workflow (Actions >
-   "Deploy static content to Pages" > Run workflow) or pushes a
-   commit. That is the honest limit of this architecture and the
-   admin says so on screen rather than implying a publish button
-   that does not exist.
+   WHAT STARTS A DEPLOY
+   A build has to run, and publishing can now start one: the
+   deploy workflows carry a repository_dispatch trigger
+   (cms-published) for a server-side publish hook to fire, and a
+   timer so a published change reaches the HTML with nothing
+   configured at all. Pushing a commit and running the workflow by
+   hand still work. See "What starts a deploy" in
+   docs/publishing.md.
 
    USAGE
      node tools/build-seo-files.js            write the files
@@ -46,6 +47,29 @@
 
    With none of them given every default is what it has always
    been, so the deploy step's behaviour is unchanged.
+
+   TWO MORE, FOR THE SAME ASSEMBLER
+
+     --row <file>            use a CMS record the caller already
+                             read, instead of fetching one.
+     --generated-from <dir>  the assembled site. A page the build
+                             did not generate is left out of the
+                             sitemap and reported.
+
+   --row exists because this script used to fetch the row itself
+   while the assembler had already fetched it a moment earlier:
+   two reads of one row at two instants, so a publish landing
+   between them produced HTML and a sitemap describing different
+   content. One snapshot, handed down, cannot disagree with
+   itself.
+
+   --generated-from is the integrity rule a sitemap needs: it
+   invites a crawl, so every URL in it has to answer. A CMS page
+   record can say inSitemap: true while no file for it was
+   generated -- the record is data, the file is a build artifact
+   -- and advertising that URL puts a 404 in a crawler's queue.
+   Without the flag nothing is filtered, which is what keeps the
+   admin's preview and a plain run behaving as before.
    ============================================================ */
 
 'use strict';
@@ -68,6 +92,8 @@ function opt(name, dflt) {
 const BRAND = opt('--brand', '');
 const FALLBACK_FILE = path.resolve(ROOT, opt('--config', path.join('tools', 'seo-config.json')));
 const OUT_DIR = path.resolve(ROOT, opt('--out', '.'));
+const ROW_FILE = opt('--row', '');
+const GENERATED_FROM = opt('--generated-from', '');
 
 function log(msg) { process.stdout.write(msg + '\n'); }
 function rel(p) { return path.relative(ROOT, p).split(path.sep).join('/'); }
@@ -94,6 +120,34 @@ function readFallback() {
     catch (e) { warn(rel(p) + ' could not be read: ' + e.message); return null; }
 }
 
+/* A record the caller already read, in the shape fetchRow() returns, so
+   everything downstream cannot tell the difference between a snapshot handed
+   down and a row fetched here. */
+function readRowFile(file) {
+    const p = path.resolve(ROOT, file);
+    let raw;
+    try { raw = JSON.parse(fs.readFileSync(p, 'utf8')); }
+    catch (e) {
+        return { data: null, updatedAt: '', why: '--row ' + rel(p) + ' could not be read: ' + e.message };
+    }
+    if (Array.isArray(raw)) raw = raw[0] || null;
+    if (!raw) return { data: null, updatedAt: '', why: '--row ' + rel(p) + ' holds no record' };
+    return { data: raw.data, updatedAt: raw.updated_at || raw.updatedAt || '', why: '' };
+}
+
+/* The pages a build actually produced, as the file names a static host
+   serves. Read from the assembled directory rather than from the build's
+   intentions, because what is on disk is what will be deployed. Only the
+   site root is looked at: a sitemap file name is a plain .html at the root
+   by pageFile()'s own rule, so nothing deeper could match one. */
+function generatedPages(dir) {
+    const d = path.resolve(ROOT, dir);
+    let names;
+    try { names = fs.readdirSync(d, { withFileTypes: true }); }
+    catch (e) { return null; }
+    return names.filter(e => e.isFile() && /\.html$/i.test(e.name)).map(e => e.name).sort();
+}
+
 /* Only the parts these two files are built from. Taking a subset rather
    than the whole record keeps a page's body, a draft, or anything else
    that happens to be in the row out of the reasoning entirely. */
@@ -111,6 +165,9 @@ function seoSubset(data) {
             url: typeof p.url === 'string' ? p.url : '',
             updatedAt: typeof p.updatedAt === 'string' ? p.updatedAt : '',
             inSitemap: p.inSitemap !== false,
+            /* Carried through so the generator can leave a draft page out on
+               its own, without needing the build to have not created it. */
+            status: typeof p.status === 'string' ? p.status : '',
             robots: { index: !(p.robots && p.robots.index === false) }
         };
     });
@@ -135,10 +192,13 @@ function withProvenanceXml(xml, source, when) {
         process.exit(2);
     }
     const cfg = readConfig();
-    const row = await fetchRow(cfg);
+    /* One snapshot. When the caller has already read the row, this must not
+       read it again: two reads at two instants can disagree, and then the
+       HTML and the sitemap describe different content. */
+    const row = ROW_FILE ? readRowFile(ROW_FILE) : await fetchRow(cfg);
 
     let data = seoSubset(row.data);
-    let source = 'the live CMS record';
+    let source = ROW_FILE ? 'the CMS record this build already read' : 'the live CMS record';
     let when = row.updatedAt ? String(row.updatedAt).slice(0, 10) : '';
 
     if (!data || !SEOFiles.baseUrl(data)) {
@@ -156,12 +216,37 @@ function withProvenanceXml(xml, source, when) {
         process.exit(1);
     }
 
-    const xml = withProvenanceXml(SEOFiles.sitemap(data), source, when);
+    /* THE INTEGRITY RULE. Every <loc> has to be a URL that answers, so a
+       page the build did not generate is not advertised. Nothing is
+       filtered unless the caller said what it generated. */
+    let generated = null;
+    if (GENERATED_FROM) {
+        generated = generatedPages(GENERATED_FROM);
+        if (generated === null) {
+            log('--generated-from ' + rel(path.resolve(ROOT, GENERATED_FROM)) +
+                ' could not be read. Refusing to guess which pages exist.');
+            process.exit(1);
+        }
+    }
+    const opts = generated ? { generated: generated } : undefined;
+    const audit = SEOFiles.sitemapAudit(data, opts);
+
+    /* A filter that removes everything is not integrity, it is a broken
+       call -- an --out pointed somewhere empty, say. An unfiltered sitemap
+       that was already empty is a different thing and is allowed through. */
+    if (audit.filtered && !audit.included.length && SEOFiles.sitemapPages(data).length) {
+        log('Every page would be excluded because no matching file was found in ' +
+            rel(path.resolve(ROOT, GENERATED_FROM)) + '.');
+        log('Refusing to write an empty sitemap: this is a build problem, not a CMS one.');
+        process.exit(1);
+    }
+
+    const xml = withProvenanceXml(SEOFiles.sitemap(data, opts), source, when);
     const txt = SEOFiles.robots(data).replace('# To change it, edit /admin > SEO > Robots.txt and deploy.\n',
                                               '# To change it, edit /admin > SEO > Robots.txt and deploy.\n' +
                                               provenance(source, when));
 
-    const urls = SEOFiles.sitemapPages(data).map(p => base + '/' + p.file);
+    const urls = audit.included.map(p => base + '/' + p.file);
     /* Which brand's row was consulted, and under which id. Printed because
        it is the one thing a deploy operator cannot otherwise see and the one
        thing that would be catastrophic to get wrong: two brands sharing a
@@ -169,8 +254,23 @@ function withProvenanceXml(xml, source, when) {
     log('Brand:   ' + (BRAND || '(default, no --brand given)') + '   siteId: ' + (cfg.siteId || '(none)'));
     log('Source:  ' + source);
     log('Base:    ' + base);
-    log('Sitemap: ' + urls.length + ' URL(s)');
+    log('Sitemap: ' + urls.length + ' URL(s)' +
+        (audit.filtered ? '   (checked against ' + generated.length + ' generated page(s))' : ''));
     urls.forEach(u => log('         ' + u));
+
+    /* Said out loud, per page. A URL that silently stops being advertised is
+       indistinguishable from one that was never meant to be, and the
+       difference matters: the first is usually a page somebody published and
+       nobody generated. */
+    const missing = audit.excluded.filter(x => /generated no static file/.test(x.why));
+    if (missing.length) {
+        log('Excluded: ' + missing.length + ' published URL(s) with no generated page');
+        missing.forEach(x => log('         ' + base + '/' + x.file + '   (page "' + x.key + '")'));
+        warn(missing.length + ' CMS page(s) ask to be in the sitemap but no static file was ' +
+             'generated for them, so they are left out rather than advertised as a 404: ' +
+             missing.map(x => x.file).join(', ') + '. Either the page needs generating or ' +
+             'inSitemap should be false for it.');
+    }
 
     if (CHECK) { log('\n--check: nothing written.'); return; }
 
