@@ -882,6 +882,7 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
     background: var(--pbe-bg, transparent);
     color: var(--pbe-color, inherit);
     font-size: var(--pbe-font-size, 15px);
+    font-weight: var(--pbe-font-weight, 400);
     letter-spacing: var(--pbe-letter-spacing, inherit);
     text-align: var(--pbe-align, inherit);
     padding: var(--pbe-padding, 0);
@@ -1030,3 +1031,227 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
 /* The second action is the quieter one: same size, less weight, so the pair
    reads as a primary and an alternative rather than as two equals. */
 .pb-feature .pb-feature-link2 { font-weight: 400; opacity: .85; }
+
+
+/* ---------- tabs ---------- */
+
+.pb-el.pb-tabs {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pbe-gap, 12px);
+    background: var(--pbe-bg, transparent);
+    color: var(--pbe-color, inherit);
+    font-size: var(--pbe-font-size, 15px);
+    font-weight: var(--pbe-font-weight, 400);
+    letter-spacing: var(--pbe-letter-spacing, inherit);
+    text-align: var(--pbe-align, inherit);
+    padding: var(--pbe-padding, 0);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+}
+
+/* The list scrolls rather than wrapping, so eight tabs on a phone stay a
+   row of tabs instead of becoming a block of buttons. */
+.pb-tabs .pb-tablist {
+    display: flex;
+    gap: 2px;
+    overflow-x: auto;
+    border-bottom: 1px solid rgba(0, 0, 0, .14);
+    scrollbar-width: thin;
+}
+
+.pb-tabs .pb-tab {
+    flex: none;
+    padding: 9px 14px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.pb-tabs .pb-tab:hover { background: rgba(0, 0, 0, .03); }
+
+/* The selected tab is marked by a rule AND by weight, so which one is open
+   does not depend on telling two colours apart. */
+.pb-tabs .pb-tab[aria-selected="true"] {
+    border-bottom-color: currentColor;
+}
+
+.pb-tabs .pb-tab:focus-visible,
+.pb-tabs .pb-tabpanel:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: -2px;
+}
+
+.pb-tabs .pb-tabpanel[hidden] { display: none; }
+
+.pb-tabs .pb-tab-text {
+    margin: 0;
+    color: inherit;
+    line-height: var(--pbe-line-height, 1.6);
+    white-space: pre-line;
+}
+
+
+/* ---------- carousel ----------
+   The strip scrolls and snaps with no JavaScript at all, so the slides are
+   usable by swipe, by trackpad and by keyboard before any script runs. The
+   buttons only call scrollBy on the same strip. */
+
+.pb-el.pb-carousel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pbe-gap, 10px);
+    background: var(--pbe-bg, transparent);
+    color: var(--pbe-color, inherit);
+    font-size: var(--pbe-font-size, 15px);
+    font-weight: var(--pbe-font-weight, 400);
+    letter-spacing: var(--pbe-letter-spacing, inherit);
+    text-align: var(--pbe-align, inherit);
+    padding: var(--pbe-padding, 0);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+}
+
+.pb-carousel .pb-car-strip {
+    display: flex;
+    gap: var(--pbe-gap, 10px);
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+
+.pb-carousel .pb-car-strip:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+.pb-carousel .pb-car-slide {
+    flex: 0 0 var(--pbe-min-width, 280px);
+    scroll-snap-align: start;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.pb-carousel .pb-car-img { width: 100%; height: auto; border-radius: inherit; }
+.pb-carousel .pb-car-title { margin: 0; font-size: 1.1em; font-weight: 700; color: inherit; }
+.pb-carousel .pb-car-text {
+    margin: 0;
+    color: inherit;
+    line-height: var(--pbe-line-height, 1.55);
+}
+.pb-carousel .pb-car-link {
+    color: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.pb-carousel .pb-car-controls { display: flex; gap: 8px; align-items: center; }
+
+/* The glyphs are drawn in CSS, so a control does not depend on an icon font
+   having loaded before a visitor can use it. */
+.pb-carousel .pb-car-btn {
+    width: 34px;
+    height: 34px;
+    flex: none;
+    border: 1px solid rgba(0, 0, 0, .18);
+    border-radius: 50%;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+    position: relative;
+}
+
+.pb-carousel .pb-car-btn:hover { background: rgba(0, 0, 0, .04); }
+.pb-carousel .pb-car-btn:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+.pb-carousel .pb-car-btn::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+}
+
+.pb-carousel .pb-car-prev::before { transform: rotate(135deg) translate(-1px, -1px); }
+.pb-carousel .pb-car-next::before { transform: rotate(-45deg) translate(-1px, -1px); }
+
+/* Two bars for pause, one triangle-ish block for play. Drawn from the
+   pressed state, so the control always shows what it will do. */
+.pb-carousel .pb-car-pause::before {
+    width: 4px;
+    height: 11px;
+    border: 0;
+    border-left: 3px solid currentColor;
+    border-right: 3px solid currentColor;
+    transform: none;
+}
+
+.pb-carousel .pb-car-pause[aria-pressed="true"]::before {
+    width: 0;
+    height: 0;
+    border: 6px solid transparent;
+    border-left-color: currentColor;
+    border-right: 0;
+    transform: translateX(2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pb-carousel .pb-car-strip { scroll-behavior: auto; }
+}
+
+
+/* ---------- video ----------
+   A fixed aspect box, so the page does not jump when the frame loads. */
+
+.pb-el.pb-video {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pbe-gap, 8px);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    text-align: var(--pbe-align, inherit);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+}
+
+.pb-video .pb-video-frame {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    width: 100%;
+    overflow: hidden;
+    border-radius: inherit;
+    background: #000;
+}
+
+.pb-video .pb-video-embed {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
+
+.pb-video .pb-video-link {
+    color: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.pb-video .pb-video-cap { font-size: .9em; opacity: .8; color: inherit; }

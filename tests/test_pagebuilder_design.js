@@ -32,7 +32,12 @@ async function pageWith(b, block, width) {
   const p = await ctx.newPage();
   const errs = [];
   p.on('pageerror', e => errs.push(String(e)));
+  /* Top document only: addInitScript runs in EVERY frame, and reading
+     localStorage in a sandboxed cross-origin one -- which the video element
+     puts on the page -- throws a SecurityError that arrives as a page error.
+     The CMS state belongs to the page, never to what the page embeds. */
   await p.addInitScript((bl) => {
+    if (window.top !== window) return;
     const raw = JSON.parse(localStorage.getItem('whiteLabelCMS') || '{}');
     raw.pages = raw.pages || {};
     raw.pages.about = Object.assign({}, raw.pages.about, { builder: bl });
@@ -79,7 +84,10 @@ const CONTENT = {
                          { title: 'Pro', price: '9', f1: 'A feature', highlight: true }] },
   gallery:     { items: [{ src: 'assets/images/favicon.png', alt: 'a', caption: 'c' },
                          { src: 'assets/images/favicon.png', alt: 'b' }] },
-  progress:    { label: 'Done', value: 60, max: 100 }
+  progress:    { label: 'Done', value: 60, max: 100 },
+  tabs:        { items: [{ label: 'One', text: 'First' }, { label: 'Two', text: 'Second' }] },
+  carousel:    { items: [{ title: 'A', text: 'one' }, { title: 'B', text: 'two' }] },
+  video:       { url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', title: 'A video' }
 };
 
 /* A table of contents is the one type whose content is the rest of the
@@ -101,8 +109,29 @@ const PROBE = {
   radius: 13, border: '3px dashed #ff0000', shadow: '0 10px 30px rgba(0, 0, 0, 0.22)',
   lineWidth: 5, lineStyle: 'dotted', lineColor: '#ff0000', columns: '4',
   /* Stage 6: a role has to move the rendering like any other control. */
-  typography: '@h1'
+  typography: '@h1',
+  /* Phase 2B. A key with no value here is set to undefined, which changes
+     nothing and is then reported as a control that does nothing -- so a
+     missing entry reads as a defect in the element. The container-only keys
+     are here too, so they are covered the day an element is given one. */
+  minWidth: 123, direction: 'row', justify: 'between',
+  alignItems: 'center', wrap: 'wrap'
 };
+
+/* A probe value that happens to render the same as the default is not a
+   control that does nothing -- but it looks exactly like one.
+
+   The gallery is the case: at this viewport its box is 826px, where its
+   default `repeat(auto-fill, minmax(180px, 1fr))` resolves to FOUR tracks
+   of 199px -- which is identical to what the "4" preset asks for. The
+   control works; the number collides. Two tracks cannot collide with it. */
+const PROBE_FOR = {
+  gallery: { columns: '2' }
+};
+
+const probeValue = (type, key) =>
+  (PROBE_FOR[type] && Object.prototype.hasOwnProperty.call(PROBE_FOR[type], key))
+    ? PROBE_FOR[type][key] : PROBE[key];
 
 /* Computed style of a node and everything under it, as one comparable blob.
    Subtree included on purpose: several controls are meant to reach the words
@@ -157,7 +186,7 @@ const fingerprint = (p, sel) => p.$eval(sel, (root, props) => {
       const keys = keysByType[type];
       const elements = (SIBLINGS[type] || [])
         .concat([el('base_' + type, type, CONTENT[type])])
-        .concat(keys.map(k => el('k_' + k, type, CONTENT[type], { [k]: PROBE[k] })));
+        .concat(keys.map(k => el('k_' + k, type, CONTENT[type], { [k]: probeValue(type, k) })));
       const S = [sec('s1', 'text', { elements })];
       const { ctx, p, errs } = await publishedPage(b, S, 1280);
 
@@ -403,7 +432,8 @@ const fingerprint = (p, sel) => p.$eval(sel, (root, props) => {
     const TYPES = ['heading', 'text', 'image', 'button', 'card', 'columns', 'divider',
                    'spacer', 'icon', 'notice', 'featureBox', 'faq', 'socialLinks',
                    'list', 'table', 'toc',
-                   'testimonials', 'stats', 'plans', 'gallery', 'progress'];
+                   'testimonials', 'stats', 'plans', 'gallery', 'progress',
+                   'tabs', 'carousel', 'video'];
     const ids = {};
     for (const t of TYPES) {
       await p.click(`${TOP} > .pb-add-el > .pb-addbtn[data-el-type="${t}"]`);

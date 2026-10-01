@@ -1681,7 +1681,14 @@
                        'border', 'radius', 'shadow'],
         progress:     ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight',
                        'letterSpacing', 'align', 'bg', 'padding', 'margin', 'maxWidth',
-                       'gap', 'border', 'radius', 'shadow']
+                       'gap', 'border', 'radius', 'shadow'],
+        tabs:         ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight',
+                       'letterSpacing', 'align', 'bg', 'padding', 'margin', 'maxWidth',
+                       'gap', 'border', 'radius', 'shadow'],
+        carousel:     ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight',
+                       'letterSpacing', 'align', 'bg', 'padding', 'margin', 'maxWidth',
+                       'gap', 'minWidth', 'border', 'radius', 'shadow'],
+        video:        ['align', 'margin', 'maxWidth', 'gap', 'border', 'radius', 'shadow']
     };
 
     /* The keys a SECTION reacts to. Derived from the section token map, so
@@ -1772,7 +1779,10 @@
         stats:        ['headingLevel'],
         plans:        ['headingLevel', 'featureLabel'],
         gallery:      ['captions'],
-        progress:     ['label', 'value', 'max', 'showValue']
+        progress:     ['label', 'value', 'max', 'showValue'],
+        tabs:         ['rich'],
+        carousel:     ['autoplay', 'interval', 'captions'],
+        video:        ['url', 'title', 'caption', 'poster']
     };
 
     /* Which content keys hold a URL, and which hold a repeating list. */
@@ -1838,7 +1848,9 @@
            pricing card, not a limit on what can be said. */
         plans:        ['title', 'subtitle', 'price', 'period', 'highlight',
                        'ctaText', 'ctaHref', 'ctaNewTab',
-                       'f1', 'f2', 'f3', 'f4', 'f5', 'f6']
+                       'f1', 'f2', 'f3', 'f4', 'f5', 'f6'],
+        tabs:         ['label', 'text', 'open'],
+        carousel:     ['title', 'text', 'image', 'alt', 'href', 'linkText']
     };
 
     /* A row that lost one of these is not a row the renderer could draw, so
@@ -1861,7 +1873,11 @@
         testimonials: ['quote'],
         stats:        ['value'],
         gallery:      ['src'],
-        plans:        ['title']
+        plans:        ['title'],
+        /* A tab with no label is a tab nobody can press. A slide with
+           neither words nor a picture is an empty slide. */
+        tabs:         ['label'],
+        carousel:     []
     };
 
     /* A single stored value: kept as a boolean, a finite number or a string
@@ -2399,6 +2415,53 @@
     /* The block tags a text element may be. Both are ordinary prose
        containers; neither can hold anything the renderer does not build. */
     var PB_TEXT_TAGS = { p: 1, blockquote: 1 };
+
+    /* ---- the only video hosts this builder will embed ----
+
+       An <iframe> runs a third party's code in the page, so the address it
+       is given can never be the author's string. Each entry recognises the
+       addresses that host uses and returns the ID out of it; the embed URL
+       is then BUILT from that id and a constant, so the only part of it
+       that came from the record is an id matched by one of these patterns.
+
+       Anything else -- another host, a shortened link, an address with a
+       query string that happens to contain one of these -- yields nothing
+       and the element falls back to a plain link.
+
+       The nocookie and dnt forms are used where the host offers one: an
+       embed should not set a tracking cookie on a visitor who only read a
+       page. */
+    var PB_VIDEO_HOSTS = [
+        { name: 'YouTube',
+          re: [/^https?:\/\/(?:www\.)?youtube(?:-nocookie)?\.com\/watch\?v=([A-Za-z0-9_-]{6,20})/,
+               /^https?:\/\/(?:www\.)?youtube(?:-nocookie)?\.com\/embed\/([A-Za-z0-9_-]{6,20})/,
+               /^https?:\/\/youtu\.be\/([A-Za-z0-9_-]{6,20})/],
+          embed: function (id) { return 'https://www.youtube-nocookie.com/embed/' + id; },
+          watch: function (id) { return 'https://www.youtube.com/watch?v=' + id; } },
+        { name: 'Vimeo',
+          re: [/^https?:\/\/(?:www\.)?vimeo\.com\/(\d{6,12})/,
+               /^https?:\/\/player\.vimeo\.com\/video\/(\d{6,12})/],
+          embed: function (id) { return 'https://player.vimeo.com/video/' + id + '?dnt=1'; },
+          watch: function (id) { return 'https://vimeo.com/' + id; } }
+    ];
+
+    /* { host, id, embed, watch } for an address one of them recognises,
+       otherwise null. */
+    function pbVideoRef(raw) {
+        var u = str(raw);
+        if (!u) return null;
+        for (var i = 0; i < PB_VIDEO_HOSTS.length; i++) {
+            var h = PB_VIDEO_HOSTS[i];
+            for (var j = 0; j < h.re.length; j++) {
+                var m = h.re[j].exec(u);
+                if (m && m[1]) {
+                    return { host: h.name, id: m[1],
+                             embed: h.embed(m[1]), watch: h.watch(m[1]) };
+                }
+            }
+        }
+        return null;
+    }
     /* How deep a table of contents goes, as the deepest level it lists.
        The value is the number the renderer compares against, so the
        allow-list and the limit are one thing rather than two. */
@@ -3560,9 +3623,320 @@
             if (head.childNodes.length) wrap.appendChild(head);
             wrap.appendChild(bar);
             return pbId(wrap, el);
+        },
+
+        /* ---- tabs ----
+
+           EVERY PANEL IS IN THE HTML. The inactive ones carry `hidden`,
+           which is display and not absence -- exactly what the FAQ element
+           has always done, and what keeps the words readable to a crawler
+           while the page does not show four panels stacked on first paint.
+
+           The ARIA is the pattern as specified, not a sprinkling of
+           attributes: a tablist of real <button>s, each owning its panel
+           through aria-controls, each panel pointing back with
+           aria-labelledby, one tab in the tab order at a time (the selected
+           one, tabindex 0; the rest -1) and the arrow keys moving between
+           them. A <button> is focusable and handles Enter and Space itself,
+           so there is no key handling to write for those and none to get
+           wrong. */
+        tabs: function (el) {
+            var c = el.content || {};
+            var items = isArr(c.items) ? c.items : [];
+            var rows = [];
+            for (var i = 0; i < items.length; i++) {
+                if (str((items[i] || {}).label)) rows.push(items[i]);
+            }
+            if (!rows.length) return null;
+
+            var wrap = pbEl('div', 'pb-el pb-tabs');
+            var list = pbEl('div', 'pb-tablist');
+            list.setAttribute('role', 'tablist');
+            wrap.appendChild(list);
+            var panels = pbEl('div', 'pb-tabpanels');
+            wrap.appendChild(panels);
+
+            /* The first tab marked open wins; with none marked, the first. */
+            var active = 0;
+            for (i = 0; i < rows.length; i++) {
+                if (rows[i].open === true) { active = i; break; }
+            }
+
+            var btns = [], pans = [];
+            for (i = 0; i < rows.length; i++) {
+                var tabId = pbDomId(el, 't' + i);
+                var panId = pbDomId(el, 'tp' + i);
+                var on = i === active;
+
+                var btn = pbEl('button', 'pb-tab');
+                btn.setAttribute('type', 'button');
+                btn.setAttribute('role', 'tab');
+                btn.setAttribute('id', tabId);
+                btn.setAttribute('aria-controls', panId);
+                btn.setAttribute('aria-selected', on ? 'true' : 'false');
+                btn.setAttribute('tabindex', on ? '0' : '-1');
+                btn.textContent = str(rows[i].label);
+                list.appendChild(btn);
+                btns.push(btn);
+
+                var pan = pbEl('div', 'pb-tabpanel');
+                pan.setAttribute('role', 'tabpanel');
+                pan.setAttribute('id', panId);
+                pan.setAttribute('aria-labelledby', tabId);
+                /* Scrollable panels need to be focusable, or a keyboard
+                   user who tabs past the list cannot reach the content. */
+                pan.setAttribute('tabindex', '0');
+                if (!on) pan.hidden = true;
+                var body = pbEl('p', 'pb-tab-text');
+                pbTextInto(body, rows[i].text, c);
+                pan.appendChild(body);
+                panels.appendChild(pan);
+                pans.push(pan);
+            }
+
+            for (i = 0; i < btns.length; i++) {
+                btns[i].addEventListener('click', pbTabPick(btns, pans, i));
+                btns[i].addEventListener('keydown', pbTabKeys(btns, pans, i));
+            }
+            return pbId(wrap, el);
+        },
+
+        /* ---- carousel ----
+
+           IT WORKS WITH NO JAVASCRIPT AT ALL. The slides are a row that
+           scrolls, with CSS scroll snapping, so a visitor can swipe or
+           scroll through them and a keyboard user can scroll the strip,
+           before a single line of script has run. The buttons and the
+           optional autoplay are enhancements on top of something that
+           already works -- which is the opposite of the usual slider, where
+           the content does not exist until the library loads.
+
+           Autoplay never starts for a visitor who asked for less motion,
+           and when it is on there is a pause control, because motion a
+           reader cannot stop is motion that makes a page unusable. */
+        carousel: function (el) {
+            var c = el.content || {};
+            var items = isArr(c.items) ? c.items : [];
+            var wrap = pbEl('div', 'pb-el pb-carousel');
+            var strip = pbEl('div', 'pb-car-strip');
+            /* A scrolling region needs a name and a way in from the
+               keyboard, or its content is unreachable without a mouse. */
+            strip.setAttribute('tabindex', '0');
+            strip.setAttribute('role', 'group');
+            strip.setAttribute('aria-roledescription', 'carousel');
+            strip.setAttribute('aria-label', 'Slides');
+
+            var made = 0;
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i] || {};
+                var img = pbUrl(it.image)
+                    ? PB_ELEMENTS.image({ content: { src: it.image, alt: str(it.alt) } })
+                    : null;
+                var title = str(it.title), text = str(it.text);
+                if (!img && !title && !text) continue;      /* an empty slide */
+                var slide = pbEl('div', 'pb-car-slide');
+                slide.setAttribute('role', 'group');
+                slide.setAttribute('aria-roledescription', 'slide');
+                if (img) { img.className += ' pb-car-img'; slide.appendChild(img); }
+                if (title) {
+                    var h = pbEl('h3', 'pb-car-title');
+                    h.textContent = title;
+                    slide.appendChild(h);
+                }
+                if (text) {
+                    var p = pbEl('p', 'pb-car-text');
+                    p.textContent = text;
+                    slide.appendChild(p);
+                }
+                var href = pbUrl(it.href);
+                if (href && str(it.linkText)) {
+                    var a = pbEl('a', 'pb-car-link');
+                    a.setAttribute('href', href);
+                    a.textContent = str(it.linkText);
+                    slide.appendChild(a);
+                }
+                strip.appendChild(slide);
+                made += 1;
+            }
+            if (!made) return null;
+            wrap.appendChild(strip);
+
+            /* One slide needs no controls, and a strip that cannot scroll
+               should not offer buttons that do nothing. */
+            if (made > 1) {
+                var bar = pbEl('div', 'pb-car-controls');
+                var prev = pbCarBtn('Previous slide', 'pb-car-prev');
+                var next = pbCarBtn('Next slide', 'pb-car-next');
+                bar.appendChild(prev);
+                if (c.autoplay === true) {
+                    var play = pbCarBtn('Pause the slideshow', 'pb-car-pause');
+                    play.setAttribute('aria-pressed', 'false');
+                    bar.appendChild(play);
+                    pbCarAuto(strip, play, c.interval);
+                }
+                bar.appendChild(next);
+                wrap.appendChild(bar);
+                prev.addEventListener('click', pbCarStep(strip, -1));
+                next.addEventListener('click', pbCarStep(strip, 1));
+            }
+            return pbId(wrap, el);
+        },
+
+        /* ---- video ----
+
+           An <iframe> runs a third party's code in the page, so the address
+           is never the author's string: pbVideoRef() matches it against the
+           hosts this builder embeds and returns an ID, and the src is BUILT
+           from that id and a constant.
+
+           An address no host recognises does not become an iframe. It
+           becomes a link, if pbUrl() allows it, and nothing otherwise --
+           because the one thing worse than not embedding a video is
+           embedding whatever was typed.
+
+           The iframe is sandboxed to what a player needs and nothing else,
+           referrer policy is tightened, and it loads lazily so a video
+           further down a page costs nothing until it is reached. */
+        video: function (el) {
+            var c = el.content || {};
+            var ref = pbVideoRef(c.url);
+            var title = str(c.title);
+            var caption = str(c.caption);
+            var fig = pbEl('figure', 'pb-el pb-video');
+
+            if (ref) {
+                var frame = pbEl('div', 'pb-video-frame');
+                var f = pbEl('iframe', 'pb-video-embed');
+                f.setAttribute('src', ref.embed);
+                /* A frame with no name is announced as "frame" and nothing
+                   else, so this is not decoration. */
+                f.setAttribute('title', title || (ref.host + ' video'));
+                f.setAttribute('loading', 'lazy');
+                f.setAttribute('allowfullscreen', '');
+                f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+                f.setAttribute('allow', 'fullscreen; picture-in-picture; encrypted-media');
+                f.setAttribute('sandbox',
+                    'allow-scripts allow-same-origin allow-presentation allow-popups');
+                frame.appendChild(f);
+                fig.appendChild(frame);
+            } else {
+                /* No recognised host. A link to it is still useful; an
+                   iframe pointed at it would not be. */
+                var href = pbUrl(c.url);
+                if (!href) return null;
+                var a = pbEl('a', 'pb-video-link');
+                a.setAttribute('href', href);
+                a.setAttribute('rel', 'noopener');
+                a.textContent = title || 'Watch the video';
+                fig.appendChild(a);
+            }
+
+            if (caption) {
+                var cap = pbEl('figcaption', 'pb-video-cap');
+                cap.textContent = caption;
+                fig.appendChild(cap);
+            }
+            return pbId(fig, el);
         }
 
     };
+
+    /* ---- the interaction the two interactive elements need ----
+
+       Kept out of the renderers for the same reason pbFaqToggle is: a
+       closure that captures exactly what it needs and nothing else. Nodes
+       are rebuilt on every repaint, so none of these can accumulate. */
+
+    function pbTabShow(btns, pans, want) {
+        for (var i = 0; i < btns.length; i++) {
+            var on = i === want;
+            btns[i].setAttribute('aria-selected', on ? 'true' : 'false');
+            btns[i].setAttribute('tabindex', on ? '0' : '-1');
+            pans[i].hidden = !on;
+        }
+    }
+
+    function pbTabPick(btns, pans, i) {
+        return function () { pbTabShow(btns, pans, i); };
+    }
+
+    /* Left/Right move, Home/End jump, and focus follows selection -- which
+       is the behaviour the pattern specifies for tabs that show their panel
+       immediately rather than on Enter. */
+    function pbTabKeys(btns, pans, i) {
+        return function (e) {
+            var key = e && e.key, to = -1;
+            if (key === 'ArrowRight') to = (i + 1) % btns.length;
+            else if (key === 'ArrowLeft') to = (i - 1 + btns.length) % btns.length;
+            else if (key === 'Home') to = 0;
+            else if (key === 'End') to = btns.length - 1;
+            if (to < 0) return;
+            if (e.preventDefault) e.preventDefault();
+            pbTabShow(btns, pans, to);
+            if (btns[to].focus) btns[to].focus();
+        };
+    }
+
+    /* One slide's width, so a step lands on a slide rather than a guess. */
+    function pbCarBtn(label, cls) {
+        var b = pbEl('button', 'pb-car-btn ' + cls);
+        b.setAttribute('type', 'button');
+        b.setAttribute('aria-label', label);
+        return b;
+    }
+
+    function pbCarStep(strip, dir) {
+        return function () {
+            var first = strip.querySelector ? strip.querySelector('.pb-car-slide') : null;
+            var by = first ? first.getBoundingClientRect().width : strip.clientWidth;
+            if (!by) by = strip.clientWidth;
+            strip.scrollBy({ left: dir * by, behavior: 'smooth' });
+        };
+    }
+
+    function pbCarAuto(strip, button, interval) {
+        /* NOTHING TIMED HAPPENS DURING A RENDER.
+
+           The static build runs this very file in Node against
+           tools/lib/minidom.js, where there is no event loop and no
+           visitor -- and where setInterval does not exist at all, so
+           starting the slideshow here threw and took the whole bake down
+           with it. A bake produces markup; a slideshow needs a page.
+
+           The listener below is still attached, because minidom accepts and
+           discards those, which means the baked markup carries the pause
+           button and the real page wires it up on load. */
+        if (typeof setInterval !== 'function' || typeof clearInterval !== 'function') return;
+
+        /* Never for a visitor who asked for less motion. */
+        var reduce = window.matchMedia &&
+            window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        var ms = parseInt(interval, 10);
+        if (!(ms >= 2000)) ms = 6000;      /* a floor: a slide nobody can read is not a slide */
+        var timer = null;
+        function stop() {
+            if (timer) { clearInterval(timer); timer = null; }
+            button.setAttribute('aria-pressed', 'true');
+            button.setAttribute('aria-label', 'Play the slideshow');
+        }
+        function start() {
+            if (timer) return;
+            timer = setInterval(function () {
+                /* At the end, back to the beginning. */
+                var max = strip.scrollWidth - strip.clientWidth - 2;
+                if (strip.scrollLeft >= max) strip.scrollTo({ left: 0, behavior: 'smooth' });
+                else pbCarStep(strip, 1)();
+            }, ms);
+            button.setAttribute('aria-pressed', 'false');
+            button.setAttribute('aria-label', 'Pause the slideshow');
+        }
+        button.addEventListener('click', function () { timer ? stop() : start(); });
+        /* Moving under a reader's cursor or focus is the other way motion
+           becomes a problem, so it stops for both. */
+        strip.addEventListener('mouseenter', stop);
+        strip.addEventListener('focusin', stop);
+        if (!reduce) start(); else stop();
+    }
 
     /* The FAQ's one piece of interaction. Kept out of the factory so the
        closure captures exactly what it needs and nothing else. */
@@ -6024,6 +6398,12 @@
             textTags: PB_TEXT_TAGS,
             tocDepths: PB_TOC_DEPTHS,
             tableMaxCols: PB_TABLE_MAX_COLS,
+            /* Which video addresses become an embed, answered by the one
+               function that decides it -- so the admin can tell an author
+               what will happen to the address they pasted without holding a
+               second copy of the patterns. */
+            videoRef: pbVideoRef,
+            videoHosts: PB_VIDEO_HOSTS.map(function (h) { return h.name; }),
             colLayouts: PB_COL_LAYOUTS,
             /* Global design (stage 6). `roleColor`/`roleTypo` resolve a role
                the way the stylesheet does, which is what lets the admin show

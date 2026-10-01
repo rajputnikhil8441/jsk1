@@ -1634,7 +1634,10 @@ window.PBAdmin = function (host) {
         ['stats',        'Stats'],
         ['plans',        'Pricing / comparison'],
         ['gallery',      'Gallery'],
-        ['progress',     'Progress bar']
+        ['progress',     'Progress bar'],
+        ['tabs',         'Tabs'],
+        ['carousel',     'Carousel'],
+        ['video',        'Video']
     ];
 
     /* Choice lists come from the renderer's own allow-lists, so the admin
@@ -1716,7 +1719,13 @@ window.PBAdmin = function (host) {
         progress:     [['label', 'Label', 'text'],
                        ['value', 'Value', 'num'],
                        ['max', 'Out of', 'num'],
-                       ['showValue', 'Show the percentage', 'bool']]
+                       ['showValue', 'Show the percentage', 'bool']],
+        tabs:         [['rich', 'Allow basic formatting', 'bool']],
+        carousel:     [['autoplay', 'Move through them on its own', 'bool'],
+                       ['interval', 'Seconds on each (minimum 2)', 'num']],
+        video:        [['url', 'Video address', 'text'],
+                       ['title', 'Title (what a screen reader announces)', 'text'],
+                       ['caption', 'Caption', 'text']]
     };
 
     /* Repeating sub-items: which element types have them, what one blank
@@ -1810,6 +1819,23 @@ window.PBAdmin = function (host) {
             title: function (it) { return String((it && it.caption) || (it && it.alt) || 'Image'); },
             fields: [['src', 'Image', 'asset'], ['alt', 'Alt text', 'text'],
                      ['caption', 'Caption', 'text']]
+        },
+
+        tabs: {
+            key: 'items', label: 'Tabs', addLabel: 'Add a tab',
+            blank: function () { return { label: 'New tab', text: 'What is in it.' }; },
+            title: function (it) { return String((it && it.label) || 'Tab'); },
+            fields: [['label', 'Tab label', 'text'], ['text', 'What is in it', 'area'],
+                     ['open', 'Open this one first', 'bool']]
+        },
+
+        carousel: {
+            key: 'items', label: 'Slides', addLabel: 'Add a slide',
+            blank: function () { return { title: 'Slide title', text: 'What it says.' }; },
+            title: function (it) { return String((it && it.title) || 'Slide'); },
+            fields: [['title', 'Title', 'text'], ['text', 'Text', 'area'],
+                     ['image', 'Image', 'asset'], ['alt', 'Image alt text', 'text'],
+                     ['linkText', 'Link text', 'text'], ['href', 'Links to', 'pageLink']]
         }
     };
 
@@ -2055,7 +2081,10 @@ window.PBAdmin = function (host) {
         plans:       { columns: 'Cards per row', gap: 'Space between cards (px)' },
         gallery:     { columns: 'Images per row', gap: 'Space between images (px)',
                       minWidth: 'Smallest image width (px)' },
-        progress:    { gap: 'Space above the bar (px)', fontSize: 'Label size (px)' }
+        progress:    { gap: 'Space above the bar (px)', fontSize: 'Label size (px)' },
+        tabs:        { gap: 'Space below the tabs (px)' },
+        carousel:    { gap: 'Space between slides (px)', minWidth: 'Slide width (px)' },
+        video:       { gap: 'Space above the caption (px)' }
     };
 
     var PB_DEVICES = [['base', 'Desktop'], ['tablet', 'Tablet'], ['mobile', 'Mobile']];
@@ -3439,7 +3468,18 @@ window.PBAdmin = function (host) {
                                f1: 'What is included', f2: 'And this' }] };
         },
         gallery: function () { return { items: [] }; },
-        progress: function () { return { label: 'Progress', value: 60, max: 100 }; }
+        progress: function () { return { label: 'Progress', value: 60, max: 100 }; },
+        tabs: function () {
+            return { items: [{ label: 'First tab', text: 'What is in the first tab.' },
+                             { label: 'Second tab', text: 'What is in the second.' }] };
+        },
+        carousel: function () {
+            return { items: [{ title: 'First slide', text: 'What it says.' },
+                             { title: 'Second slide', text: 'And this one.' }] };
+        },
+        /* A video has nothing to show until an address is given, like an
+           image with no file. The hint on the card says which hosts work. */
+        video: function () { return { url: '' }; }
     };
 
     function pbBlankElement(type) {
@@ -3737,6 +3777,28 @@ window.PBAdmin = function (host) {
                     'Nothing else is markup — typed HTML stays visible as text, ' +
                     'and a link address that is not allowed leaves the words behind.';
                 body.appendChild(rh);
+            }
+
+            /* A video's address is the one field in this builder whose
+               value decides whether a third party's code runs in the page,
+               so the card says exactly what will happen to it. */
+            if (el.type === 'video') {
+                var vh = document.createElement('p');
+                vh.className = 'hint';
+                vh.setAttribute('data-hint', 'video');
+                var vurl = String((el.content || {}).url || '').trim();
+                var vok = !!(CMS.sections.videoRef && CMS.sections.videoRef(vurl));
+                vh.textContent = !vurl
+                    ? 'Paste a YouTube or Vimeo address. Those two are embedded; any other ' +
+                      'address becomes an ordinary link instead, because an embed runs ' +
+                      'someone else\u2019s code in your page.'
+                    : vok
+                        ? 'Recognised \u2014 this will be embedded as a player, with no ' +
+                          'tracking cookie set on a visitor who only reads the page.'
+                        : 'Not a YouTube or Vimeo address, so this will be shown as a link ' +
+                          'rather than embedded. That is deliberate: only those two are ' +
+                          'put in a frame.';
+                body.appendChild(vh);
             }
 
             /* A table of contents is the one element whose content is the

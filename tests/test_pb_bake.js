@@ -172,6 +172,23 @@ const FIXTURE = [
         content: { icon: 'star', title: 'Ready?', text: 'Two ways in.',
                    linkText: 'Sign up', href: 'register.html',
                    linkText2: 'Talk to us', href2: 'contact.html', newTab2: true } },
+      /* The three interactive ones. Their content has to be in the response
+         body even though a script is what makes them interactive, and the
+         video's src has to be one this builder BUILT. */
+      { id: 'el_tabs', type: 'tabs', style: {}, responsive: {}, content: { items: [
+          { label: 'First & best', text: 'Panel one' },
+          { label: 'Second', text: 'Panel two', open: true },
+          { text: 'no label, dropped' } ] } },
+      { id: 'el_car', type: 'carousel', style: {}, responsive: {},
+        content: { autoplay: true, interval: '3000', items: [
+          { title: 'Slide one & two', text: 'first slide words' },
+          { title: 'Slide two', text: 'second slide words' },
+          {} ] } },
+      { id: 'el_vid', type: 'video', style: {}, responsive: {},
+        content: { url: 'https://youtu.be/dQw4w9WgXcQ', title: 'A talk',
+                   caption: 'Recorded live & unedited' } },
+      { id: 'el_vid2', type: 'video', style: {}, responsive: {},
+        content: { url: 'https://evil.example/embed/dQw4w9WgXcQ', title: 'Not a host' } },
       /* Phase 2B: a styled container. Here for the byte-for-byte comparison
          like everything else, and because a container's style is the first
          thing in this builder that is addressed by POSITION rather than by
@@ -515,6 +532,49 @@ function buildBrand(brandsDir, id, outDir) {
     check('  and its title is a REAL heading with no level set',
       node.html.includes('<h3 class="pb-feature-title">Ready?</h3>') &&
       node.html.indexOf('<undefined') === -1, true);
+
+    /* ---- Phase 2B: the interactive three, in the STATIC HTML ---- */
+    check('every tab panel is in the baked HTML, not only the open one',
+      node.html.includes('>Panel one</p>') && node.html.includes('>Panel two</p>'), true);
+    check('  the closed one is hidden rather than absent',
+      /id="pb-el_tabs-tp0"[^>]*hidden=""/.test(node.html) &&
+      !/id="pb-el_tabs-tp1"[^>]*hidden/.test(node.html), true);
+    check('  the tablist, roles and relationships are all baked',
+      node.html.includes('<div class="pb-tablist" role="tablist">') &&
+      /role="tab"[^>]*aria-controls="pb-el_tabs-tp0"/.test(node.html) &&
+      /role="tabpanel"[^>]*aria-labelledby="pb-el_tabs-t0"/.test(node.html), true);
+    check('  exactly one tab is selected and in the tab order',
+      (node.html.match(/aria-selected="true"/g) || []).length === 1 &&
+      (node.html.match(/role="tab" id="pb-el_tabs-t\d"[^>]*tabindex="0"/g) || []).length === 1, true);
+    check('  and a tab with no label is dropped',
+      !node.html.includes('no label, dropped'), true);
+
+    check('every carousel slide is in the baked HTML',
+      node.html.includes('>first slide words</p>') &&
+      node.html.includes('>second slide words</p>'), true);
+    check('  the strip is reachable and named, with no script needed to see it',
+      /<div class="pb-car-strip" tabindex="0" role="group" aria-roledescription="carousel"/
+        .test(node.html), true);
+    check('  autoplay bakes a pause control, and every control is named',
+      node.html.includes('class="pb-car-btn pb-car-pause"') &&
+      (node.html.match(/class="pb-car-btn[^"]*" type="button" aria-label="[^"]+"/g) || []).length === 3,
+      true);
+    check('  and an empty slide is dropped',
+      (node.html.match(/class="pb-car-slide"/g) || []).length === 2, true);
+
+    check('a recognised video bakes an iframe whose src was BUILT, not copied',
+      node.html.includes('src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"'), true);
+    check('  named, sandboxed, lazy, and with a tightened referrer policy',
+      /<iframe class="pb-video-embed"[^>]*title="A talk"/.test(node.html) &&
+      /sandbox="allow-scripts allow-same-origin/.test(node.html) &&
+      /loading="lazy"/.test(node.html) &&
+      /referrerpolicy="strict-origin-when-cross-origin"/.test(node.html), true);
+    check('  an address no host recognises becomes a LINK, never a frame',
+      node.html.includes('<a class="pb-video-link" href="https://evil.example/embed/dQw4w9WgXcQ"') &&
+      (node.html.match(/<iframe/g) || []).length === 1, true);
+    check('  and no iframe anywhere points at a host that is not allow-listed',
+      (node.html.match(/<iframe[^>]*src="([^"]*)"/g) || [])
+        .every(s => /youtube-nocookie\.com|player\.vimeo\.com/.test(s)), true);
 
     check('no page errors', errs.length === 0, errs);
     await ctx.close();

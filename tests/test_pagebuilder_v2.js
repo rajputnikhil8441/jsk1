@@ -646,15 +646,16 @@ const el = (id, type, content, style, responsive) =>
         .every(t => offered.indexOf(t) > -1), offered);
     check('and so are the three Phase 2A types',
       ['list', 'table', 'toc'].every(t => offered.indexOf(t) > -1), offered);
-    check('and the five Phase 2B ones',
-      ['testimonials', 'stats', 'plans', 'gallery', 'progress']
-        .every(t => offered.indexOf(t) > -1), offered);
+    check('and the eight Phase 2B ones',
+      ['testimonials', 'stats', 'plans', 'gallery', 'progress',
+       'tabs', 'carousel', 'video'].every(t => offered.indexOf(t) > -1), offered);
 
     /* For each type added after V1: the number of Design fields the admin
        renders must equal the number of keys the renderer honours. */
     for (const type of ['divider', 'spacer', 'icon', 'notice', 'featureBox', 'faq', 'socialLinks',
                         'list', 'table', 'toc',
-                        'testimonials', 'stats', 'plans', 'gallery', 'progress']) {
+                        'testimonials', 'stats', 'plans', 'gallery', 'progress',
+                        'tabs', 'carousel', 'video']) {
       await p.click(`${TOP} > .pb-add-el > .pb-addbtn[data-el-type="${type}"]`);
       await p.waitForTimeout(400);
       const id = await p.$$eval(`${TOP} > .pb-els > .pb-elcard`, e => e[e.length - 1].getAttribute('data-el-id'));
