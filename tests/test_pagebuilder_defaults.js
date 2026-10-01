@@ -47,7 +47,8 @@ async function publishedPage(b, sections, width) {
 const sec = (id, type, extra) => Object.assign({ id, type, enabled: true, elements: [] }, extra || {});
 
 const TYPES = ['heading', 'text', 'image', 'button', 'card', 'columns', 'divider',
-               'spacer', 'icon', 'notice', 'featureBox', 'faq', 'socialLinks'];
+               'spacer', 'icon', 'notice', 'featureBox', 'faq', 'socialLinks',
+               'list', 'table'];
 /* An image with no source is the one type that is meant to start empty:
    there is nothing to show until a file is named. */
 const INVISIBLE_BY_DESIGN = ['image'];

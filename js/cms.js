@@ -1627,7 +1627,18 @@
         faq:         ['typography', 'bg', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
                       'align', 'padding', 'margin',
                       'maxWidth', 'gap', 'border', 'radius', 'shadow'],
-        socialLinks: ['color', 'fontSize', 'align', 'bg', 'padding', 'margin', 'gap', 'radius']
+        socialLinks: ['color', 'fontSize', 'align', 'bg', 'padding', 'margin', 'gap', 'radius'],
+
+        /* Phase 2A. Same rule as the V2 entries above: a key is here only
+           because the CSS below reads it. A list gets `gap` because the
+           rule sets row-gap from it; a table does not, because its spacing
+           is cell padding, which is not an element-level control. */
+        list:        ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+                      'align', 'bg', 'padding', 'margin', 'maxWidth', 'gap',
+                      'border', 'radius', 'shadow'],
+        table:       ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+                      'align', 'bg', 'padding', 'margin', 'maxWidth',
+                      'border', 'radius', 'shadow']
     };
 
     /* The keys a SECTION reacts to. Derived from the section token map, so
@@ -1686,7 +1697,17 @@
         featureBox:  ['icon', 'image', 'imageAlt', 'title', 'titleLevel', 'text',
                       'linkText', 'href', 'newTab'],
         faq:         ['single'],
-        socialLinks: []
+        socialLinks: [],
+
+        /* Phase 2A. A list's rows and a table's cells are repeating items,
+           so they arrive through the items path below; what sits here is
+           only the handful of scalars that describe the whole element.
+           `cols` is the table's column count and is deliberately NOT named
+           "columns": that key already means a layout on the columns element
+           and in PB_EL_TOKENS, and one name for two things is how a value
+           ends up read by the wrong reader. */
+        list:        ['ordered'],
+        table:       ['caption', 'cols', 'header']
     };
 
     /* Which content keys hold a URL, and which hold a repeating list. */
@@ -1713,9 +1734,19 @@
         if (!get) return true;
         return !!pbPick(get(), String(value).toLowerCase());
     }
+    /* The named cells one table row can hold. Eight is a cap, not a
+       preference: a row is a fixed set of named scalars because pbScalar()
+       refuses anything that is not a boolean, a number or a string, and
+       that refusal is what stops a nested payload riding in on a content
+       key. An array of cells would need a second kind of cleaning. */
+    var PB_TABLE_MAX_COLS = 8;
+    var PB_TABLE_KEYS = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8'];
+
     var PB_ITEM_KEYS = {
         faq:         ['question', 'answer', 'open'],
-        socialLinks: ['platform', 'url', 'label']
+        socialLinks: ['platform', 'url', 'label'],
+        list:        ['text'],
+        table:       PB_TABLE_KEYS
     };
 
     /* A row that lost one of these is not a row the renderer could draw, so
@@ -1723,7 +1754,13 @@
        notice is broken. */
     var PB_ITEM_REQUIRED = {
         faq:         ['question'],
-        socialLinks: ['platform', 'url']
+        socialLinks: ['platform', 'url'],
+        list:        ['text'],
+        /* No cell is required: a blank cell in the middle of a table is
+           real data, not a broken row. A row with NOTHING in it is still
+           dropped, because the loop below keeps only rows that kept a
+           value. */
+        table:       []
     };
 
     /* A single stored value: kept as a boolean, a finite number or a string
@@ -2741,6 +2778,110 @@
                 made += 1;
             }
             if (!made) return null;
+            return pbId(wrap, el);
+        },
+
+        /* ---------------- Phase 2A elements ---------------- */
+
+        /* An ordered or unordered list. Real <ul>/<ol>/<li>, so the markup
+           a crawler reads says "this is a list" rather than showing one
+           drawn with bullet characters in a paragraph. Rows with no text
+           are skipped rather than drawn empty, and a list that kept none
+           renders nothing at all -- the same contract every other
+           repeating element here holds to. */
+        list: function (el) {
+            var c = el.content || {};
+            var items = isArr(c.items) ? c.items : [];
+            var ordered = c.ordered === true;
+            var n = pbEl(ordered ? 'ol' : 'ul', 'pb-el pb-list' + (ordered ? ' pb-list-ord' : ''));
+            var made = 0;
+            for (var i = 0; i < items.length; i++) {
+                var text = str((items[i] || {}).text);
+                if (!text) continue;
+                var li = pbEl('li', 'pb-list-item');
+                li.textContent = text;
+                n.appendChild(li);
+                made += 1;
+            }
+            if (!made) return null;
+            return pbId(n, el);
+        },
+
+        /* A data table. The first row is the header row unless the author
+           says otherwise, which is what makes <th scope="col"> correct
+           rather than decorative -- a screen reader announces the column
+           name with every cell, and a crawler can tell a table of data
+           from a grid used for layout.
+
+           The <table> sits inside a wrapper, and the wrapper is what
+           carries .pb-el and the generated CSS: a table that is wider
+           than a phone has to be able to scroll inside its own box
+           instead of widening the page. */
+        table: function (el) {
+            var c = el.content || {};
+            var rows = isArr(c.items) ? c.items : [];
+            if (!rows.length) return null;
+
+            /* How many columns to draw: the author's number when they set
+               one, otherwise the widest row, so a table pasted in from
+               somewhere else is not silently clipped to a narrower shape
+               than the data it holds. */
+            var cols = parseInt(c.cols, 10);
+            if (!(cols >= 1)) {
+                cols = 0;
+                for (var r = 0; r < rows.length; r++) {
+                    for (var k = PB_TABLE_MAX_COLS; k > cols; k--) {
+                        if (str((rows[r] || {})[PB_TABLE_KEYS[k - 1]])) { cols = k; break; }
+                    }
+                }
+            }
+            if (cols < 1) return null;                 /* every cell was empty */
+            if (cols > PB_TABLE_MAX_COLS) cols = PB_TABLE_MAX_COLS;
+
+            var head = c.header !== false;
+            var body = head ? rows.slice(1) : rows;
+            /* A header row with nothing under it is not a table, it is a
+               row of labels. Refusing it here is kinder than drawing a
+               table a crawler would read as empty. */
+            if (!body.length) return null;
+
+            function cell(tag, value, scope) {
+                var n = pbEl(tag, tag === 'th' ? 'pb-table-h' : 'pb-table-c');
+                if (scope) n.setAttribute('scope', scope);
+                n.textContent = str(value);
+                return n;
+            }
+
+            var wrap = pbEl('div', 'pb-el pb-table');
+            var t = pbEl('table', 'pb-table-t');
+            /* A caption is the table's accessible name and is read before
+               its contents, so it goes first -- which is also the only
+               place HTML allows it. */
+            if (str(c.caption)) {
+                var cap = pbEl('caption', 'pb-table-cap');
+                cap.textContent = str(c.caption);
+                t.appendChild(cap);
+            }
+            var i, j;
+            if (head) {
+                var thead = pbEl('thead');
+                var hr = pbEl('tr', 'pb-table-r');
+                for (i = 0; i < cols; i++) {
+                    hr.appendChild(cell('th', (rows[0] || {})[PB_TABLE_KEYS[i]], 'col'));
+                }
+                thead.appendChild(hr);
+                t.appendChild(thead);
+            }
+            var tb = pbEl('tbody');
+            for (j = 0; j < body.length; j++) {
+                var tr = pbEl('tr', 'pb-table-r');
+                for (i = 0; i < cols; i++) {
+                    tr.appendChild(cell('td', (body[j] || {})[PB_TABLE_KEYS[i]], ''));
+                }
+                tb.appendChild(tr);
+            }
+            t.appendChild(tb);
+            wrap.appendChild(t);
             return pbId(wrap, el);
         }
 

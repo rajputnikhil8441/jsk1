@@ -359,10 +359,11 @@ const shot = p => p.evaluate(() => {
   /* ================================================================
      5. EVERY ELEMENT TYPE, EMPTY AND HOSTILE
      ================================================================ */
-  console.log('\n===== ALL THIRTEEN TYPES, WITH NOTHING AND WITH EVERYTHING =====');
+  console.log('\n===== ALL FIFTEEN TYPES, WITH NOTHING AND WITH EVERYTHING =====');
   {
     const TYPES = ['heading', 'text', 'image', 'button', 'card', 'columns', 'divider',
-                   'spacer', 'icon', 'notice', 'featureBox', 'faq', 'socialLinks'];
+                   'spacer', 'icon', 'notice', 'featureBox', 'faq', 'socialLinks',
+                   'list', 'table'];
     const HOSTILE = {
       text: '<img src=x onerror=window.__pwned=1>', level: 'javascript:',
       src: 'javascript:alert(1)', alt: '"><script>window.__pwned=2</script>',
@@ -372,8 +373,16 @@ const shot = p => p.evaluate(() => {
       platform: 'prototype', url: 'vbscript:msgbox(1)', label: 'x', linkText: 'x',
       buttonText: 'x', buttonHref: '//evil.example/x', width: 'expression(1)',
       height: '-99', newTab: 'yes',
+      /* Phase 2A content keys, hostile too: a column count that is not a
+         number, a caption carrying markup, and rows whose cells hold a
+         script payload and a nested object. */
+      cols: 'constructor', caption: '<script>window.__pwned=9</script>', ordered: 'yes',
+      header: 'maybe',
       items: [{ question: '<script>q</script>', answer: 'a' },
-              { platform: 'constructor', url: 'javascript:x' }]
+              { platform: 'constructor', url: 'javascript:x' },
+              { text: '<img src=x onerror=window.__pwned=5>' },
+              { c1: '<script>window.__pwned=6</script>', c2: { nested: 1 },
+                c3: '<b>bold</b>' }]
     };
     const HOSTILE_STYLE = { color: 'red;}body{display:none}', bgImage: 'javascript:x',
       padding: 'var(--evil)', border: '1px solid url(x)', align: '__proto__' };
@@ -385,7 +394,10 @@ const shot = p => p.evaluate(() => {
            mode === 'empty' ? {} : { mobile: { fontSize: 'expression(9)' } })]));
       const r = await page(b, { sections });
       const s = await shot(r.p);
-      check(mode + ': every section is drawn', s.secs === 13, s.secs);
+      /* One section per type, counted from TYPES rather than a literal, so
+         a type added without a section to render it fails here. */
+      check(mode + ': every section is drawn', s.secs === TYPES.length,
+            { drew: s.secs, types: TYPES.length });
       check(mode + ': no script ran', s.pwned === undefined, s.pwned);
       check(mode + ': no script element was created', s.scripts === 0);
       check(mode + ': no event-handler attribute survived', s.handlers === 0);

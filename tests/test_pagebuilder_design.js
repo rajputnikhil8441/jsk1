@@ -63,7 +63,14 @@ const CONTENT = {
   featureBox:  { title: 'Feature', text: 'Feature copy.', icon: 'star' },
   faq:         { items: [{ question: 'Question one?', answer: 'Answer one.' },
                          { question: 'Two?', answer: 'Answer two.' }] },
-  socialLinks: { items: [{ platform: 'facebook', url: 'https://example.com' }] }
+  socialLinks: { items: [{ platform: 'facebook', url: 'https://example.com' }] },
+  list:        { items: [{ text: 'First item' }, { text: 'Second item' }] },
+  /* Three rows, because the first one is the header row: a table with
+     only a header has nothing to show and renders nothing at all. */
+  table:       { cols: 2, header: true,
+                 items: [{ c1: 'Column A', c2: 'Column B' },
+                         { c1: 'Row one', c2: 'Value one' },
+                         { c1: 'Row two', c2: 'Value two' }] }
 };
 
 /* A value for each key that is guaranteed to differ from every default. */
@@ -107,11 +114,21 @@ const fingerprint = (p, sel) => p.$eval(sel, (root, props) => {
   {
     const probe = await pageWith(b, { schemaVersion: 2, status: 'published', sections: [] });
     const keysByType = await probe.p.evaluate(() => CMS.sections.elementStyleKeys);
+    const elTypes = await probe.p.evaluate(() => Object.keys(CMS.sections.elementTypes).sort());
     const secKeys = await probe.p.evaluate(() => CMS.sections.sectionStyleKeys);
     await probe.ctx.close();
 
+    /* Against the renderer's own list, not a count: a new element type
+       with no key list -- and so with a silently empty Design tab -- is
+       the bug, and a literal only catches it until the literal is bumped.
+       The same check also means CONTENT below has to cover every type,
+       because the loop walks this list. */
     check('the renderer publishes a key list for every element type',
-      Object.keys(keysByType).length === 13, Object.keys(keysByType).length);
+      Object.keys(keysByType).sort().join(',') === elTypes.join(','),
+      { keyed: Object.keys(keysByType).sort(), renderers: elTypes });
+    check('and the probe content covers every element type',
+      elTypes.every(t => Object.prototype.hasOwnProperty.call(CONTENT, t)),
+      elTypes.filter(t => !Object.prototype.hasOwnProperty.call(CONTENT, t)));
     check('and a key list for sections', secKeys.length > 0, secKeys);
 
     /* One page per element type: a plain instance and one instance per key,
@@ -363,7 +380,8 @@ const fingerprint = (p, sel) => p.$eval(sel, (root, props) => {
     /* ---- every element type ---- */
     await p.click(`${SEC} .pb-subtab[data-view="content"]`); await p.waitForTimeout(350);
     const TYPES = ['heading', 'text', 'image', 'button', 'card', 'columns', 'divider',
-                   'spacer', 'icon', 'notice', 'featureBox', 'faq', 'socialLinks'];
+                   'spacer', 'icon', 'notice', 'featureBox', 'faq', 'socialLinks',
+                   'list', 'table'];
     const ids = {};
     for (const t of TYPES) {
       await p.click(`${TOP} > .pb-add-el > .pb-addbtn[data-el-type="${t}"]`);

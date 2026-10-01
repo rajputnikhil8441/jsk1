@@ -97,6 +97,28 @@ const FIXTURE = [
       { id: 'el_soc', type: 'socialLinks', content: { items: [
           { platform: 'telegram', url: 'https://t.me/example', label: 'Telegram & chat' },
           { platform: 'notAPlatform', url: 'https://example.com' }
+        ] }, style: {}, responsive: {} },
+      /* Phase 2A. Both are here for the same reason every other type is:
+         section A compares this fixture's baked HTML with the browser's
+         own innerHTML byte for byte, so a <ul>, an <ol> and a <table>
+         that minidom serialises differently from a real DOM would fail
+         there rather than in production. Ampersands and angle brackets
+         are in the content on purpose. */
+      { id: 'el_ul', type: 'list', content: { items: [
+          { text: 'Bullet one & two' },
+          { text: '' },
+          { text: '<not a tag>' }
+        ] }, style: {}, responsive: {} },
+      { id: 'el_ol', type: 'list', content: { ordered: true, items: [
+          { text: 'Step one' }, { text: 'Step two' }
+        ] }, style: {}, responsive: {} },
+      { id: 'el_tb', type: 'table', content: { caption: 'Odds & ends', header: true, items: [
+          { c1: 'Market', c2: 'Price' },
+          { c1: 'Home & away', c2: '1.90' },
+          { c1: '<b>Draw</b>', c2: '' }
+        ] }, style: {}, responsive: {} },
+      { id: 'el_tb2', type: 'table', content: { header: false, cols: 2, items: [
+          { c1: 'no header row', c2: 'second cell' }
         ] }, style: {}, responsive: {} }
     ] },
   { id: 'sec_off', type: 'text', enabled: false,
@@ -226,6 +248,39 @@ function buildBrand(brandsDir, id, outDir) {
       !node.html.includes('no question, must be skipped'), true);
     check('an unknown social platform is skipped',
       !node.html.includes('notAPlatform'), true);
+
+    /* ---- Phase 2A: semantic list and table markup, in the STATIC HTML ----
+       The point of each of these is that a crawler reading the response
+       body, before any JavaScript, sees real list and table semantics. */
+    check('a list bakes as a real <ul> with <li> rows',
+      /<ul class="pb-el pb-list" data-el="el_ul">/.test(node.html) &&
+      node.html.includes('<li class="pb-list-item">Bullet one &amp; two</li>'),
+      node.html.slice(node.html.indexOf('el_ul') - 40, node.html.indexOf('el_ul') + 160));
+    check('  a numbered list bakes as an <ol>',
+      /<ol class="pb-el pb-list pb-list-ord" data-el="el_ol">/.test(node.html), true);
+    check('  a list row with no text is skipped, not drawn empty',
+      (node.html.match(/<li class="pb-list-item">/g) || []).length === 4, true);
+    check('  markup in a list row stays text',
+      node.html.includes('&lt;not a tag&gt;') && !node.html.includes('<not a tag>'), true);
+
+    check('a table bakes as a real <table> inside its scroll wrapper',
+      /<div class="pb-el pb-table" data-el="el_tb"><table class="pb-table-t">/.test(node.html), true);
+    check('  its caption is first, where HTML requires it',
+      /<table class="pb-table-t"><caption class="pb-table-cap">Odds &amp; ends<\/caption>/.test(node.html), true);
+    check('  the first row becomes <th scope="col">, so the columns are named',
+      node.html.includes('<th class="pb-table-h" scope="col">Market</th>') &&
+      node.html.includes('<th class="pb-table-h" scope="col">Price</th>'), true);
+    check('  data rows are <td> in a <tbody>',
+      /<tbody><tr class="pb-table-r"><td class="pb-table-c">Home &amp; away<\/td>/.test(node.html), true);
+    check('  an empty cell is drawn, because a blank cell is real data',
+      node.html.includes('<td class="pb-table-c"></td>'), true);
+    check('  markup in a cell stays text',
+      node.html.includes('&lt;b&gt;Draw&lt;/b&gt;') && !node.html.includes('<b>Draw'), true);
+    check('  header:false bakes no <thead> at all',
+      /data-el="el_tb2"><table class="pb-table-t"><tbody>/.test(node.html), true);
+    check('  and no table carries an inline style or event attribute',
+      !/<t(able|head|body|r|h|d)[^>]*\s(on\w+|style)=/.test(node.html), true);
+
     check('no page errors', errs.length === 0, errs);
     await ctx.close();
   }

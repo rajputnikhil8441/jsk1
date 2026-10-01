@@ -1624,7 +1624,10 @@ window.PBAdmin = function (host) {
         ['notice',      'Notice'],
         ['featureBox',  'Feature box'],
         ['faq',         'FAQ'],
-        ['socialLinks', 'Social links']
+        ['socialLinks', 'Social links'],
+        /* Phase 2A */
+        ['list',        'List'],
+        ['table',       'Table']
     ];
 
     /* Choice lists come from the renderer's own allow-lists, so the admin
@@ -1670,7 +1673,15 @@ window.PBAdmin = function (host) {
                   ['linkText', 'Link text', 'text'], ['href', 'Links to', 'url'],
                   ['newTab', 'Open in a new tab', 'bool']],
         faq:     [['single', 'Only one answer open at a time', 'bool']],
-        socialLinks: []
+        socialLinks: [],
+
+        /* Phase 2A. The rows themselves are repeating items, below. */
+        list:    [['ordered', 'Numbered list', 'bool']],
+        table:   [['caption', 'Caption (describes the table)', 'text'],
+                  ['cols', 'Columns', 'select',
+                      [['', 'As wide as the widest row'], ['1', '1'], ['2', '2'], ['3', '3'],
+                       ['4', '4'], ['5', '5'], ['6', '6'], ['7', '7'], ['8', '8']]],
+                  ['header', 'First row is a header row', 'bool']]
     };
 
     /* Repeating sub-items: which element types have them, what one blank
@@ -1699,8 +1710,50 @@ window.PBAdmin = function (host) {
             title: function (it) { return String((it && it.platform) || 'Link'); },
             fields: [['platform', 'Platform', 'socialSelect'], ['url', 'URL', 'url'],
                      ['label', 'Accessible label (optional)', 'text']]
+        },
+
+        list: {
+            key: 'items', label: 'Items', addLabel: 'Add item',
+            blank: function () { return { text: 'List item' }; },
+            title: function (it) { return String((it && it.text) || 'Item'); },
+            fields: [['text', 'Text', 'area']]
+        },
+
+        table: {
+            key: 'items', label: 'Rows', addLabel: 'Add row',
+            blank: function () { return { c1: '' }; },
+            title: function (it) { return String((it && it.c1) || 'Row'); },
+            /* The only item config whose fields depend on the element:
+               showing eight cell boxes for a three-column table would be
+               eight chances to type into a column that is not drawn. The
+               count comes from the same content key the renderer reads. */
+            fields: function (el) {
+                var out = [];
+                for (var i = 1; i <= pbTableCols(el); i++) {
+                    out.push(['c' + i, 'Cell ' + i, 'text']);
+                }
+                return out;
+            }
         }
     };
+
+    /* How many cell boxes a table row shows. The author's choice when they
+       made one; otherwise the widest row, which is what the renderer falls
+       back to as well, so the editor and the page never disagree about how
+       many columns there are. */
+    function pbTableCols(el) {
+        var c = (el && el.content) || {};
+        var n = parseInt(c.cols, 10);
+        if (n >= 1) return Math.min(n, 8);
+        var rows = Array.isArray(c.items) ? c.items : [];
+        var widest = 0;
+        rows.forEach(function (r) {
+            for (var k = 8; k > widest; k--) {
+                if (String((r || {})['c' + k] || '').trim()) { widest = k; break; }
+            }
+        });
+        return Math.max(1, widest);
+    }
 
     var PB_STYLE_FIELDS = [
         /* V2: column tracks. First in the list because it is the control
@@ -1845,7 +1898,9 @@ window.PBAdmin = function (host) {
         spacer:      { height: 'Height (px)', maxWidth: 'Max width (px)' },
         divider:     { maxWidth: 'Width (px)' },
         icon:        { fontSize: 'Icon size (px)' },
-        socialLinks: { fontSize: 'Icon size (px)', gap: 'Space between icons (px)' }
+        socialLinks: { fontSize: 'Icon size (px)', gap: 'Space between icons (px)' },
+        list:        { gap: 'Space between items (px)' },
+        table:       { padding: 'Space inside cells (px)' }
     };
 
     var PB_DEVICES = [['base', 'Desktop'], ['tablet', 'Tablet'], ['mobile', 'Mobile']];
@@ -3056,7 +3111,21 @@ window.PBAdmin = function (host) {
         faq:         function () {
             return { items: [{ question: 'Frequently asked question', answer: 'Answer', open: false }] };
         },
-        socialLinks: function () { return { items: [{ platform: 'whatsapp', url: '#' }] }; }
+        socialLinks: function () { return { items: [{ platform: 'whatsapp', url: '#' }] }; },
+
+        /* Phase 2A. Both refuse to draw anything without rows -- a list
+           with no item and a table with only a header row each return
+           null by design -- so they ship with enough to be visible the
+           moment they are added. The table's first row is its header,
+           which is why it has two. */
+        list:  function () {
+            return { items: [{ text: 'First item' }, { text: 'Second item' }] };
+        },
+        table: function () {
+            return { cols: '2', header: true,
+                     items: [{ c1: 'Column one', c2: 'Column two' },
+                             { c1: 'Value', c2: 'Value' }] };
+        }
     };
 
     function pbBlankElement(type) {
@@ -3284,7 +3353,13 @@ window.PBAdmin = function (host) {
                 dimensionKeys: PB_ASSET_DIMS[el.type],
                 /* Choosing an image can fill in the width and height boxes
                    beside it, so those inputs have to be rebuilt. */
-                repaint: function () { pbPersist(); repaint(); pbPaintPreview(); }
+                repaint: function () { pbPersist(); repaint(); pbPaintPreview(); },
+                /* A table's column count decides how many cell boxes each
+                   row shows, so changing it has to rebuild them. Every
+                   other content key leaves the card alone. */
+                onChange: function (key) {
+                    if (el.type === 'table' && key === 'cols') cctx.repaint();
+                }
             };
             (PB_CONTENT_FIELDS[el.type] || []).forEach(function (spec) {
                 grid.appendChild(pbFieldFor(spec, el.content, spec[0], cctx));
@@ -3417,7 +3492,10 @@ window.PBAdmin = function (host) {
 
                 var g = document.createElement('div');
                 g.className = 'pb-grid';
-                cfg.fields.forEach(function (spec) {
+                /* A fields list may depend on the element -- a table's row
+                   shows one box per column it actually draws. */
+                var specs = typeof cfg.fields === 'function' ? cfg.fields(el) : cfg.fields;
+                specs.forEach(function (spec) {
                     g.appendChild(pbFieldFor(spec, it, spec[0]));
                 });
                 row.appendChild(g);

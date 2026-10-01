@@ -183,10 +183,16 @@ const el = (id, type, content, style, responsive) =>
       Object.keys(keys).forEach(t => (keys[t] || []).forEach(k => all.add(k)));
       const tokens = CMS.sections.elementTokens || {};
       return { allowed: [...all].sort(), tokens: Object.keys(tokens).sort(),
-               types: Object.keys(keys).sort() };
+               types: Object.keys(keys).sort(),
+               renderers: Object.keys(CMS.sections.elementTypes || {}).sort() };
     });
-    check('every element type has an allow-list',
-      r.types.length === 13, r.types);
+    /* Asserted against the renderer's own type list rather than a count:
+       a new element type that is added without an allow-list is exactly
+       the bug this section exists to catch, and a hardcoded number only
+       catches it until someone updates the number. */
+    check('every element type the renderer knows has an allow-list',
+      r.types.join(',') === r.renderers.join(','),
+      { withList: r.types, renderers: r.renderers });
     const noToken = r.allowed.filter(k => r.tokens.indexOf(k) === -1);
     check('every allow-listed key has a style token behind it',
       noToken.length === 0, noToken);
@@ -629,14 +635,17 @@ const el = (id, type, content, style, responsive) =>
     const TOP = `${SEC} > .pb-sec-body > .pb-subbody`;
 
     const offered = await p.$$eval(`${TOP} > .pb-add-el > .pb-addbtn`, e => e.map(x => x.getAttribute('data-el-type')));
-    check('the admin offers all thirteen element types', offered.length === 13, offered);
+    check('the admin offers all fifteen element types', offered.length === 15, offered);
     check('and the seven V2 types are among them',
       ['divider', 'spacer', 'icon', 'notice', 'featureBox', 'faq', 'socialLinks']
         .every(t => offered.indexOf(t) > -1), offered);
+    check('and so are the two Phase 2A types',
+      ['list', 'table'].every(t => offered.indexOf(t) > -1), offered);
 
-    /* For each V2 type: the number of Design fields the admin renders must
-       equal the number of keys the renderer honours. */
-    for (const type of ['divider', 'spacer', 'icon', 'notice', 'featureBox', 'faq', 'socialLinks']) {
+    /* For each type added after V1: the number of Design fields the admin
+       renders must equal the number of keys the renderer honours. */
+    for (const type of ['divider', 'spacer', 'icon', 'notice', 'featureBox', 'faq', 'socialLinks',
+                        'list', 'table']) {
       await p.click(`${TOP} > .pb-add-el > .pb-addbtn[data-el-type="${type}"]`);
       await p.waitForTimeout(400);
       const id = await p.$$eval(`${TOP} > .pb-els > .pb-elcard`, e => e[e.length - 1].getAttribute('data-el-id'));
