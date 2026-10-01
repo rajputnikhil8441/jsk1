@@ -1411,6 +1411,74 @@ console.log('\n===== NOTHING STILL DESCRIBES THE OLD WORKFLOW =====');
   /* And the docs name no brand, because the platform is not one brand's. */
   check('publishing.md explains the mechanism without naming a brand as the rule',
     !/only works for JSK1|specific to JSK1|only for Playzone9/i.test(pub));
+
+  /* ---- Phase 2A ----
+     Same rule as everything above it: a statement is a claim. These are
+     the ones a reader would act on, and the two that USED to be true and
+     would now mislead if they had been left alone. */
+  const pb = readIf('docs/page-builder.md');
+  /* Prose wraps, so a sentence to be matched is matched against a copy
+     with its line breaks collapsed. Without this the assertion is really
+     about where the author pressed return. */
+  const flat = s => s.replace(/\s+/g, ' ');
+  const pbf = flat(pb);
+  const pubf = flat(pub);
+  check('page-builder.md documents the content-authoring work',
+    /## Content authoring \(Phase 2A\)/.test(pb));
+  check('  and records what the audit found ALREADY built, so nobody rebuilds it',
+    /What already existed, and was not rebuilt/.test(pbf) &&
+    /Only its \*\*schema\*\* was missing/.test(pbf) &&
+    /\*\*Extended\*\* for the new elements; nothing replaced/.test(pbf), 'audit record');
+  check('  the stored shape of each new element',
+    /"type": "list"/.test(pb) && /"type": "table"/.test(pb) &&
+    /"type": "toc"/.test(pb), 'shapes');
+  check('  that a table row is named cells and WHY, not an array',
+    /A row is `c1`.{0,4}`c8`, not an array/.test(pbf) &&
+    /pbScalar\(\)` refuses anything that is not a boolean/.test(pbf), 'cells');
+  check('  that inline formatting is a reader rather than a parser',
+    /a reader, not a parser/i.test(pbf) &&
+    /no path from a stored string to parsed markup/.test(pbf), 'reader');
+  check('  the three marks, and nothing promised beyond them',
+    /`\*\*strong\*\*`/.test(pb) && /`\[label\]\(address\)`/.test(pb), 'marks');
+  check('  why the FAQPage block is not in the head',
+    /Why not the head/.test(pbf) && /it cannot duplicate/.test(pbf) &&
+    /static response/.test(pbf), 'faq placement');
+  check('  what the FAQPage block refuses',
+    /a question with no answer, an answer with no question/.test(pbf) &&
+    /not an empty `FAQPage`/.test(pbf), 'faq refusals');
+  check('  that the link picker reads one page registry',
+    /the absence of a feature, not one/.test(pbf) &&
+    /A draft page is not offered/.test(pbf), 'picker');
+  check('  and it says what this does NOT do',
+    /### Known limitations/.test(pb.slice(pb.indexOf('## Content authoring'))) &&
+    /is still raw `innerHTML`/.test(pb), 'limits');
+
+  /* The two corrections. Each would now be false if left as it was. */
+  check('page-builder.md no longer claims inline markup cannot exist at all',
+    !/\*\*Inline markup does not survive\.\*\* Heading and text elements are/.test(pbf) &&
+    /The migration does \*\*not\*\* use it/.test(pbf), 'migration note');
+  check('  and the no-arbitrary-HTML promise says why it still holds',
+    /inline formatting does not change this/.test(pbf), 'safety bullet');
+  check('publishing.md keeps the SEO claim precise rather than absolute',
+    /One exception, and it is content rather than metadata/.test(pubf) &&
+    /Nothing in the `<head>` moves/.test(pubf) &&
+    /the four head JSON-LD blocks/.test(pubf), 'seo exception');
+
+  /* A count in a document is a claim too. Every suite the Phase 2A table
+     names has to still report the number written next to it. */
+  {
+    const rows = (pb.match(/^\| `(test_[a-z0-9_]+\.js)` \| (\d+) \| (\d+) \|/gm) || [])
+      .map(l => l.match(/`(test_[a-z0-9_]+\.js)` \| (\d+) \| (\d+)/).slice(1));
+    check('the Phase 2A table names the suites it changed', rows.length >= 5, rows.length);
+    const bad = rows.filter(([f, was, now]) => {
+      const src = readIf('tests/' + f);
+      /* The suite has to exist and the "now" figure has to be the larger
+         one -- the file itself cannot be counted without running it, so
+         this checks the shape of the claim, not the arithmetic. */
+      return !src || Number(now) < Number(was);
+    });
+    check('  every one exists, and none claims to have shrunk', bad.length === 0, bad);
+  }
 }
 
 tmpRoots.forEach(d => { try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) {} });
