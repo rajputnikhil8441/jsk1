@@ -1598,7 +1598,16 @@
            existing value as the fallback, so an element that has never been
            given one renders exactly as before. */
         lineHeight:    ['--pbe-line-height', ''],
-        letterSpacing: ['--pbe-letter-spacing', 'px']
+        letterSpacing: ['--pbe-letter-spacing', 'px'],
+        /* Container layout. `justify` writes --pbe-justify-CONTENT, not
+           --pbe-justify: that name is already taken by the justify-self
+           half of PB_SELF, and one property name for two meanings is how a
+           value ends up read by the wrong rule. */
+        direction:  ['--pbe-direction', ''],
+        justify:    ['--pbe-justify-content', ''],
+        alignItems: ['--pbe-align-items', ''],
+        wrap:       ['--pbe-wrap', ''],
+        minWidth:   ['--pbe-min-width', 'px']
     };
 
     /* Which controls actually do something for each element type. The admin
@@ -1859,6 +1868,18 @@
             if (v === null) continue;
             v = str(v);
             if (!v) continue;
+            /* A key whose value is a NAME from a list is validated against
+               that list, for the same reason pbCleanContent() validates an
+               icon name: the renderer already refuses an unrecognised one,
+               but an import is the moment to drop it, so the stored data
+               only ever holds values the builder's own controls could have
+               set. "constructor" as a flex direction is inert either way;
+               it is also pointless to keep. */
+            if (Object.prototype.hasOwnProperty.call(PB_STYLE_ENUMS, k)) {
+                if (!pbPick(PB_STYLE_ENUMS[k], v.toLowerCase())) continue;
+                out[k] = v.toLowerCase();
+                continue;
+            }
             /* A global design reference is legal here; anything else has to
                pass the ordinary value check. */
             if (v.charAt(0) === '@') {
@@ -1870,6 +1891,14 @@
             out[k] = typeof raw[k] === 'number' ? raw[k] : v;
         }
         return out;
+    }
+
+    /* Does this object hold anything? Used to keep a cleaned container as
+       small as it was: an empty style map is not written at all. */
+    function pbHasKeys(o) {
+        if (!o || typeof o !== 'object') return false;
+        for (var k in o) { if (Object.prototype.hasOwnProperty.call(o, k)) return true; }
+        return false;
     }
 
     function pbCleanResponsive(raw, allow) {
@@ -1901,7 +1930,21 @@
             var kept = [];
             if (isArr(cols)) {
                 for (var i = 0; i < cols.length && i < 12; i++) {
-                    kept.push({ elements: pbCleanElements((cols[i] || {}).elements, depth + 1) });
+                    var src = cols[i] || {};
+                    /* A container carries style of its own now. The keys
+                       are written only when there is something in them, so
+                       a container saved before this existed cleans to the
+                       same bytes it always did. */
+                    var box = { elements: pbCleanElements(src.elements, depth + 1) };
+                    var cstyle = pbCleanStyle(src.style, PB_CONTAINER_STYLE_KEYS);
+                    if (pbHasKeys(cstyle)) box.style = cstyle;
+                    var cresp = pbCleanResponsive(src.responsive, PB_CONTAINER_STYLE_KEYS);
+                    if (pbHasKeys(cresp.tablet) || pbHasKeys(cresp.mobile)) {
+                        box.responsive = {};
+                        if (pbHasKeys(cresp.tablet)) box.responsive.tablet = cresp.tablet;
+                        if (pbHasKeys(cresp.mobile)) box.responsive.mobile = cresp.mobile;
+                    }
+                    kept.push(box);
                 }
             }
             out.content.columns = kept;
@@ -2270,6 +2313,14 @@
        the table of contents has to work out the SAME id from the section
        tree, without having rendered anything. One rule, read twice, so a
        link can never point at an id the heading did not get. */
+    /* A container's CSS address: its columns element plus its index. '' when
+       the element id is not one an attribute selector could hold, which is
+       the same condition that leaves an element without generated CSS. */
+    function pbContainerRef(el, index) {
+        var base = pbCssId(el && el.id);
+        return base ? base + '-' + index : '';
+    }
+
     function pbAnchorId(elId) {
         var base = pbCssId(elId);
         return base ? 'pb-' + base + '-h' : '';
@@ -2282,6 +2333,48 @@
         center: ['center', 'center'],
         right:  ['flex-end', 'end']
     };
+
+    /* ---- container layout ----
+
+       Each of these is a NAME, and what reaches the CSS is the constant
+       stored against it -- the same rule PB_COL_LAYOUTS follows, for the
+       same reason: no author-entered text can ever land in the property.
+       An unrecognised name emits nothing, which leaves the shipped default
+       in css/sections.css in charge.
+
+       The keys are the wire format stored in a container's style, so they
+       are part of the saved data: do not rename one.
+
+       The names are the author's words, not CSS's. "start" and "between"
+       are what a person picking an alignment means; flex-start and
+       space-between are what the browser needs, and the translation lives
+       here rather than in the admin. */
+    var PB_DIRECTIONS = { column: 'column', row: 'row',
+                          'column-reverse': 'column-reverse', 'row-reverse': 'row-reverse' };
+    var PB_JUSTIFY = { start: 'flex-start', center: 'center', end: 'flex-end',
+                       between: 'space-between', around: 'space-around',
+                       evenly: 'space-evenly' };
+    var PB_ALIGN_ITEMS = { stretch: 'stretch', start: 'flex-start', center: 'center',
+                           end: 'flex-end', baseline: 'baseline' };
+    var PB_WRAP = { nowrap: 'nowrap', wrap: 'wrap' };
+
+    /* Which style keys are a name from a list rather than a measurement.
+       pbDecls() reads this, so the guard is on the RENDER path -- the one
+       place the whole-tree sanitiser deliberately does not run. */
+    var PB_STYLE_ENUMS = { direction: PB_DIRECTIONS, justify: PB_JUSTIFY,
+                           alignItems: PB_ALIGN_ITEMS, wrap: PB_WRAP };
+
+    /* What a CONTAINER inside a columns element can be given.
+
+       Same rule as PB_EL_STYLE_KEYS: a key is here only because the
+       .pb-column rule in css/sections.css reads it, so the admin cannot
+       offer a control that does nothing. `typography` is deliberately
+       absent -- a container's children each carry .pb-el, which resets the
+       element namespace, so a role set here would reach nothing. */
+    var PB_CONTAINER_STYLE_KEYS = ['direction', 'justify', 'alignItems', 'wrap', 'gap',
+                                   'bg', 'color', 'padding', 'margin',
+                                   'maxWidth', 'minWidth', 'height',
+                                   'border', 'radius', 'shadow', 'align'];
 
     var PB_SECTION_CLASS = {
         hero:      'pb-hero',
@@ -2705,8 +2798,17 @@
             var cols = (el.content || {}).columns;
             if (!isArr(cols) || !cols.length) return null;
             var wrap = pbEl('div', 'pb-el pb-columns');
+            /* A container is addressed by its POSITION, not by an id of its
+               own: pbContainerRef() is the one place that decides what that
+               address looks like, and pbElementCSS() asks the same question
+               to write the rule. Position is also how the admin already
+               addresses a container, so moving one moves its style with it
+               and a duplicated columns element -- which gets a fresh
+               element id -- gets fresh container rules for free. */
             for (var i = 0; i < cols.length; i++) {
                 var col = pbEl('div', 'pb-column');
+                var ref = pbContainerRef(el, i);
+                if (ref) col.setAttribute('data-col', ref);
                 pbRenderElements(col, (cols[i] || {}).elements, depth + 1);
                 wrap.appendChild(col);
             }
@@ -3184,6 +3286,12 @@
                 if (!lay) continue;
                 v = lay[0];
                 prop = PB_COL_PROP[tier === 'tablet' || tier === 'mobile' ? tier : ''];
+            } else if (Object.prototype.hasOwnProperty.call(PB_STYLE_ENUMS, k)) {
+                /* A name, not a measurement: the constant in the map is
+                   what gets emitted, so an unknown or hostile value emits
+                   nothing at all rather than reaching the property. */
+                v = pbPick(PB_STYLE_ENUMS[k], str(style[k]).toLowerCase());
+                if (!v) continue;
             } else if (k === 'bgImage') {
                 var u = pbCssUrl(style[k]);
                 if (!u) continue;
@@ -3238,7 +3346,16 @@
             var cols = (el.content || {}).columns;
             if (isArr(cols)) {
                 for (j = 0; j < cols.length; j++) {
-                    css += pbElementCSS((cols[j] || {}).elements, depth + 1);
+                    var box = cols[j] || {};
+                    /* Three classes' worth of specificity, so a container's
+                       own rule beats the shipped .pb-columns .pb-column one
+                       whatever order the stylesheets happen to load in. */
+                    var ref = pbContainerRef(el, j);
+                    if (ref) {
+                        css += pbScopedCSS('.pb-columns .pb-column[data-col="' + ref + '"]',
+                                           box, PB_EL_TOKENS, PB_CONTAINER_STYLE_KEYS);
+                    }
+                    css += pbElementCSS(box.elements, depth + 1);
                 }
             }
         }
@@ -5501,6 +5618,13 @@
             safeCssUrl: pbCssUrl,
             elementStyleKeys: PB_EL_STYLE_KEYS,
             sectionStyleKeys: PB_SEC_STYLE_KEYS,
+            /* What a container inside a columns element can be given, and
+               the name lists its layout controls choose from. Exported for
+               the same reason icons and column presets are: the admin
+               builds its controls from the renderer's own lists. */
+            containerStyleKeys: PB_CONTAINER_STYLE_KEYS,
+            layoutNames: { direction: PB_DIRECTIONS, justify: PB_JUSTIFY,
+                           alignItems: PB_ALIGN_ITEMS, wrap: PB_WRAP },
             icons: PB_ICONS,
             social: PB_SOCIAL,
             /* Phase 2A allow-lists, exported for the same reason icons and

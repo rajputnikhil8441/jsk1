@@ -225,11 +225,54 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
     text-align: var(--pbe-align, inherit);
 }
 
-/* Inherits the columns element's gap on purpose: one control, one result. */
+/* ---------- container ----------
+
+   A container is a column of a columns element, and it was always a flex
+   box -- it simply had no controls. Every declaration below reads a token
+   with the value this rule ALREADY HAD as its fallback, so a container
+   that was never given a style renders exactly as it did before:
+
+     direction  column      what the rule hard-coded
+     gap        12px        what the rule hard-coded, still inherited from
+                            the columns element when it sets one
+     wrap       nowrap      the flex default
+     justify    flex-start  the flex default
+     alignItems stretch     the flex default
+     bg/padding/border/...  the shipped nothing
+     min-width  auto        NOT 0: a grid item's default is auto, and
+                            flipping it to 0 would let a wide child shrink
+                            its track on pages nobody touched
+
+   The tokens are inherited from the enclosing .pb-columns, which is a
+   .pb-el and therefore resets the whole --pbe-* namespace to the
+   guaranteed-invalid value. So an unstyled container reads `initial` for
+   each one and falls through to the fallback here. The gap is the one
+   deliberate exception, and it is why `gap` stays inherited rather than
+   reset: one control, one result.
+
+   align-self and justify-self are deliberately NOT read here. PB_SELF
+   writes --pbe-self/--pbe-justify whenever `align` is set, including on
+   the columns element itself -- and a container reading those would start
+   moving itself inside its track on existing pages that only meant to
+   centre some text. */
 .pb-columns .pb-column {
     display: flex;
-    flex-direction: column;
+    flex-direction: var(--pbe-direction, column);
+    flex-wrap: var(--pbe-wrap, nowrap);
+    justify-content: var(--pbe-justify-content, flex-start);
+    align-items: var(--pbe-align-items, stretch);
     gap: var(--pbe-gap, 12px);
+    background: var(--pbe-bg, transparent);
+    color: var(--pbe-color, inherit);
+    padding: var(--pbe-padding, 0);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    min-width: var(--pbe-min-width, auto);
+    min-height: var(--pbe-height, auto);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+    text-align: var(--pbe-align, inherit);
 }
 
 

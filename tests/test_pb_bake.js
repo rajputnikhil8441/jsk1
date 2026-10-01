@@ -147,7 +147,21 @@ const FIXTURE = [
       { id: 'el_h3a', type: 'heading', content: { text: 'A sub point', level: 'h3' },
         style: {}, responsive: {} },
       { id: 'el_h4a', type: 'heading', content: { text: 'Too deep to list', level: 'h4' },
-        style: {}, responsive: {} }
+        style: {}, responsive: {} },
+      /* Phase 2B: a styled container. Here for the byte-for-byte comparison
+         like everything else, and because a container's style is the first
+         thing in this builder that is addressed by POSITION rather than by
+         an id -- so the attribute the bake writes and the selector the bake
+         writes have to agree about what that position is called. */
+      { id: 'el_box', type: 'columns', style: { columns: '2' }, responsive: {},
+        content: { columns: [
+          { style: { direction: 'row', justify: 'between', bg: '#0a0a0a', padding: '12' },
+            responsive: { mobile: { direction: 'column' } },
+            elements: [{ id: 'el_bx1', type: 'text', content: { text: 'in a styled box' },
+                         style: {}, responsive: {} }] },
+          { elements: [{ id: 'el_bx2', type: 'text', content: { text: 'in a plain box' },
+                        style: {}, responsive: {} }] }
+        ] } }
     ] },
   { id: 'sec_off', type: 'text', enabled: false,
     visibility: { desktop: true, tablet: true, mobile: true }, style: {}, responsive: {},
@@ -386,6 +400,22 @@ function buildBrand(brandsDir, id, outDir) {
       check('  and the questions are also readable in the page body itself',
         node.html.includes('>Is it open?<') && node.html.includes('>Yes &amp; always<'), true);
     }
+
+    /* ---- Phase 2B: a container's style survives the bake ---- */
+    check('a styled container bakes its position as a CSS hook',
+      node.html.includes('<div class="pb-column" data-col="el_box-0">') &&
+      node.html.includes('<div class="pb-column" data-col="el_box-1">'), true);
+    check('  and the baked CSS targets that exact position',
+      node.css.includes('.pb-columns .pb-column[data-col="el_box-0"]{') &&
+      /--pbe-direction:row/.test(node.css) && /--pbe-justify-content:space-between/.test(node.css),
+      node.css.slice(node.css.indexOf('el_box-0') - 40, node.css.indexOf('el_box-0') + 180));
+    check('  the per-breakpoint override is a real media query in the baked CSS',
+      /@media \(max-width:768px\)\{\.pb-columns \.pb-column\[data-col="el_box-0"\]\{--pbe-direction:column/
+        .test(node.css), true);
+    check('  the container left alone gets no rule of its own at all',
+      node.css.indexOf('data-col="el_box-1"') === -1, true);
+    check('  and the content of both is in the static HTML either way',
+      node.html.includes('>in a styled box<') && node.html.includes('>in a plain box<'), true);
 
     check('no page errors', errs.length === 0, errs);
     await ctx.close();

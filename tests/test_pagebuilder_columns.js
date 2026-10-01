@@ -410,6 +410,142 @@ const shares = (t) => { const s = t.reduce((a, b) => a + b, 0); return t.map(v =
     await ctx.close();
   }
 
+  /* ================================================================
+     THE CONTAINER IS A BOX OF ITS OWN  (Phase 2B)
+     ----------------------------------------------------------------
+     A container -- one column of a columns element -- was always a flex
+     box with no controls: no style, no CSS hook, nothing an author could
+     set. These assert it has become a real box WITHOUT changing what an
+     untouched one does, which is the whole difficulty.
+
+     Read from computed style, never from the generated CSS text, for the
+     reason this suite's header gives: a custom property that never reaches
+     a real property looks perfect in the stylesheet and does nothing.
+     ================================================================ */
+  console.log('\n===== A CONTAINER IS A STYLED BOX, AND AN UNTOUCHED ONE IS UNCHANGED =====');
+  {
+    /* Container 0 styled every way it can be; container 1 left alone. */
+    const styled = el('cs', 'columns', { columns: [
+      { style: { direction: 'row', justify: 'between', alignItems: 'center',
+                 wrap: 'wrap', gap: '20', bg: '#112233', color: '#ffeedd',
+                 padding: '18', margin: '7', border: '2px dashed #ff0000',
+                 radius: '9', minWidth: '120', height: '150', align: 'right' },
+        elements: [el('cs_a', 'text', { text: 'first' }), el('cs_b', 'text', { text: 'second' })] },
+      { elements: [el('cs_c', 'text', { text: 'plain' })] }
+    ] }, { columns: '2' });
+    const { ctx, p, errs } = await publishedPage(b, [sec('s1', 'text', { elements: [styled] })], 1280);
+
+    const got = await p.evaluate(() => {
+      const g = s => getComputedStyle(document.querySelector(s));
+      const a = g('[data-col="cs-0"]'), bx = g('[data-col="cs-1"]');
+      const box = document.querySelector('[data-col="cs-0"]').getBoundingClientRect();
+      return {
+        marked: !!document.querySelector('[data-col="cs-0"]') &&
+                !!document.querySelector('[data-col="cs-1"]'),
+        styled: { dir: a.flexDirection, wrap: a.flexWrap, justify: a.justifyContent,
+                  items: a.alignItems, gap: a.rowGap, bg: a.backgroundColor,
+                  color: a.color, pad: a.paddingTop, mar: a.marginTop,
+                  bw: a.borderTopWidth, bs: a.borderTopStyle, rad: a.borderTopLeftRadius,
+                  minW: a.minWidth, minH: a.minHeight, align: a.textAlign,
+                  h: Math.round(box.height) },
+        /* The one left alone: every value has to be what the shipped rule
+           always gave, which is what makes this change safe for pages
+           nobody has touched. */
+        plain:  { dir: bx.flexDirection, wrap: bx.flexWrap, justify: bx.justifyContent,
+                  items: bx.alignItems, bg: bx.backgroundColor, pad: bx.paddingTop,
+                  mar: bx.marginTop, bw: bx.borderTopWidth, rad: bx.borderTopLeftRadius,
+                  minW: bx.minWidth, minH: bx.minHeight }
+      };
+    });
+
+    check('each container carries its position as a CSS hook', got.marked, got.marked);
+    const s = got.styled;
+    check('  direction reaches flex-direction', s.dir === 'row', s.dir);
+    check('  justify reaches justify-content as the CSS value, not the name',
+      s.justify === 'space-between', s.justify);
+    check('  alignItems reaches align-items', s.items === 'center', s.items);
+    check('  wrap reaches flex-wrap', s.wrap === 'wrap', s.wrap);
+    check('  gap reaches the container, not only the grid', s.gap === '20px', s.gap);
+    check('  background and colour reach it',
+      s.bg === 'rgb(17, 34, 51)' && s.color === 'rgb(255, 238, 221)', s);
+    check('  padding and margin reach it', s.pad === '18px' && s.mar === '7px', s);
+    check('  the border is drawn as named',
+      s.bw === '2px' && s.bs === 'dashed' && s.rad === '9px', s);
+    check('  min width and min height reach it',
+      s.minW === '120px' && s.minH === '150px', s);
+    check('  and it really is at least that tall', s.h >= 150, s.h);
+    check('  align reaches text-align', s.align === 'right', s.align);
+
+    const pl = got.plain;
+    check('an untouched container is exactly what it always was',
+      pl.dir === 'column' && pl.wrap === 'nowrap' && pl.justify === 'flex-start' &&
+      pl.items === 'stretch' && pl.bg === 'rgba(0, 0, 0, 0)' && pl.pad === '0px' &&
+      pl.mar === '0px' && pl.bw === '0px' && pl.rad === '0px', pl);
+    check('  including min-width auto, NOT 0',
+      pl.minW === 'auto' && pl.minH === 'auto', pl);
+    check('no page errors', errs.length === 0, errs);
+    await ctx.close();
+  }
+
+  /* Per-device container styles, through real media queries. */
+  console.log('\n===== A CONTAINER RESPONDS PER BREAKPOINT =====');
+  {
+    const resp = el('cr', 'columns', { columns: [
+      { style: { direction: 'row', gap: '30' },
+        responsive: { tablet: { direction: 'column' }, mobile: { direction: 'row-reverse', gap: '4' } },
+        elements: [el('cr_a', 'text', { text: 'one' }), el('cr_b', 'text', { text: 'two' })] }
+    ] }, { columns: '1' });
+    for (const [w, wantDir, wantGap] of [[1280, 'row', '30px'],
+                                         [900, 'column', '30px'],
+                                         [390, 'row-reverse', '4px']]) {
+      const { ctx, p, errs } = await publishedPage(b, [sec('s1', 'text', { elements: [resp] })], w);
+      await p.setViewportSize({ width: w, height: 900 });
+      const r = await p.evaluate(() => {
+        const c = getComputedStyle(document.querySelector('[data-col="cr-0"]'));
+        return { dir: c.flexDirection, gap: c.rowGap };
+      });
+      check(`at ${w}px the container stacks ${wantDir} with a ${wantGap} gap`,
+        r.dir === wantDir && r.gap === wantGap, r);
+      check('  no page errors', errs.length === 0, errs);
+      await ctx.close();
+    }
+  }
+
+  /* Hostile container style: a name that is not on the list, and values
+     that would escape the rule if they were ever written out. */
+  console.log('\n===== A CONTAINER STYLE CANNOT INJECT CSS =====');
+  {
+    const bad = el('cb', 'columns', { columns: [
+      { style: { direction: 'constructor', justify: 'red;}body{display:none}',
+                 alignItems: '__proto__', wrap: 'javascript:x',
+                 bg: 'url(http://evil.example/x)', padding: 'expression(9)',
+                 border: '1px solid red; } body { display:none } .x {',
+                 gap: 'toString' },
+        elements: [el('cb_a', 'text', { text: 'still here' })] }
+    ] }, { columns: '1' });
+    const { ctx, p, errs } = await publishedPage(b, [sec('s1', 'text', { elements: [bad] })], 1280);
+    const r = await p.evaluate(() => {
+      const c = getComputedStyle(document.querySelector('[data-col="cb-0"]'));
+      const sheet = [...document.querySelectorAll('style#cmsBuilder')].map(s => s.textContent).join('');
+      return { dir: c.flexDirection, justify: c.justifyContent, items: c.alignItems,
+               wrap: c.flexWrap, bg: c.backgroundColor, pad: c.paddingTop,
+               bw: c.borderTopWidth, gap: c.rowGap,
+               bodyHidden: getComputedStyle(document.body).display === 'none',
+               text: document.body.innerText.includes('still here'),
+               sheetHasEvil: /evil\.example|expression\(|body\s*\{/.test(sheet) };
+    });
+    check('every refused name leaves the shipped default in charge',
+      r.dir === 'column' && r.justify === 'flex-start' && r.items === 'stretch' &&
+      r.wrap === 'nowrap', r);
+    check('  no background, padding, border or gap came from the hostile values',
+      r.bg === 'rgba(0, 0, 0, 0)' && r.pad === '0px' && r.bw === '0px', r);
+    check('  nothing escaped into the generated stylesheet', !r.sheetHasEvil, r);
+    check('  the page is not hidden and the content still renders',
+      !r.bodyHidden && r.text, r);
+    check('no page errors', errs.length === 0, errs);
+    await ctx.close();
+  }
+
   await b.close();
   console.log('\n==== ' + pass + ' passed, ' + fail + ' failed ====');
   if (fails.length) console.log('failed: ' + fails.join(' | '));

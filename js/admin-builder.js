@@ -1757,6 +1757,34 @@ window.PBAdmin = function (host) {
        never count to a depth the renderer does not honour. */
     function pbTocDepths() { return CMS.sections.tocDepths || { h2: 2, h3: 3, h4: 4 }; }
 
+    /* The options for one layout control, read from the renderer's own name
+       list so the two can never drift. A blank first option means "leave
+       it", which for a container is the shipped default -- the same
+       inherit-by-absence rule every other style control follows.
+
+       The labels are the author's words for the names; the names themselves
+       are the wire format and are not shown. */
+    var PB_LAYOUT_LABELS = {
+        direction:  { column: 'Downwards (a column)', row: 'Across (a row)',
+                      'column-reverse': 'Downwards, reversed',
+                      'row-reverse': 'Across, reversed' },
+        justify:    { start: 'At the start', center: 'Centred', end: 'At the end',
+                      between: 'Space between', around: 'Space around',
+                      evenly: 'Space evenly' },
+        alignItems: { stretch: 'Stretch to fill', start: 'At the start',
+                      center: 'Centred', end: 'At the end',
+                      baseline: 'On their baseline' },
+        wrap:       { nowrap: 'Keep on one line', wrap: 'Wrap onto more lines' }
+    };
+
+    function pbLayoutOptions(key) {
+        var names = (CMS.sections.layoutNames || {})[key] || {};
+        var labels = PB_LAYOUT_LABELS[key] || {};
+        var out = [['', '(inherit)']];
+        Object.keys(names).forEach(function (n) { out.push([n, labels[n] || n]); });
+        return out;
+    }
+
     /* The depth control's options, in level order, labelled. */
     function pbTocDepthOptions() {
         var d = pbTocDepths();
@@ -1820,7 +1848,15 @@ window.PBAdmin = function (host) {
         ['lineStyle',  'Line style',        'select',
             [['', '(inherit)'], ['solid', 'Solid'], ['dashed', 'Dashed'],
              ['dotted', 'Dotted'], ['double', 'Double']]],
-        ['lineColor',  'Line colour',       'colorRef']
+        ['lineColor',  'Line colour',       'colorRef'],
+        /* Container layout. Each is a name from the renderer's own list,
+           resolved in pbFieldFor so the admin cannot offer a value the
+           renderer would refuse. */
+        ['direction',  'Stack items',       'layoutName'],
+        ['justify',    'Distribute along',  'layoutName'],
+        ['alignItems', 'Align across',      'layoutName'],
+        ['wrap',       'Wrap items',        'layoutName'],
+        ['minWidth',   'Min width (px)',    'num']
     ];
 
     /* ---------- Stage 5: the seven control groups ----------
@@ -1828,7 +1864,8 @@ window.PBAdmin = function (host) {
        group; anything not listed falls into "More" so a new control can
        never become invisible, and a test asserts that "More" is empty. */
     var PB_STYLE_GROUPS = [
-        ['layout',     'Layout',     ['columns', 'align', 'maxWidth', 'height', 'gap']],
+        ['layout',     'Layout',     ['columns', 'direction', 'justify', 'alignItems', 'wrap',
+                                      'align', 'maxWidth', 'minWidth', 'height', 'gap']],
         ['spacing',    'Spacing',    ['padding', 'margin']],
         ['typography', 'Typography', ['typography', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing']],
         ['colors',     'Colors',     ['color', 'bg']],
@@ -1912,6 +1949,21 @@ window.PBAdmin = function (host) {
     function pbStyleKeysFor(type) {
         return (CMS.sections.elementStyleKeys || {})[type] || [];
     }
+
+    /* A container's controls, from the renderer. Same contract as
+       pbStyleKeysFor: if the CSS does not read it, it is not offered. */
+    function pbContainerStyleKeys() {
+        return CMS.sections.containerStyleKeys || [];
+    }
+
+    /* On a container these keys mean something more specific than they do
+       on an element, and saying so is the difference between a control an
+       author understands and one they experiment with. */
+    var PB_CONTAINER_LABELS = {
+        gap:    'Space between items (px)',
+        align:  'Text alignment',
+        height: 'Min height (px)'
+    };
 
     function pbSectionStyleKeys() {
         return CMS.sections.sectionStyleKeys || [];
@@ -2854,6 +2906,7 @@ window.PBAdmin = function (host) {
         if (spec[2] === 'iconSelect')   spec = [spec[0], spec[1], 'select', [''].concat(pbIconNames())];
         if (spec[2] === 'socialSelect') spec = [spec[0], spec[1], 'select', pbSocialNames()];
         if (spec[2] === 'tocDepth')     spec = [spec[0], spec[1], 'select', pbTocDepthOptions()];
+        if (spec[2] === 'layoutName')   spec = [spec[0], spec[1], 'select', pbLayoutOptions(spec[0])];
         if (spec[2] === 'colsSelect') {
             spec = [spec[0], spec[1], 'select', pbColOptions((ctx && ctx.device) || 'base')];
         }
@@ -3004,8 +3057,13 @@ window.PBAdmin = function (host) {
         return n;
     }
 
-    function pbDesignEditor(host, node, keys, labels, onLayout) {
-        var device = pbDevice[node.id] || 'base';
+    /* `stateKey` is which entry in pbDevice remembers the open device tab.
+       It defaults to the node's id, which is what a section or an element
+       has. A CONTAINER has none -- it is a position in an array -- so its
+       caller passes one, or every container on the page would share a tab. */
+    function pbDesignEditor(host, node, keys, labels, onLayout, stateKey) {
+        var dkey = stateKey || node.id;
+        var device = pbDevice[dkey] || 'base';
 
         var tabs = document.createElement('div');
         tabs.className = 'pb-devtabs';
@@ -3028,9 +3086,11 @@ window.PBAdmin = function (host) {
             b.addEventListener('click', function () {
                 /* Choosing which breakpoint to EDIT. It writes nothing --
                    the value only changes when a control is used. */
-                pbDevice[node.id] = d[0];
+                pbDevice[dkey] = d[0];
                 host.innerHTML = '';
-                pbDesignEditor(host, node, keys, labels, onLayout);
+                /* dkey is threaded through the rebuild, or a container would
+                   lose which tab it was on the moment one was chosen. */
+                pbDesignEditor(host, node, keys, labels, onLayout, dkey);
             });
             tabs.appendChild(b);
         });
@@ -3480,6 +3540,30 @@ window.PBAdmin = function (host) {
                 });
                 h.appendChild(rm);
                 box.appendChild(h);
+
+                /* The container's own Design panel. A container is a real
+                   box now -- it can have a background, padding, a border,
+                   and its own direction and alignment for the elements
+                   inside it -- and the keys offered are the renderer's own
+                   containerStyleKeys, so none of them can do nothing.
+
+                   The device tab's state key is the columns element plus
+                   this container's position, because a container has no id
+                   of its own. */
+                var cdesign = document.createElement('details');
+                cdesign.className = 'pb-details pb-col-design';
+                cdesign.innerHTML = '<summary>Container design</summary>';
+                var ckey = el.id + ':col' + ci;
+                cdesign.open = !!pbDesignOpen[ckey];
+                cdesign.addEventListener('toggle', function () {
+                    pbDesignOpen[ckey] = cdesign.open;
+                });
+                var chost = document.createElement('div');
+                pbDesignEditor(chost, col, pbContainerStyleKeys(), PB_CONTAINER_LABELS,
+                    function () { pbPaintPreview(); }, ckey);
+                cdesign.appendChild(chost);
+                box.appendChild(cdesign);
+
                 if (!col.elements) col.elements = [];
                 pbElementList(box, col.elements, depth + 1,
                     { sec: addr.sec, el: el.id, col: ci });
