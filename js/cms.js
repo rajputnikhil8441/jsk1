@@ -1243,11 +1243,24 @@
         return obj;
     }
 
+    /* One JSON-LD serialiser.
+
+       The < escape is what makes the text safe to write into a <script>
+       element in SERIALISED HTML: script contents are raw text, so a value
+       holding </script> would otherwise close the block early. At runtime
+       textContent never parses, so this costs nothing there -- but the
+       section renderer's block is baked into the HTML a crawler reads, and
+       one escape in one place is better than a second serialiser that
+       remembers to do it. \u003c is the same JSON; a parser sees '<'. */
+    function ldText(obj) {
+        if (!obj) return '{}';
+        return JSON.stringify(ldContext(obj), null, 2).replace(/</g, '\\u003c');
+    }
+
     function writeLd(id, obj) {
         var el = document.getElementById(id);
         if (!el) return;
-        if (!obj) { el.textContent = '{}'; return; }
-        el.textContent = JSON.stringify(ldContext(obj), null, 2);
+        el.textContent = ldText(obj);
     }
 
     function buildOrganization() {
@@ -3387,6 +3400,18 @@
             node.appendChild(inner);
             frag.appendChild(node);
         }
+        /* One FAQPage block for the whole mount, after the sections it
+           describes. A script element's contents are never parsed as
+           markup, and ldText() has already put the one character that
+           could close it early beyond reach. */
+        var faq = pbFaqSchema(sections);
+        if (faq) {
+            var ld = pbEl('script');
+            ld.setAttribute('type', 'application/ld+json');
+            ld.setAttribute('data-pb-faq', '1');
+            ld.textContent = ldText(faq);
+            frag.appendChild(ld);
+        }
         host.textContent = '';
         host.appendChild(frag);
     }
@@ -4018,6 +4043,78 @@
     function pbHeadingLevel(el) {
         var lvl = String(((el || {}).content || {}).level || 'h2').toLowerCase();
         return pbPick(PB_ALL_LEVELS, lvl) ? lvl : 'h2';
+    }
+
+    /* ----------------------------------------------------------
+       FAQPage, FROM THE FAQ ELEMENTS A PAGE ACTUALLY DRAWS
+
+       WHY HERE AND NOT IN schemaBlocks(). The head's four blocks are
+       computed from a PAGE RECORD -- its title, description, breadcrumb --
+       and written into script elements the template already ships. An FAQ
+       is not in the record; it is in the section tree, and the section tree
+       is the thing that gets baked into the HTML. Emitting this block
+       alongside the sections it describes means it is in the STATIC
+       response for every page carrying an FAQ, committed template or
+       CMS-generated alike, with no template to change and no head slot to
+       add. It also cannot duplicate: the mount is rewritten whole on every
+       render, so there is exactly one block per page, never two.
+
+       It uses ldContext() and ldText(), which are what the head blocks use.
+       There is no second JSON-LD framework here.
+
+       WHAT IS LEFT OUT, AND WHY. Google's requirement is that the question
+       and the answer are on the page. They are -- the FAQ element renders
+       its answers into the HTML and hides the closed ones with `hidden`,
+       which is display, not absence. But a question with no answer is
+       dropped: a Question whose acceptedAnswer is empty is invalid
+       structured data, and inventing text to fill it would be worse than
+       saying nothing. A page whose FAQs yield no complete pair gets no
+       block at all rather than an empty FAQPage.
+    ---------------------------------------------------------- */
+    function pbFaqEntries(sections) {
+        var out = [];
+        (function walkSecs(list) {
+            if (!isArr(list)) return;
+            for (var i = 0; i < list.length; i++) {
+                var sec = list[i];
+                if (!sec || sec.enabled === false) continue;
+                walkEls(sec.elements, 0);
+            }
+        })(sections);
+        function walkEls(list, depth) {
+            if (!isArr(list) || depth > 4) return;
+            for (var i = 0; i < list.length; i++) {
+                var el = list[i];
+                if (!el || el.enabled === false) continue;
+                if (el.type === 'faq') {
+                    var items = isArr((el.content || {}).items) ? el.content.items : [];
+                    for (var j = 0; j < items.length; j++) {
+                        var q = str((items[j] || {}).question);
+                        var a = str((items[j] || {}).answer);
+                        /* Both halves, or neither. */
+                        if (q && a) out.push({ q: q, a: a });
+                    }
+                }
+                var cols = (el.content || {}).columns;
+                if (isArr(cols)) {
+                    for (var c = 0; c < cols.length; c++) {
+                        walkEls((cols[c] || {}).elements, depth + 1);
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    function pbFaqSchema(sections) {
+        var rows = pbFaqEntries(sections);
+        if (!rows.length) return null;
+        var main = [];
+        for (var i = 0; i < rows.length; i++) {
+            main.push({ '@type': 'Question', name: rows[i].q,
+                        acceptedAnswer: { '@type': 'Answer', text: rows[i].a } });
+        }
+        return { '@type': 'FAQPage', mainEntity: main };
     }
 
     function pbOutline(sections) {
@@ -5469,6 +5566,11 @@
 
             /* what a tree would render, read-only (milestone E) */
             outline: pbOutline,
+            /* The FAQ pairs a section tree would publish, and the FAQPage
+               block built from them -- the same ones the renderer bakes, so
+               the admin's checks judge what the page will really say. */
+            faqPairs: pbFaqEntries,
+            faqSchema: pbFaqSchema,
 
             /* page templates (code registry) */
             templates: templateList,

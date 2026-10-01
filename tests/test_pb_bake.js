@@ -356,6 +356,37 @@ function buildBrand(brandsDir, id, outDir) {
         targets.length > 0 && dead.length === 0, { targets, dead });
     }
 
+    /* ---- Phase 2A: FAQPage schema, IN THE STATIC HTML ----
+       The fixture's faq element carries two complete pairs and one with no
+       question. A crawler reading the response body, before any JavaScript,
+       has to find one FAQPage block holding the two. */
+    {
+      const blocks = node.html.match(
+        /<script type="application\/ld\+json" data-pb-faq="1">([\s\S]*?)<\/script>/g) || [];
+      check('a FAQ bakes exactly one FAQPage block into the HTML',
+        blocks.length === 1, blocks.length);
+      const txt = blocks.length
+        ? blocks[0].replace(/^<script[^>]*>/, '').replace(/<\/script>$/, '') : '';
+      let obj = null;
+      try { obj = JSON.parse(txt); } catch (e) { obj = { parseError: String(e) }; }
+      /* The reason tools/lib/minidom.js treats script as raw text: escaped
+         like ordinary text, these quotes would come out as &quot; and this
+         parse would fail -- which is to say a crawler's would too. */
+      check('  and it is valid JSON once served, not entity-escaped',
+        obj && obj['@type'] === 'FAQPage', obj);
+      check('  with the question and answer the author wrote, as a Question',
+        obj && obj.mainEntity && obj.mainEntity.length === 2 &&
+        obj.mainEntity[0].name === 'Is it open?' &&
+        obj.mainEntity[0].acceptedAnswer.text === 'Yes & always',
+        obj && obj.mainEntity);
+      check('  the item with no question is not in it',
+        !/must be skipped/.test(txt), txt.slice(0, 200));
+      check('  < is beyond reach, so nothing can close the block early',
+        txt.indexOf('<') === -1, txt.slice(0, 120));
+      check('  and the questions are also readable in the page body itself',
+        node.html.includes('>Is it open?<') && node.html.includes('>Yes &amp; always<'), true);
+    }
+
     check('no page errors', errs.length === 0, errs);
     await ctx.close();
   }

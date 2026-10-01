@@ -81,7 +81,8 @@ const head = p => p.evaluate(() => {
     breadcrumbs: document.querySelectorAll('.breadcrumb').length,
     crumbLabel: (document.querySelector('.breadcrumb-current') || {}).textContent,
     ld: [...document.querySelectorAll('script[type="application/ld+json"]')]
-          .map(s => ({ id: s.id, txt: s.textContent })),
+          .map(s => ({ id: s.id, txt: s.textContent,
+                       faq: s.hasAttribute('data-pb-faq') })),
     sections: document.querySelectorAll('.pb-section').length,
     bodyText: document.body.innerText
   };
@@ -533,15 +534,99 @@ const openSec = async (p, i) => {
     let r = await page(b, withBuilder('about', loud));
     let h = await head(r.p);
     const all = h.ld.map(x => x.txt).join('\n');
+    /* Two populations now, and the distinction is the whole point. The
+       PAGE-LEVEL blocks describe the page record -- its title, its
+       breadcrumb -- and the builder's prose must not leak into them. The
+       FAQ block is the one piece of schema the builder's content earns,
+       and it is earned only by an FAQ element with a question AND an
+       answer: structured Q&A data, not prose a reader guessed at. */
+    const pageLd = h.ld.filter(x => !x.faq).map(x => x.txt).join('\n');
+    const faqLd = h.ld.filter(x => x.faq);
     check('the builder renders its FAQ on the page', /Is this a FAQ\?/.test(h.bodyText));
-    check('but no builder text appears in any structured data',
-      !/Five star|10\/10|Reviewed by nobody|Is this a FAQ/.test(all), all.slice(0, 300));
-    check('no rating, review or aggregate schema is invented',
-      !/aggregateRating|"Review"|reviewRating|ratingValue|FAQPage|Question/i.test(all), all.slice(0, 300));
+    check('but no builder text appears in the page-level structured data',
+      !/Five star|10\/10|Reviewed by nobody|Is this a FAQ/.test(pageLd), pageLd.slice(0, 300));
+    check('no rating, review or aggregate schema is invented, anywhere',
+      !/aggregateRating|"Review"|reviewRating|ratingValue|"Offer"|"Product"/i.test(all),
+      all.slice(0, 300));
+    check('and no FAQPage is invented from a heading or a paragraph',
+      !/FAQPage/.test(pageLd), pageLd.slice(0, 200));
+
+    /* The FAQ element earns exactly one block, built from its own pairs. */
+    check('a real FAQ element produces exactly one FAQPage block',
+      faqLd.length === 1, faqLd.length);
+    {
+      let obj = null;
+      try { obj = JSON.parse(faqLd[0].txt); } catch (e) { obj = { parseError: String(e) }; }
+      check('  it is valid JSON and a FAQPage',
+        obj && obj['@type'] === 'FAQPage' && obj['@context'] === 'https://schema.org', obj);
+      check('  with the question and the answer the author actually wrote',
+        obj && Array.isArray(obj.mainEntity) && obj.mainEntity.length === 1 &&
+        obj.mainEntity[0]['@type'] === 'Question' &&
+        obj.mainEntity[0].name === 'Is this a FAQ?' &&
+        obj.mainEntity[0].acceptedAnswer['@type'] === 'Answer' &&
+        obj.mainEntity[0].acceptedAnswer.text === 'Yes.', obj && obj.mainEntity);
+      check('  and the heading and paragraph on the same page are not in it',
+        !/Five star|Reviewed by nobody/.test(faqLd[0].txt), faqLd[0].txt.slice(0, 200));
+    }
     check('the WebPage block is still the CMS one',
       /"@type": "WebPage"/.test(all) && /About JSK1|About —|About/.test(all), all.slice(0, 200));
-    check('this page carries the two blocks it ships, and no more',
-      h.ld.map(x => x.id).join(',') === 'ldPage,ldBreadcrumb', h.ld.map(x => x.id));
+    check('this page carries the two head blocks it ships, and no more',
+      h.ld.filter(x => !x.faq).map(x => x.id).join(',') === 'ldPage,ldBreadcrumb',
+      h.ld.map(x => x.id + (x.faq ? '(faq)' : '')));
+
+    /* WHEN THERE IS NO FAQPage. Four ways a page earns none, each of which
+       would otherwise be an invalid or a dishonest block. */
+    for (const [why, secs] of [
+      ['there is no FAQ element at all',
+        [sec('n1', [el('n1e', 'heading', { text: 'Questions', level: 'h2' }),
+                    el('n1f', 'text', { text: 'Q: is this an FAQ? A: no.' })])]],
+      ['a question has no answer',
+        [sec('n2', [el('n2f', 'faq', { items: [{ question: 'Unanswered?' }] })])]],
+      ['an answer has no question',
+        [sec('n3', [el('n3f', 'faq', { items: [{ answer: 'Orphan answer.' }] })])]],
+      ['every pair is blank',
+        [sec('n4', [el('n4f', 'faq', { items: [{ question: '  ', answer: '  ' }] })])]]
+    ]) {
+      const n = await page(b, withBuilder('about', secs));
+      const nh = await head(n.p);
+      check('no FAQPage when ' + why,
+        nh.ld.filter(x => x.faq).length === 0,
+        nh.ld.filter(x => x.faq).map(x => x.txt.slice(0, 120)));
+      check('  and the page keeps the two head blocks it always had',
+        nh.ld.filter(x => !x.faq).map(x => x.id).join(',') === 'ldPage,ldBreadcrumb',
+        nh.ld.map(x => x.id));
+      check('  no page errors', n.errs.length === 0, n.errs);
+      await n.ctx.close();
+    }
+
+    /* ONE BLOCK PER PAGE, however many FAQ elements it has. Two accordions
+       and a third inside a columns container: three elements, five pairs,
+       one FAQPage. Duplicate FAQPage blocks are a structured-data error,
+       so this is the case that has to hold. */
+    {
+      const many = [sec('m1', [
+        el('m1f', 'faq', { items: [{ question: 'One?', answer: 'A one.' },
+                                   { question: 'Two?', answer: 'A two.' }] }),
+        el('m1g', 'faq', { items: [{ question: 'Three?', answer: 'A three.' }] }),
+        el('m1c', 'columns', { columns: [{ elements: [
+          el('m1h', 'faq', { items: [{ question: 'Four?', answer: 'A four.' },
+                                     { question: 'Five?', answer: '' }] })] }] })
+      ])];
+      const m = await page(b, withBuilder('about', many));
+      const mh = await head(m.p);
+      const blocks = mh.ld.filter(x => x.faq);
+      check('three FAQ elements still produce exactly one FAQPage block',
+        blocks.length === 1, blocks.length);
+      let obj = null;
+      try { obj = JSON.parse(blocks[0].txt); } catch (e) { obj = { parseError: String(e) }; }
+      check('  holding every complete pair, in document order, nested ones included',
+        obj && obj.mainEntity.map(q => q.name).join('|') === 'One?|Two?|Three?|Four?',
+        obj && obj.mainEntity && obj.mainEntity.map(q => q.name));
+      check('  and the pair with no answer is not in it',
+        obj && !/Five\?/.test(blocks[0].txt), blocks[0].txt.slice(0, 200));
+      check('  no page errors', m.errs.length === 0, m.errs);
+      await m.ctx.close();
+    }
     /* The shipped block is indented four spaces and begins with a newline;
        what writeLd() produces begins at the brace and indents two. That the
        CMS wrote it at all is the point -- the blocks sit below js/cms.js in
