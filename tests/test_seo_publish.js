@@ -17,7 +17,9 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const os = require('os');
 const ROOT = path.resolve(__dirname, '..');
+const SITE = require(path.join(ROOT, 'tools', 'lib', 'sitekit.js'));
 const SEOFiles = require(path.join(ROOT, 'js', 'seo-files.js'));
 const BASE = 'http://localhost:8777';
 
@@ -307,8 +309,291 @@ const RECORD = {
     await ctx.close();
   }
 
+  /* ==================================================================
+     SITEMAP INTEGRITY — ONLY URLS THE BUILD ACTUALLY GENERATED
+     ------------------------------------------------------------------
+     A sitemap exists to invite a crawl, so every URL in it has to be a
+     URL that answers. A CMS page record can say inSitemap: true while no
+     static file for it was generated -- the record is data, the file is a
+     build artifact, and nothing made them agree. /admin has had a
+     "create page" button for a long time that writes exactly such a
+     record, so this was reachable in production, not hypothetical.
+
+     Nothing here names a real brand: the library half uses invented
+     records, and the build half asserts each brand against ITS OWN
+     resolved domain and output, so it holds for any brand.
+     ================================================================== */
+  console.log('\n===== A SITEMAP NEVER ADVERTISES A PAGE THAT WAS NOT BUILT =====');
+
+  const tmps = [];
+  const mktmp = tag => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'sitemap-' + tag + '-')); tmps.push(d); return d; };
+  const files = dir => fs.readdirSync(dir, { withFileTypes: true })
+    .filter(e => e.isFile() && /\.html$/i.test(e.name)).map(e => e.name).sort();
+
+  /* ---------- the library ---------- */
+  {
+    const REC2 = {
+      seo: { baseUrl: 'https://example.test' },
+      pages: {
+        home:   { url: '',          updatedAt: '2026-01-01' },
+        real:   { url: 'real.html', updatedAt: '2026-01-02' },
+        ghost:  { url: 'ghost.html', updatedAt: '2026-01-03' },      /* published, never generated */
+        hidden: { url: 'hidden.html', inSitemap: false },
+        noidx:  { url: 'noidx.html', robots: { index: false } }
+      }
+    };
+    const GENERATED = ['index.html', 'real.html', 'hidden.html', 'noidx.html'];
+    const a = SEOFiles.sitemapAudit(REC2, { generated: GENERATED });
+    const inc = a.included.map(r => r.file);
+    const why = k => (a.excluded.filter(x => x.key === k)[0] || {}).why || '';
+
+    check('a generated page asking to be in the sitemap is in it', inc.indexOf('real.html') > -1, inc);
+    check('a published page with no generated file is NOT', inc.indexOf('ghost.html') === -1, inc);
+    check('  and the exclusion says why, naming the page and the file',
+      /generated no static file/.test(why('ghost')) &&
+      a.excluded.some(x => x.key === 'ghost' && x.file === 'ghost.html'), a.excluded);
+    check('inSitemap: false is still excluded, for its own reason',
+      inc.indexOf('hidden.html') === -1 && /inSitemap is false/.test(why('hidden')));
+    check('robots.index: false is still excluded, for its own reason',
+      inc.indexOf('noidx.html') === -1 && /noindex/.test(why('noidx')));
+    check('the homepage matches index.html rather than an empty file name',
+      inc.indexOf('') > -1, inc);
+    check('  and is excluded when index.html was not generated',
+      SEOFiles.sitemapPages(REC2, { generated: ['real.html'] }).every(r => r.file !== ''));
+
+    /* The rule that keeps every existing caller working: the admin preview
+       has no build and must not be told pages are missing. */
+    const unfiltered = SEOFiles.sitemapAudit(REC2);
+    check('with no generated list nothing is filtered at all',
+      unfiltered.filtered === false &&
+      unfiltered.included.map(r => r.file).join(',') === ['', 'ghost.html', 'real.html'].join(','),
+      unfiltered.included.map(r => r.file));
+    check('sitemap() without opts is byte-identical to before this change',
+      SEOFiles.sitemap(REC2) === SEOFiles.sitemap(REC2, undefined));
+    check('sitemap() with opts drops the ghost URL from the XML',
+      !/ghost\.html/.test(SEOFiles.sitemap(REC2, { generated: GENERATED })) &&
+      /real\.html/.test(SEOFiles.sitemap(REC2, { generated: GENERATED })));
+    /* When everything is generated, the filter must change nothing. */
+    check('when every page was generated the URL set is unchanged',
+      SEOFiles.sitemap(REC2, { generated: GENERATED.concat('ghost.html') }) === SEOFiles.sitemap(REC2));
+    check('an object keyed by file name works as well as an array',
+      SEOFiles.sitemapPages(REC2, { generated: { 'index.html': 1, 'real.html': 1 } })
+        .map(r => r.file).join(',') === ',real.html');
+  }
+
+  /* ---------- the tool: one snapshot, and it says what it left out ---------- */
+  {
+    const dir = mktmp('tool');
+    ['index.html', 'about.html'].forEach(f => fs.writeFileSync(path.join(dir, f), '<html></html>'));
+    const rowFile = path.join(mktmp('row'), 'row.json');
+    const record = {
+      seo: { baseUrl: 'https://example.test' },
+      pages: { home: { url: '' }, about: { url: 'about.html' },
+               ghost: { url: 'ghost.html', inSitemap: true } }
+    };
+    fs.writeFileSync(rowFile, JSON.stringify({ data: record, updated_at: '2026-10-01T00:00:00+00:00' }));
+    const run = extra => {
+      const args = [path.join(ROOT, 'tools', 'build-seo-files.js'),
+        '--row', rowFile, '--out', dir, '--generated-from', dir].concat(extra || []);
+      try { return { code: 0, out: execFileSync(process.execPath, args, { cwd: ROOT, encoding: 'utf8' }) }; }
+      catch (e) { return { code: e.status, out: (e.stdout || '') + (e.stderr || '') }; }
+    };
+
+    const r = run(['--check']);
+    check('the tool runs from a handed-down record', r.code === 0, r.out.slice(-300));
+    check('  and says the record came from the build, not from a second fetch',
+      /Source:\s+the CMS record this build already read/.test(r.out), (r.out.match(/Source:.*/) || [''])[0]);
+    check('  and never reached the network for it', !/Could not use the live CMS record/.test(r.out));
+    check('  reporting the excluded URL and which page asked for it',
+      /Excluded: 1 published URL\(s\)/.test(r.out) &&
+      /ghost\.html\s+\(page "ghost"\)/.test(r.out), r.out.slice(-500));
+    check('  as a warning the deploy log surfaces',
+      /^::warning::.*no static file was generated/m.test(r.out));
+    check('  naming both ways to resolve it',
+      /needs generating or inSitemap should be false/.test(r.out));
+    check('  and counting the pages it checked against',
+      /checked against 2 generated page\(s\)/.test(r.out), (r.out.match(/Sitemap:.*/) || [''])[0]);
+
+    /* Written for real, then read back. */
+    const w = run();
+    check('writing produces a sitemap without the ghost URL',
+      w.code === 0 && !/ghost\.html/.test(fs.readFileSync(path.join(dir, 'sitemap.xml'), 'utf8')),
+      w.out.slice(-300));
+    check('  while keeping the URLs whose files exist',
+      locs(fs.readFileSync(path.join(dir, 'sitemap.xml'), 'utf8')).join(',') ===
+      ['https://example.test/', 'https://example.test/about.html'].join(','),
+      locs(fs.readFileSync(path.join(dir, 'sitemap.xml'), 'utf8')));
+
+    /* A filter that removes EVERYTHING is a broken call, not integrity. */
+    const empty = mktmp('empty');
+    const args = [path.join(ROOT, 'tools', 'build-seo-files.js'), '--row', rowFile,
+                  '--out', empty, '--generated-from', empty];
+    let bad;
+    try { execFileSync(process.execPath, args, { cwd: ROOT, encoding: 'utf8' }); bad = { code: 0, out: '' }; }
+    catch (e) { bad = { code: e.status, out: (e.stdout || '') + (e.stderr || '') }; }
+    check('a build where NOTHING matches refuses rather than writing an empty sitemap',
+      bad.code === 1 && /Refusing to write an empty sitemap/.test(bad.out), bad.out.slice(-300));
+    check('  and does not leave a sitemap behind', !fs.existsSync(path.join(empty, 'sitemap.xml')));
+  }
+
+  /* ---------- the assembler wires it up ---------- */
+  {
+    const src = fs.readFileSync(path.join(ROOT, 'tools', 'lib', 'sitekit.js'), 'utf8');
+    check('the assembler tells the generator what it generated',
+      /--generated-from/.test(src) && /'--generated-from', dest/.test(src));
+    check('and hands down the record it already read instead of a second fetch',
+      /'--row', snapshot/.test(src));
+    check('writing that snapshot outside the artifact it publishes',
+      /mkdtempSync/.test(src) && !/path\.join\(dest, *'row/.test(src));
+    const bs = fs.readFileSync(path.join(ROOT, 'tools', 'build-site.js'), 'utf8');
+    check('and the build passes the row it fetched into the plan',
+      /row: live \? \{ data: live\.data/.test(bs));
+  }
+
+  /* ---------- real brands, end to end ---------- */
+  {
+    const BRANDS = path.join(ROOT, 'brands');
+    const TEMPLATES = path.join(ROOT, 'templates');
+    const ids = fs.readdirSync(BRANDS, { withFileTypes: true })
+      .filter(e => e.isDirectory()).map(e => e.name).sort();
+    check('there are at least two real brands to compare', ids.length >= 2, ids);
+
+    /* Each brand's own record, built from its own committed layer so this
+       invents no content and names no brand -- plus one page that asks to
+       be in the sitemap and will never have a file. */
+    function rowFor(id) {
+      const vm = require('vm');
+      const sb = { window: {} }; sb.window.window = sb.window;
+      vm.runInNewContext(fs.readFileSync(path.join(BRANDS, id, 'brand.js'), 'utf8'), sb);
+      const layer = sb.window.CMS_BRAND || {};
+      const seoCfg = JSON.parse(fs.readFileSync(path.join(BRANDS, id, 'seo-config.json'), 'utf8'));
+      const pages = JSON.parse(JSON.stringify(layer.pages || seoCfg.pages || {}));
+      pages['never-generated'] = { label: 'Never Generated', slug: 'never-generated',
+        url: 'never-generated.html', robots: { index: true, follow: true },
+        inSitemap: true, updatedAt: '2026-10-01', title: 'Never Generated',
+        metaDescription: '', heading: '', lead: '', body: '' };
+      return { data: { seo: (seoCfg.seo || {}), pages: pages }, updatedAt: '2026-10-01T00:00:00+00:00' };
+    }
+
+    for (const id of ids) {
+      const cfg = JSON.parse(fs.readFileSync(path.join(BRANDS, id, 'brand.json'), 'utf8'));
+      const envs = Object.keys(cfg.environments || {});
+      /* Production for every brand; a brand whose production domain is not
+         yet served still assembles, which is the point of the env system. */
+      const out = mktmp('brand');
+      const s = SITE.planSite({ brandsDir: BRANDS, templatesDir: TEMPLATES, sharedRoot: ROOT,
+                                id: id, env: '', row: rowFor(id) });
+      const res = SITE.assemble(s, out);
+      const v = SITE.verify(s, res.dir);
+      const domain = s.plan.brand.domain;
+      check(id + ': assembles and passes its own checks', v.problems.length === 0, v.problems);
+
+      const smapPath = path.join(res.dir, 'sitemap.xml');
+      if (s.plan.brand.noindex) {
+        check(id + ': a noindex host still publishes no sitemap at all', !fs.existsSync(smapPath));
+        continue;
+      }
+      const xml = fs.readFileSync(smapPath, 'utf8');
+      const urls = locs(xml);
+      const present = files(res.dir);
+      check(id + ': every advertised URL is a file this site serves',
+        urls.every(u => present.indexOf(u.replace('https://' + domain, '').replace(/^\//, '') || 'index.html') > -1),
+        urls.filter(u => present.indexOf(u.replace('https://' + domain, '').replace(/^\//, '') || 'index.html') === -1));
+      check(id + ':   and that is not a vacuous claim', urls.length > 0, urls.length);
+      check(id + ': the page with no file is not advertised',
+        !/never-generated/.test(xml));
+      /* Everything this brand publishes AND generated is still advertised,
+         computed from its own record rather than from a list of page names,
+         so no brand's page set is written into this test. */
+      {
+        const want = SEOFiles.sitemapPages(rowFor(id).data, { generated: present })
+          .map(r => 'https://' + domain + '/' + r.file);
+        check(id + ': the sitemap is exactly its published, indexable, generated pages',
+          urls.join(',') === want.join(','), [urls, want]);
+        check(id + ':   including the template-backed pages it had before',
+          want.length >= 1 && present.length > want.length, [want.length, present.length]);
+      }
+      check(id + ': every URL is on its own domain and no other brand\'s',
+        urls.every(u => u.indexOf('https://' + domain + '/') === 0) &&
+        !ids.filter(o => o !== id).some(o => xml.indexOf(o) > -1), urls);
+
+      /* The independent check on the finished artifact: tamper with the
+         published sitemap and verify() must object. */
+      fs.writeFileSync(smapPath, xml.replace('</urlset>',
+        '  <url>\n    <loc>https://' + domain + '/not-a-page.html</loc>\n  </url>\n</urlset>'));
+      const tampered = SITE.verify(s, res.dir);
+      check(id + ': verify() objects to a sitemap URL with no file behind it',
+        tampered.problems.some(p => /advertises .* but this site has no not-a-page\.html/.test(p)),
+        tampered.problems);
+      void envs;
+    }
+  }
+
+  /* ---------- a third brand, with no shared-code change ---------- */
+  {
+    const SYNTH = path.join(__dirname, 'fixtures', 'brands');
+    const root = mktmp('third');
+    const brandsDir = path.join(root, 'brands');
+    fs.cpSync(SYNTH, brandsDir, { recursive: true });
+    const thirdId = fs.readdirSync(brandsDir, { withFileTypes: true })
+      .filter(e => e.isDirectory()).map(e => e.name).sort()[0];
+    const seo = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools', 'seo-config.json'), 'utf8'));
+    seo.seo = seo.seo || {};
+    seo.seo.baseUrl = 'https://' + thirdId;
+    fs.writeFileSync(path.join(brandsDir, thirdId, 'seo-config.json'), JSON.stringify(seo, null, 2) + '\n');
+
+    const record = { seo: { baseUrl: 'https://' + thirdId },
+      pages: { home: { url: '' }, about: { url: 'about.html' },
+               ghost: { url: 'third-ghost.html', inSitemap: true } } };
+    const out = mktmp('third-out');
+    const s = SITE.planSite({ brandsDir: brandsDir, templatesDir: path.join(ROOT, 'templates'),
+                              sharedRoot: ROOT, id: thirdId, env: '',
+                              row: { data: record, updatedAt: '2026-10-01T00:00:00+00:00' } });
+    const res = SITE.assemble(s, out);
+    const v = SITE.verify(s, res.dir);
+    const xml = fs.readFileSync(path.join(res.dir, 'sitemap.xml'), 'utf8');
+    check('a brand that exists only as a directory gets the same integrity rule',
+      v.problems.length === 0 && !/third-ghost/.test(xml), v.problems);
+    check('  advertising only its own domain', locs(xml).every(u => u.indexOf('https://' + thirdId + '/') === 0),
+      locs(xml));
+    check('  and none of the real brands\' URLs',
+      !fs.readdirSync(path.join(ROOT, 'brands')).some(o => xml.indexOf(o) > -1));
+    check('  with no shared CMS or generator file of its own',
+      !walkAll(path.join(brandsDir, thirdId)).some(f => /(cms|seo-files|build-seo-files)\.js$/.test(f)));
+  }
+
+  /* ---------- the generator names no brand ---------- */
+  {
+    const BRANDISH = /jsk-?1|playzone|[a-z0-9-]+\.(?:com|app)\b/i;
+    /* Comments are prose and may well name a brand to explain a decision;
+       what must name none is the code that runs. The repo writes block
+       comments as /* ... *​/ with plain indented lines, so they are stripped
+       as blocks rather than line by line. */
+    const codeOf = f => fs.readFileSync(path.join(ROOT, f), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+    for (const f of ['js/seo-files.js', 'tools/build-seo-files.js', 'tools/lib/sitekit.js']) {
+      const code = codeOf(f);
+      check(f + ': no brand, domain or site id in the code that runs', !BRANDISH.test(code),
+        (code.match(BRANDISH) || [])[0]);
+    }
+    check('the sitemap filter itself is one brand-agnostic function',
+      /function sitemapAudit\(data, opts\)/.test(fs.readFileSync(path.join(ROOT, 'js', 'seo-files.js'), 'utf8')));
+  }
+
+  tmps.forEach(d => { try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) {} });
+
   console.log(`\n==== ${pass} passed, ${fail} failed ====`);
   if (fails.length) console.log('FAILED:', fails.join(' | '));
   await b.close();
   process.exit(fail ? 1 : 0);
 })();
+
+function walkAll(dir, base, out) {
+  base = base || dir; out = out || [];
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) walkAll(full, base, out);
+    else out.push(path.relative(base, full).split(path.sep).join('/'));
+  }
+  return out;
+}

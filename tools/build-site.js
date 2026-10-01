@@ -120,7 +120,11 @@ async function publishedForBrand(brand, rowFile, allowUnpublish) {
             brand.domain + ' in js/cms-config.js.');
     }
 
-    return { published: published, updatedAt: row.updatedAt || '',
+    /* `data` is the whole record, carried so layer 4 can build the sitemap
+       from THIS snapshot instead of fetching the row a second time. Two
+       reads at two instants can disagree, and then the HTML and the sitemap
+       describe different content. */
+    return { published: published, data: row.data, updatedAt: row.updatedAt || '',
              source: rowFile ? rel(path.resolve(ROOT, rowFile)) : 'the published CMS row',
              emptied: emptied };
 }
@@ -174,7 +178,8 @@ async function main() {
     }
 
     const s = site.planSite({ brandsDir: BRANDS, templatesDir: TEMPLATES, sharedRoot: ROOT,
-                              id: id, env: env, published: live ? live.published : null });
+                              id: id, env: env, published: live ? live.published : null,
+                              row: live ? { data: live.data, updatedAt: live.updatedAt } : null });
     console.log('Brand    : ' + s.plan.brand.id + '  (name=' + s.plan.brand.name + ')');
     console.log('Env      : ' + s.plan.brand.env +
                 (s.plan.brand.noindex ? '   NOINDEX -- review host, never indexed' : ''));
@@ -249,7 +254,11 @@ async function main() {
     }
 
     const res = site.assemble(s, path.resolve(ROOT, opt('--out', 'sites')));
-    res.seoLog.split('\n').filter(l => /^(Source|Base|Sitemap|::warning)/.test(l))
+    /* `Excluded` is in here because a URL that quietly stops being
+       advertised is indistinguishable from one that was never meant to be,
+       and the difference matters: it is usually a page somebody published
+       and nobody generated. The indented continuation lines name each one. */
+    res.seoLog.split('\n').filter(l => /^(Source|Base|Sitemap|Excluded|\s+https?:\/\/|::warning)/.test(l))
         .forEach(l => console.log('           ' + l));
 
     const v = site.verify(s, res.dir);
