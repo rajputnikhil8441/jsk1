@@ -1108,6 +1108,135 @@ const openSec = async (p, i) => {
     await a.ctx.close();
   }
 
+  /* ================================================================
+     THE INTERNAL LINK PICKER  (Phase 2A)
+     ----------------------------------------------------------------
+     Every href in the builder was a bare text box, so an internal link
+     was a file name typed from memory. The list offered instead has to
+     come from the resolved brand's own pages object and nowhere else,
+     must leave out a page the build generates nothing for, and must not
+     become a second place a value is stored.
+     ================================================================ */
+  console.log('\n===== THE LINK PICKER OFFERS THIS BRAND\u2019S PAGES, AND ONLY THOSE =====');
+  {
+    const a = await adminPage(b, { pages: {
+      about:   { label: 'About', url: 'about.html' },
+      sitedraft: { label: 'Unfinished page', url: 'unfinished.html', status: 'draft' },
+      sitelive:  { label: 'Finished page', url: 'finished.html', status: 'published' },
+      oddurl:    { label: 'Not a page file', url: 'deep/path/x.html' }
+    } });
+    await openBuilder(a.p);
+    await a.p.click('#pbAdd .pb-addbtn[data-type="text"]'); await a.p.waitForTimeout(400);
+    const sid = await a.p.$eval('#pbList .pb-sec', e => e.getAttribute('data-sec-id'));
+    const TOP = `#pbList .pb-sec[data-sec-id="${sid}"] > .pb-sec-body > .pb-subbody`;
+    await a.p.click(`${TOP} > .pb-add-el > .pb-addbtn[data-el-type="button"]`);
+    await a.p.waitForTimeout(450);
+
+    const r = await a.p.evaluate(() => {
+      const sel = document.querySelector('.pb-elcard select[data-act="pick-page"]');
+      const pages = CMS.data().pages || {};
+      return {
+        exists: !!sel,
+        opts: sel ? [...sel.options].map(o => ({ v: o.value, t: o.textContent })) : [],
+        /* Every url the resolved record holds, for the containment check. */
+        own: Object.keys(pages).map(k => String(pages[k].url == null ? '' : pages[k].url).trim())
+      };
+    });
+    check('an href field offers a page picker', r.exists, r.exists);
+    const values = r.opts.map(o => o.v).filter(Boolean);
+    check('  it offers the home page as "/"', values.indexOf('/') > -1, values);
+    check('  it offers a published page', values.indexOf('finished.html') > -1, values);
+    check('  it leaves out a DRAFT page, which the build generates nothing for',
+      values.indexOf('unfinished.html') === -1, values);
+    check('  it leaves out a url that is not a plain page file name',
+      !values.some(v => v.indexOf('/') > -1 && v !== '/'), values);
+    check('  every option it offers is a url from THIS brand\u2019s own record',
+      values.every(v => v === '/' ? r.own.indexOf('') > -1 : r.own.indexOf(v) > -1),
+      { values, own: r.own });
+    check('  and each is labelled with the page name and the file',
+      r.opts.filter(o => o.v === 'finished.html')
+            .every(o => o.t === 'Finished page (finished.html)'),
+      r.opts.map(o => o.t));
+
+    /* Choosing writes through the text box, which stays the one value. */
+    await a.p.selectOption('.pb-elcard select[data-act="pick-page"]', 'finished.html');
+    await a.p.waitForTimeout(400);
+    const after = await a.p.evaluate(() => {
+      /* The section template ships with elements of its own, so the card
+         under test is the one holding the picker, not the first one. */
+      const card = document.querySelector('select[data-act="pick-page"]')
+                     .closest('.pb-elcard');
+      const id = card.getAttribute('data-el-id');
+      const d = JSON.parse(localStorage.getItem('whiteLabelCMS')).builderDrafts || {};
+      let stored = null;
+      for (const k in d) for (const s of d[k].sections || []) for (const e of s.elements || []) {
+        if (e.id === id) stored = e.content;
+      }
+      const boxes = [...card.querySelectorAll('.pb-in-url')].map(i => i.value);
+      return { stored, boxes,
+               sel: card.querySelector('select[data-act="pick-page"]').value };
+    });
+    check('picking a page fills the text box', after.boxes.indexOf('finished.html') > -1, after.boxes);
+    check('  and is stored once, as the href the renderer reads',
+      after.stored && after.stored.href === 'finished.html', after.stored);
+    check('  the select reports the value rather than holding its own',
+      after.sel === 'finished.html', after.sel);
+    check('no admin console errors', a.errs.length === 0, a.errs);
+    await a.ctx.close();
+  }
+
+  /* THE RULE, not a list. The assertion above names pages the fixture put
+     in the record, which is fine for those. This one states the rule the
+     picker follows and checks it against whatever the record happens to
+     hold: exactly the pages that are published AND whose url is a plain
+     page file name, plus the home page as "/". Nothing brand-specific is
+     written down, so it holds for any brand's record. */
+  {
+    const a = await adminPage(b, { pages: {
+      about:  { label: 'About', url: 'about.html' },
+      d1:     { label: 'Draft one', url: 'draft-one.html', status: 'draft' },
+      d2:     { label: 'Odd status', url: 'odd.html', status: 'in review' },
+      ok1:    { label: 'Live one', url: 'live-one.html', status: 'published' },
+      ok2:    { label: 'Live two', url: 'live-two.html' },
+      deep:   { label: 'Directory url', url: 'a/b.html' },
+      ext:    { label: 'Offsite', url: 'https://example.com/x' }
+    } });
+    await openBuilder(a.p);
+    await a.p.click('#pbAdd .pb-addbtn[data-type="text"]'); await a.p.waitForTimeout(400);
+    const sid = await a.p.$eval('#pbList .pb-sec', e => e.getAttribute('data-sec-id'));
+    await a.p.click(`#pbList .pb-sec[data-sec-id="${sid}"] > .pb-sec-body > .pb-subbody` +
+                    ` > .pb-add-el > .pb-addbtn[data-el-type="button"]`);
+    await a.p.waitForTimeout(450);
+    const r = await a.p.evaluate(() => {
+      const sel = document.querySelector('.pb-elcard select[data-act="pick-page"]');
+      const pages = CMS.data().pages || {};
+      /* The expectation, worked out from the record in the page rather
+         than written into the test. */
+      const want = [];
+      Object.keys(pages).forEach(k => {
+        const p = pages[k] || {};
+        const url = String(p.url == null ? '' : p.url).trim();
+        const href = url === '' ? '/' : url;
+        if (href !== '/' && !/^[a-z0-9-]+\.html$/i.test(href)) return;
+        if (!SEOFiles.isPublished(p)) return;
+        if (want.indexOf(href) === -1) want.push(href);
+      });
+      return { got: [...sel.options].map(o => o.value).filter(Boolean).sort(),
+               want: want.sort(),
+               disabled: sel.disabled };
+    });
+    check('the picker offers exactly the published, plain-file pages of this record',
+      r.got.join(',') === r.want.join(','), r);
+    check('  it is not vacuous: the record has pages it had to leave out',
+      r.got.length > 0 && r.got.indexOf('draft-one.html') === -1 &&
+      r.got.indexOf('odd.html') === -1 && r.got.indexOf('a/b.html') === -1 &&
+      !r.got.some(v => /^https?:/.test(v)), r.got);
+    check('  and it is enabled, because there is something to offer',
+      r.disabled === false, r.disabled);
+    check('no admin console errors', a.errs.length === 0, a.errs);
+    await a.ctx.close();
+  }
+
   await b.close();
   console.log('\n==== ' + pass + ' passed, ' + fail + ' failed ====');
   if (fails.length) console.log('failed: ' + fails.join(' | '));

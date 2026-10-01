@@ -1651,12 +1651,12 @@ window.PBAdmin = function (host) {
                   ['rich', 'Allow basic formatting', 'bool']],
         image:   [['src', 'Image', 'asset'], ['alt', 'Alt text', 'text'],
                   ['width', 'Width (px)', 'num'], ['height', 'Height (px)', 'num'],
-                  ['href', 'Links to', 'url'], ['newTab', 'Open in a new tab', 'bool']],
-        button:  [['text', 'Label', 'text'], ['href', 'Links to', 'url'],
+                  ['href', 'Links to', 'pageLink'], ['newTab', 'Open in a new tab', 'bool']],
+        button:  [['text', 'Label', 'text'], ['href', 'Links to', 'pageLink'],
                   ['newTab', 'Open in a new tab', 'bool']],
         card:    [['title', 'Title', 'text'], ['text', 'Text', 'area'],
                   ['image', 'Image', 'asset'], ['imageAlt', 'Image alt', 'text'],
-                  ['buttonText', 'Button label', 'text'], ['buttonHref', 'Button links to', 'url'],
+                  ['buttonText', 'Button label', 'text'], ['buttonHref', 'Button links to', 'pageLink'],
                   ['buttonNewTab', 'Open in a new tab', 'bool']],
 
         /* V2. Divider and Spacer are pure styling and carry no content, so
@@ -1664,11 +1664,11 @@ window.PBAdmin = function (host) {
            showing an empty panel. */
         icon:    [['icon', 'Icon', 'iconSelect'],
                   ['label', 'Accessible label', 'text'],
-                  ['href', 'Links to', 'url'], ['newTab', 'Open in a new tab', 'bool']],
+                  ['href', 'Links to', 'pageLink'], ['newTab', 'Open in a new tab', 'bool']],
         notice:  [['text', 'Text', 'area'],
                   ['variant', 'Type', 'select', ['info', 'success', 'warning', 'danger']],
                   ['icon', 'Icon', 'iconSelect'],
-                  ['linkText', 'Link text', 'text'], ['href', 'Links to', 'url'],
+                  ['linkText', 'Link text', 'text'], ['href', 'Links to', 'pageLink'],
                   ['newTab', 'Open in a new tab', 'bool']],
         featureBox: [['icon', 'Icon', 'iconSelect'],
                   ['image', 'Image (used when no icon)', 'asset'],
@@ -1676,7 +1676,7 @@ window.PBAdmin = function (host) {
                   ['title', 'Heading', 'text'],
                   ['titleLevel', 'Heading level', 'select', ['h2', 'h3', 'h4', 'h5', 'h6']],
                   ['text', 'Description', 'area'],
-                  ['linkText', 'Link text', 'text'], ['href', 'Links to', 'url'],
+                  ['linkText', 'Link text', 'text'], ['href', 'Links to', 'pageLink'],
                   ['newTab', 'Open in a new tab', 'bool']],
         faq:     [['single', 'Only one answer open at a time', 'bool']],
         socialLinks: [],
@@ -2459,6 +2459,108 @@ window.PBAdmin = function (host) {
        thumbnail of whatever is currently set. The text input stays because
        a page may already name an image the picker does not list, and that
        must remain editable. */
+    /* ---------- the internal link picker ----------
+
+       WHY. Every href in the builder was a bare text box, so linking to
+       another page of this site meant remembering its file name and typing
+       it correctly. A typo is a 404 a visitor finds and an internal link a
+       crawler loses. The admin's SEO checks already flag one afterwards --
+       "links to X, which is not a page the CMS knows about" -- and offering
+       the list is how that stops happening in the first place.
+
+       BRAND AWARENESS HERE IS THE ABSENCE OF A FEATURE, NOT ONE. The list
+       comes from CMS.data().pages: the merged record of whichever brand
+       resolved, and the only pages object this file can see. There is no
+       second page store to query, no request of its own, and no brand id
+       or host anywhere in this file -- so one site's admin cannot be shown
+       another site's page, because the data is not there to show. The
+       brand-free rule this relies on is asserted in
+       tests/test_brand_isolation.js.
+
+       A DRAFT PAGE IS NOT OFFERED. The build generates no file for one, so
+       a link to it is a link to a 404 until someone publishes it. Published
+       is decided by SEOFiles.isPublished(), the same reader the sitemap
+       uses, rather than a fourth copy of the rule.
+
+       The text box stays, and stays authoritative: the picker writes into
+       it. Anything the picker cannot offer -- an external address, an
+       anchor, a mailto: -- is still typed, and still checked by pbUrl() as
+       it always was. */
+    function pbInternalPages() {
+        var pages = (CMS.data() || {}).pages || {};
+        var out = [], k;
+        for (k in pages) {
+            if (!Object.prototype.hasOwnProperty.call(pages, k)) continue;
+            var p = pages[k] || {};
+            var url = String(p.url == null ? '' : p.url).trim();
+            /* The home page's url is empty by convention; it is reachable
+               as "/", which is what a link to it has to say. */
+            var href = url === '' ? '/' : url;
+            /* Only a plain page file name, which is the only shape the
+               build generates and the only one the SEO checks recognise. */
+            if (href !== '/' && !/^[a-z0-9-]+\.html$/i.test(href)) continue;
+            if (!SEOFiles.isPublished(p)) continue;
+            out.push({ href: href, label: String(p.label || k), key: k });
+        }
+        out.sort(function (a, b) { return a.label.localeCompare(b.label); });
+        return out;
+    }
+
+    function pbPageLinkField(spec, bag, key, ctx) {
+        var row = pbFieldFor([spec[0], spec[1], 'url'], bag, key, ctx);
+        var input = row.querySelector('.pb-in');
+
+        var bar = document.createElement('span');
+        bar.className = 'pb-linkpick';
+
+        var sel = document.createElement('select');
+        sel.className = 'pb-in pb-linkpick-sel';
+        sel.setAttribute('data-act', 'pick-page');
+        var list = pbInternalPages();
+        var blank = document.createElement('option');
+        blank.value = '';
+        blank.textContent = list.length
+            ? '\u2026 or pick a page on this site'
+            : 'No published pages to link to yet';
+        sel.appendChild(blank);
+        list.forEach(function (p) {
+            var o = document.createElement('option');
+            o.value = p.href;
+            o.textContent = p.label + ' (' + p.href + ')';
+            sel.appendChild(o);
+        });
+        sel.disabled = !list.length;
+
+        /* The select is a shortcut into the text box, never a second store:
+           it reports what the box holds and it resets to blank after a
+           choice, so there is only ever one value and it is the typed one. */
+        function sync() {
+            var v = String(bag[key] == null ? '' : bag[key]).trim();
+            sel.value = list.some(function (p) { return p.href === v; }) ? v : '';
+        }
+
+        sel.addEventListener('change', function () {
+            if (!sel.value) return;
+            bag[key] = sel.value;
+            if (input) input.value = sel.value;
+            /* The box's own listeners are what the rest of the card reacts
+               to, so the change is announced through it rather than
+               duplicated here. */
+            if (input) input.dispatchEvent(new Event('change', { bubbles: true }));
+            pbEdited(false);
+            sync();
+        });
+        if (input) {
+            input.addEventListener('input', sync);
+            input.addEventListener('change', sync);
+        }
+        sync();
+
+        bar.appendChild(sel);
+        row.appendChild(bar);
+        return row;
+    }
+
     function pbImagePickField(spec, bag, key, ctx) {
         var row = pbFieldFor([spec[0], spec[1], 'url'], bag, key, ctx);
         var input = row.querySelector('.pb-in');
@@ -2756,6 +2858,7 @@ window.PBAdmin = function (host) {
             spec = [spec[0], spec[1], 'select', pbColOptions((ctx && ctx.device) || 'base')];
         }
         if (spec[2] === 'asset')        return pbImagePickField(spec, bag, key, ctx);
+        if (spec[2] === 'pageLink')     return pbPageLinkField(spec, bag, key, ctx);
         if (spec[2] === 'colorRef')     return pbColorRefField(spec, bag, key, ctx);
         if (spec[2] === 'typoRef')      return pbTypoRefField(spec, bag, key, ctx);
         if (spec[2] === 'borderParts')  return pbBorderField(spec, bag, key, ctx);

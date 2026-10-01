@@ -2680,6 +2680,14 @@ input[type="password"]:focus {
 .pb-imgpick { display: flex; align-items: center; gap: 8px; }
 .pb-imgpick .adm-btn { flex: none; }
 
+/* The internal link picker: a shortcut into the text box above it, so it
+   sits under that box rather than beside it. Disabled when the CMS has no
+   published page to offer, because an empty list is worse than a disabled
+   one that says why. */
+.pb-linkpick { display: block; margin-top: 4px; }
+.pb-linkpick-sel { width: 100%; }
+.pb-linkpick-sel:disabled { opacity: .55; cursor: not-allowed; }
+
 .pb-imgpick-thumb {
     flex: none;
     width: 34px;
