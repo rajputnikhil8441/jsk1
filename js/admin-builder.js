@@ -3235,12 +3235,17 @@ window.PBAdmin = function (host) {
         }
     }
 
-    function pbVisibilityEditor(host, sec) {
+    /* Works on a section, an element or a container -- the renderer reads
+       the same three booleans off all three now, so there is one editor
+       rather than three. `what` is only the wording. */
+    function pbVisibilityEditor(host, sec, what) {
         var box = document.createElement('div');
         box.className = 'pb-vis';
         var lead = document.createElement('p');
         lead.className = 'hint';
-        lead.textContent = 'Hide this section on a screen size without deleting it.';
+        lead.textContent = 'Hide this ' + (what || 'section') + ' on a screen size without ' +
+            'deleting it. It stays in the page a crawler reads \u2014 this hides it at one ' +
+            'screen size, it does not remove it.';
         box.appendChild(lead);
         if (!sec.visibility) sec.visibility = { desktop: true, tablet: true, mobile: true };
         [['desktop', 'Show on desktop'], ['tablet', 'Show on tablet'], ['mobile', 'Show on mobile']]
@@ -3564,6 +3569,17 @@ window.PBAdmin = function (host) {
                 cdesign.appendChild(chost);
                 box.appendChild(cdesign);
 
+                var cvis = document.createElement('details');
+                cvis.className = 'pb-details pb-col-design';
+                cvis.innerHTML = '<summary>Container visibility</summary>';
+                var cvkey = ckey + ':vis';
+                cvis.open = !!pbDesignOpen[cvkey];
+                cvis.addEventListener('toggle', function () { pbDesignOpen[cvkey] = cvis.open; });
+                var cvhost = document.createElement('div');
+                pbVisibilityEditor(cvhost, col, 'container');
+                cvis.appendChild(cvhost);
+                box.appendChild(cvis);
+
                 if (!col.elements) col.elements = [];
                 pbElementList(box, col.elements, depth + 1,
                     { sec: addr.sec, el: el.id, col: ci });
@@ -3684,6 +3700,25 @@ window.PBAdmin = function (host) {
             });
         design.appendChild(dhost);
         body.appendChild(design);
+
+        /* Hide on a screen size. Its own panel rather than a row inside
+           Design, because it is not a style: it is whether the thing is
+           there at all at that width.
+
+           AFTER Design, deliberately. Design is the first .pb-details in a
+           card and a good deal of the admin's own test suite reaches it
+           that way; putting this first silently moved what "the design
+           panel" meant. It is also the order an author works in. */
+        var vis = document.createElement('details');
+        vis.className = 'pb-details pb-el-vis';
+        vis.innerHTML = '<summary>Visibility</summary>';
+        var vkey = el.id + ':vis';
+        vis.open = !!pbDesignOpen[vkey];
+        vis.addEventListener('toggle', function () { pbDesignOpen[vkey] = vis.open; });
+        var vhost = document.createElement('div');
+        pbVisibilityEditor(vhost, el, 'element');
+        vis.appendChild(vhost);
+        body.appendChild(vis);
 
         card.appendChild(body);
         return card;

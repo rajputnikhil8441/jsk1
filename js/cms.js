@@ -1895,6 +1895,37 @@
 
     /* Does this object hold anything? Used to keep a cleaned container as
        small as it was: an empty style map is not written at all. */
+    /* The hide-on-this-size classes for a node, or ''.
+
+       Sections have had this since V2. Elements and containers had not,
+       which meant an author could hide a whole band on a phone but not the
+       one button inside it that did not fit. Same three booleans, same
+       absent-means-shown rule, and the same CSS -- so there is one idea of
+       what hidden means rather than three.
+
+       Written only when something is actually hidden, so a node that was
+       never given visibility data gets no class and renders as before. */
+    /* The three booleans, kept only where one of them is false. Returning
+       null for "nothing to say" is what keeps an untouched node's stored
+       shape unchanged. */
+    function pbCleanVisibility(raw) {
+        if (!raw || typeof raw !== 'object') return null;
+        var out = {}, any = false, keys = ['desktop', 'tablet', 'mobile'];
+        for (var i = 0; i < keys.length; i++) {
+            if (raw[keys[i]] === false) { out[keys[i]] = false; any = true; }
+        }
+        return any ? out : null;
+    }
+
+    function pbHideClasses(vis) {
+        if (!vis || typeof vis !== 'object') return '';
+        var out = '';
+        if (vis.desktop === false) out += ' pb-hide-desktop';
+        if (vis.tablet  === false) out += ' pb-hide-tablet';
+        if (vis.mobile  === false) out += ' pb-hide-mobile';
+        return out;
+    }
+
     function pbHasKeys(o) {
         if (!o || typeof o !== 'object') return false;
         for (var k in o) { if (Object.prototype.hasOwnProperty.call(o, k)) return true; }
@@ -1925,6 +1956,11 @@
             responsive: pbCleanResponsive(raw.responsive, allow)
         };
         if (raw.enabled === false) out.enabled = false;
+        /* Hidden on a screen size, as a section can be. Written only when
+           something is hidden, so an element saved before this existed
+           cleans to the bytes it always did. */
+        var evis = pbCleanVisibility(raw.visibility);
+        if (evis) out.visibility = evis;
         if (type === 'columns') {
             var cols = ((raw.content || {}).columns);
             var kept = [];
@@ -1936,6 +1972,8 @@
                        a container saved before this existed cleans to the
                        same bytes it always did. */
                     var box = { elements: pbCleanElements(src.elements, depth + 1) };
+                    var cvis = pbCleanVisibility(src.visibility);
+                    if (cvis) box.visibility = cvis;
                     var cstyle = pbCleanStyle(src.style, PB_CONTAINER_STYLE_KEYS);
                     if (pbHasKeys(cstyle)) box.style = cstyle;
                     var cresp = pbCleanResponsive(src.responsive, PB_CONTAINER_STYLE_KEYS);
@@ -2807,6 +2845,7 @@
                element id -- gets fresh container rules for free. */
             for (var i = 0; i < cols.length; i++) {
                 var col = pbEl('div', 'pb-column');
+                col.className += pbHideClasses((cols[i] || {}).visibility);
                 var ref = pbContainerRef(el, i);
                 if (ref) col.setAttribute('data-col', ref);
                 pbRenderElements(col, (cols[i] || {}).elements, depth + 1);
@@ -3215,6 +3254,11 @@
             if (typeof make !== 'function') continue;  /* unknown type: skip, never throw */
             var node = make(el, depth);
             if (!node) continue;
+            /* After the renderer, because an element that draws nothing
+               has nothing to hide -- and because className is what every
+               renderer here builds, so this cannot fight one. */
+            var hide = pbHideClasses(el.visibility);
+            if (hide) node.className += hide;
             host.appendChild(node);
         }
     }
@@ -3508,10 +3552,7 @@
             var cls = pbPick(PB_SECTION_CLASS, sec.type) || 'pb-generic';
             var node = pbEl('section', 'pb-section ' + cls);
             if (sec.id) node.setAttribute('data-sec', String(sec.id));
-            var vis = sec.visibility || {};
-            if (vis.desktop === false) node.className += ' pb-hide-desktop';
-            if (vis.tablet  === false) node.className += ' pb-hide-tablet';
-            if (vis.mobile  === false) node.className += ' pb-hide-mobile';
+            node.className += pbHideClasses(sec.visibility);
             var inner = pbEl('div', 'pb-inner');
             pbRenderElements(inner, sec.elements, 0);
             node.appendChild(inner);

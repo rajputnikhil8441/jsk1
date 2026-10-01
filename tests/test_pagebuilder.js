@@ -396,6 +396,23 @@ const el  = (id, type, content, style, responsive) =>
         style: { padding: '5' },
         visibility: { desktop: false, tablet: true, mobile: true },
         elements: [el('r2h', 'heading', { text: 'd' }, { fontSize: '12' })]
+      }),
+      /* Phase 2B: the same three booleans on an ELEMENT and on a
+         CONTAINER, which only sections had. An author could hide a whole
+         band on a phone but not the one button inside it that did not fit. */
+      sec('r3', 'text', {
+        elements: [
+          Object.assign(el('eAlways', 'text', { text: 'always' })),
+          Object.assign(el('eNoMob', 'text', { text: 'not on mobile' }),
+            { visibility: { desktop: true, tablet: true, mobile: false } }),
+          Object.assign(el('eMobOnly', 'text', { text: 'mobile only' }),
+            { visibility: { desktop: false, tablet: false, mobile: true } }),
+          el('eCols', 'columns', { columns: [
+            { visibility: { desktop: true, tablet: true, mobile: false },
+              elements: [el('eInHidden', 'text', { text: 'inside a hidden container' })] },
+            { elements: [el('eInShown', 'text', { text: 'inside a shown container' })] }
+          ] }, { columns: '2' })
+        ]
       })
     ];
     const { ctx, p, errs } = await publishedPage(b, SECT);
@@ -407,7 +424,16 @@ const el  = (id, type, content, style, responsive) =>
                  mob: g('[data-el="rMobOnly"]').fontSize, tab: g('[data-el="rTabOnly"]').fontSize,
                  color: g('[data-el="rBoth"]').color,
                  s1vis: g('[data-sec="r1"]').display, s2vis: g('[data-sec="r2"]').display,
-                 s2pad: g('[data-sec="r2"]').padding };
+                 s2pad: g('[data-sec="r2"]').padding,
+                 /* element and container visibility */
+                 eAlways: g('[data-el="eAlways"]').display,
+                 eNoMob: g('[data-el="eNoMob"]').display,
+                 eMobOnly: g('[data-el="eMobOnly"]').display,
+                 cHidden: g('[data-col="eCols-0"]').display,
+                 cShown: g('[data-col="eCols-1"]').display,
+                 /* still in the HTML at every width, which is the point */
+                 inHtml: document.body.innerHTML.includes('not on mobile') &&
+                         document.body.innerHTML.includes('inside a hidden container') };
       });
     };
     const D = await read(1280), T = await read(900), M = await read(390);
@@ -433,6 +459,28 @@ const el  = (id, type, content, style, responsive) =>
       D.s2vis === 'none' && T.s2vis !== 'none' && M.s2vis !== 'none', [D.s2vis, T.s2vis, M.s2vis]);
     check('a second section keeps its own responsive values',
       D.s2pad === '5px' && M.s2pad === '5px', [D.s2pad, M.s2pad]);
+
+    /* ---- Phase 2B: an ELEMENT and a CONTAINER hide per breakpoint ---- */
+    check('an element with no visibility data shows at every width',
+      D.eAlways !== 'none' && T.eAlways !== 'none' && M.eAlways !== 'none',
+      [D.eAlways, T.eAlways, M.eAlways]);
+    check('an element hidden on mobile hides only at mobile',
+      D.eNoMob !== 'none' && T.eNoMob !== 'none' && M.eNoMob === 'none',
+      [D.eNoMob, T.eNoMob, M.eNoMob]);
+    check('an element shown only on mobile hides at the other two',
+      D.eMobOnly === 'none' && T.eMobOnly === 'none' && M.eMobOnly !== 'none',
+      [D.eMobOnly, T.eMobOnly, M.eMobOnly]);
+    check('a container hidden on mobile hides only at mobile',
+      D.cHidden !== 'none' && T.cHidden !== 'none' && M.cHidden === 'none',
+      [D.cHidden, T.cHidden, M.cHidden]);
+    check('  and the container beside it is unaffected',
+      D.cShown !== 'none' && T.cShown !== 'none' && M.cShown !== 'none',
+      [D.cShown, T.cShown, M.cShown]);
+    /* The rule that makes this safe for SEO: hiding is display, not
+       absence. A crawler reads the same HTML at every width. */
+    check('hidden content is still in the HTML at every width',
+      D.inHtml && T.inHtml && M.inHtml, [D.inHtml, T.inHtml, M.inHtml]);
+
     check('no page errors across breakpoints', errs.length === 0, errs.slice(0, 3));
     await ctx.close();
   }
