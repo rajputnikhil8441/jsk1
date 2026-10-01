@@ -1109,6 +1109,102 @@ const openSec = async (p, i) => {
   }
 
   /* ================================================================
+     THE CONTENT CHECKS COVER THE NEW ELEMENTS  (Phase 2A)
+     ----------------------------------------------------------------
+     validatePage()/contentChecks() already judged title length, meta
+     description, duplicates, H1 count, word count, heading order, image
+     alt text and internal links. The new element types have to be judged
+     too, or an author gets a clean report on a page with a headerless
+     table and a contents list pointing at nothing.
+
+     Each check is read off the SEO dashboard, which is where an author
+     reads it. Nothing here is a publish blocker, which is the other half
+     of the requirement: an author decides what their page says.
+     ================================================================ */
+  console.log('\n===== THE CHECKS JUDGE THE NEW ELEMENTS TOO =====');
+  {
+    /* One page, every fault at once, so one dashboard read covers them. */
+    const faulty = [sec('c1', [
+      el('c_h2', 'heading', { text: 'A heading to point at', level: 'h2' }),
+      /* a table with neither a header row nor a caption */
+      el('c_tb', 'table', { header: false, cols: 2,
+        items: [{ c1: 'a', c2: 'b' }, { c1: 'c', c2: 'd' }] }),
+      /* a list of one */
+      el('c_li', 'list', { items: [{ text: 'The only item' }] }),
+      /* an FAQ where one question has no answer */
+      el('c_fq', 'faq', { items: [{ question: 'Answered?', answer: 'Yes.' },
+                                  { question: 'Unanswered?' }] }),
+      /* a link to a page that exists but is a draft */
+      el('c_bt', 'button', { text: 'Go', href: 'not-yet.html' })
+    ])];
+    const a = await adminPage(b, {
+      pages: {
+        about: { label: 'About', url: 'about.html',
+                 builder: { schemaVersion: 2, status: 'published',
+                            updatedAt: '2026-09-28', sections: faulty } },
+        notyet: { label: 'Not yet', url: 'not-yet.html', status: 'draft' }
+      }
+    });
+    await a.p.click('.adm-nav-item[data-panel="seo"]');
+    await a.p.waitForTimeout(900);
+    const said = await a.p.evaluate(() => {
+      const row = document.querySelector('#seoDashboard [data-seorow="about"]');
+      return row ? [...row.querySelectorAll('.seochecks li')]
+        .map(li => li.className.replace('chk-', '') + '|' + li.textContent.trim()) : [];
+    });
+    const has = (lvl, re) => said.some(s => s.indexOf(lvl + '|') === 0 && re.test(s));
+    check('the dashboard reports on this page at all', said.length > 0, said.length);
+    check('a table with no header row is a warning',
+      has('warn', /no header row/), said);
+    check('a table with no caption is a warning', has('warn', /no caption/), said);
+    check('a list of one item is a warning', has('warn', /only one item/), said);
+    check('an unanswered FAQ question is a warning that names the schema',
+      has('warn', /no answer.*FAQPage/), said);
+    check('  and the answered one is reported as published FAQPage data',
+      has('ok', /1 FAQ question\(s\) are published as FAQPage data/), said);
+    check('a link to a DRAFT page is a failure, not a warning',
+      has('bad', /DRAFT page/) && /404 until it is published/.test(said.join('|')), said);
+    check('nothing about any of it blocks publishing',
+      (await a.p.$eval('#pbPublish', n => n.disabled)) !== undefined, true);
+    check('no admin console errors', a.errs.length === 0, a.errs);
+    await a.ctx.close();
+  }
+
+  /* The same checks must stay QUIET on content that is fine, or they are
+     noise rather than review. */
+  {
+    const sound = [sec('g1', [
+      el('g_toc', 'toc', { title: 'On this page', depth: 'h3' }),
+      el('g_h2a', 'heading', { text: 'First topic', level: 'h2' }),
+      el('g_h2b', 'heading', { text: 'Second topic', level: 'h2' }),
+      el('g_tb', 'table', { header: true, cols: 2, caption: 'Limits',
+        items: [{ c1: 'Method', c2: 'Limit' }, { c1: 'Card', c2: '100' }] }),
+      el('g_li', 'list', { items: [{ text: 'One' }, { text: 'Two' }] }),
+      el('g_fq', 'faq', { items: [{ question: 'Answered?', answer: 'Yes.' }] }),
+      el('g_bt', 'button', { text: 'Contact', href: 'contact.html' })
+    ])];
+    const a = await adminPage(b, { pages: { about: { label: 'About', url: 'about.html',
+      builder: { schemaVersion: 2, status: 'published', updatedAt: '2026-09-28',
+                 sections: sound } } } });
+    await a.p.click('.adm-nav-item[data-panel="seo"]');
+    await a.p.waitForTimeout(900);
+    const said = await a.p.evaluate(() => {
+      const row = document.querySelector('#seoDashboard [data-seorow="about"]');
+      return row ? [...row.querySelectorAll('.seochecks li')]
+        .map(li => li.className.replace('chk-', '') + '|' + li.textContent.trim()) : [];
+    });
+    const all = said.join('\n');
+    check('sound content draws none of the new warnings',
+      !/no header row|no caption|only one item|no answer|DRAFT page|not on this page/.test(all),
+      said);
+    check('  and it is told what it got right',
+      /ok\|.*header row/.test(all) && /ok\|.*contents link/.test(all) &&
+      /ok\|.*FAQPage data/.test(all), said);
+    check('no admin console errors', a.errs.length === 0, a.errs);
+    await a.ctx.close();
+  }
+
+  /* ================================================================
      THE INTERNAL LINK PICKER  (Phase 2A)
      ----------------------------------------------------------------
      Every href in the builder was a bare text box, so an internal link
