@@ -209,6 +209,16 @@ async function main() {
         : s.plan.brand.contentSource === 'cms'
             ? '(none needed generating)'
             : '(not read: pass --from-cms to generate pages the CMS has)'));
+    /* What the record holds but does not publish. Printed so a page that is
+       deliberately not live is visibly not live, rather than looking like a
+       page the build lost. */
+    const drafts = live ? pbbake.draftPagesFromRecord(live.data) : [];
+    if (live) {
+        console.log('Drafts   : ' + (drafts.length
+            ? drafts.map(d => '"' + d.slug + '" (' + (d.status || '(no status)') + ')').join(', ') +
+              '   not generated, not in the sitemap'
+            : '(none -- every page in the record is published)'));
+    }
     console.log('Slots    : ' + (s.plan.slotsDeclared.length ? s.plan.slotsDeclared.join(', ') : '(none)') +
                 '   filled: ' + (Object.keys(s.plan.brand.slots).length
                     ? Object.keys(s.plan.brand.slots).sort().join(', ') : '(none)'));

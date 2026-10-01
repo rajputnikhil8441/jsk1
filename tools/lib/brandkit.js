@@ -906,6 +906,22 @@ function planBrand(opts) {
         const claimed = new Map();              /* output file -> what emitted it */
         wanted.forEach(p => claimed.set(p, 'templates/pages/' + p));
 
+        /* A DRAFT RECORD THAT A COMMITTED TEMPLATE ALSO PUBLISHES.
+           Marking such a page draft does nothing: the template loop above
+           generated it and will keep generating it, because a committed page
+           is part of the site rather than CMS content. Said out loud, because
+           the alternative is somebody believing a page is hidden when every
+           visitor can still read it. */
+        pbbake.draftPagesFromRecord(opts.row || null).forEach(d => {
+            const f = d.url || (d.slug + '.html');
+            if (claimed.has(f)) {
+                warnings.push('CMS page "' + d.slug + '" has status "' + d.status + '", but ' +
+                    claimed.get(f) + ' is a committed page and still publishes ' + f +
+                    '. A committed page is part of the site, not CMS content, so the status ' +
+                    'does not hide it.');
+            }
+        });
+
         for (const slug of Object.keys(cmsPages).sort()) {
             const page = cmsPages[slug];
             const file = str(page.url);

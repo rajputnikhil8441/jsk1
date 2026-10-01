@@ -120,6 +120,29 @@
         return !!idx[file === '' ? HOME_FILE : file];
     }
 
+    /* ------------------------------------------------------------
+       IS THIS PAGE PUBLISHED?
+
+       The same three rules tools/lib/pbbake.js applies when it decides
+       which pages a build generates, so the sitemap and the page set
+       cannot disagree:
+
+         'published'      published
+         absent or empty  published -- every record written before the
+                          lifecycle existed is a live page
+         anything else    not published, including a value this version
+                          does not recognise
+
+       A draft page already has no generated file, so a build would leave
+       it out anyway. This is here for the caller that has no build: the
+       admin's sitemap preview, which would otherwise show a URL the next
+       deploy is never going to publish.
+       ------------------------------------------------------------ */
+    function isPublished(p) {
+        var s = (p && p.status != null) ? String(p.status).trim().toLowerCase() : '';
+        return s === '' || s === 'published';
+    }
+
     /* Which pages belong in the sitemap, and which do not and why.
 
        Left out, deliberately and always:
@@ -148,6 +171,10 @@
             if (!Object.prototype.hasOwnProperty.call(pages, k)) continue;
             var p = pages[k];
             if (!p || typeof p !== 'object') continue;
+            if (!isPublished(p)) {
+                drop(k, p, pageFile(p), 'its status is "' + str(p.status) + '", not published');
+                continue;
+            }
             var robots = p.robots || {};
             if (robots.index === false) { drop(k, p, pageFile(p), 'noindex'); continue; }
             if (p.inSitemap === false) { drop(k, p, pageFile(p), 'inSitemap is false'); continue; }

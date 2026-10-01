@@ -164,6 +164,9 @@ function seoSubset(data) {
             url: typeof p.url === 'string' ? p.url : '',
             updatedAt: typeof p.updatedAt === 'string' ? p.updatedAt : '',
             inSitemap: p.inSitemap !== false,
+            /* Carried through so the generator can leave a draft page out on
+               its own, without needing the build to have not created it. */
+            status: typeof p.status === 'string' ? p.status : '',
             robots: { index: !(p.robots && p.robots.index === false) }
         };
     });

@@ -1032,6 +1032,160 @@ console.log('\n===== ONE FIXTURE, THREE BRANDS, THREE SETS OF SEO =====');
     walk(path.join(tbrands, tid)));
 }
 
+/* ====================================================================
+   17. DRAFT AND PUBLISHED
+   --------------------------------------------------------------------
+   A page record now says whether it is live. Three rules, and the
+   asymmetry between them is the whole design: 'published' publishes,
+   an ABSENT status publishes (every record written before this existed
+   is a live page, and reading those as drafts would unpublish a brand's
+   site), and ANYTHING ELSE does not -- 'draft', a typo, or a word a
+   later admin writes that this build has never heard of. Wrongly hiding
+   a page costs a missing page; wrongly showing one publishes something
+   nobody approved.
+   ==================================================================== */
+console.log('\n===== A PAGE SAYS WHETHER IT IS PUBLISHED =====');
+{
+  const PB = require(path.join(ROOT, 'tools', 'lib', 'pbbake.js'));
+  const SEOF = require(path.join(ROOT, 'js', 'seo-files.js'));
+
+  /* The rule table, stated once and asserted directly. */
+  [['published', 'published'], ['PUBLISHED', 'published'], ['  published  ', 'published'],
+   ['', 'published'], [null, 'published'],
+   ['draft', 'draft'], ['Draft', 'draft'], ['scheduled', 'draft'], ['archived', 'draft'],
+   ['pending-review', 'draft'], [0, 'draft'], [true, 'draft']]
+    .forEach(([given, want]) => check('status ' + JSON.stringify(given) + ' reads as ' + want,
+      PB.pageStatus({ status: given }) === want, PB.pageStatus({ status: given })));
+  check('a record with no status key at all reads as published',
+    PB.pageStatus({}) === 'published');
+  check('and "published" is the word the build compares against',
+    PB.PAGE_PUBLISHED === 'published');
+
+  const rec = { pages: {
+    live: { url: 'live.html' },
+    saysSo: { url: 'says-so.html', status: 'published' },
+    drafted: { url: 'drafted.html', status: 'draft' },
+    odd: { url: 'odd.html', status: 'in-review' }
+  } };
+  check('only the published pages come back for generating',
+    Object.keys(PB.pagesFromRecord(rec)).sort().join(',') === 'live,saysSo');
+  check('and the rest come back as drafts, with the status as written',
+    PB.draftPagesFromRecord(rec).map(d => d.slug + ':' + d.status).join(',') ===
+    'drafted:draft,odd:in-review',
+    PB.draftPagesFromRecord(rec));
+
+  /* The sitemap reaches the same answer on its own, which is what makes
+     the admin's preview -- which has no build to ask -- truthful. */
+  const audit = SEOF.sitemapAudit({ seo: { baseUrl: 'https://example.test' }, pages: rec.pages });
+  check('the sitemap leaves a draft page out with no build involved',
+    audit.included.map(r => r.file).sort().join(',') === 'live.html,says-so.html',
+    audit.included.map(r => r.file));
+  check('  saying which status kept it out',
+    audit.excluded.some(x => x.key === 'drafted' && /status is "draft", not published/.test(x.why)) &&
+    audit.excluded.some(x => x.key === 'odd' && /status is "in-review", not published/.test(x.why)),
+    audit.excluded);
+  check('  and a record with no status is untouched by any of it',
+    SEOF.sitemapAudit({ seo: { baseUrl: 'https://example.test' },
+      pages: { a: { url: 'a.html' } } }).included.length === 1);
+
+  /* End to end, through the real CLI, for every brand. */
+  const brandsDir = path.join(ROOT, 'brands');
+  const troot = mktmp('life-third');
+  const tbrands = path.join(troot, 'brands');
+  fs.cpSync(path.join(__dirname, 'fixtures', 'brands'), tbrands, { recursive: true });
+  const tid = fs.readdirSync(tbrands, { withFileTypes: true })
+    .filter(e => e.isDirectory()).map(e => e.name).sort()[0];
+  {
+    const seo = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools', 'seo-config.json'), 'utf8'));
+    seo.seo = seo.seo || {};
+    seo.seo.baseUrl = 'https://' + tid;
+    fs.writeFileSync(path.join(tbrands, tid, 'seo-config.json'), JSON.stringify(seo, null, 2) + '\n');
+  }
+
+  const LIVE = 'lifecycle-live', DRAFT = 'lifecycle-draft', ODD = 'lifecycle-odd';
+  const DTEXT = 'DRAFT CONTENT THAT MUST NEVER SHIP';
+  for (const t of [{ id: A.id, env: A.env, brands: brandsDir, out: A.out },
+                   { id: B.id, env: B.env, brands: brandsDir, out: B.out },
+                   { id: tid, env: [], brands: tbrands, out: tid }]) {
+    const dir = mktmp('life');
+    const pages = Object.assign(rowFor2(t.brands, t.id), {
+      [LIVE]: cmsPage(LIVE, 'LIVE PAGE CONTENT', { status: 'published',
+        builder: { status: 'published', schemaVersion: 2, updatedAt: '2026-10-01',
+                   sections: sections('PUBLISHED SECTION IN A LIVE PAGE') } }),
+      [DRAFT]: cmsPage(DRAFT, DTEXT, { status: 'draft',
+        builder: { status: 'published', schemaVersion: 2, updatedAt: '2026-10-01',
+                   sections: sections(DTEXT + ' SECTION') } }),
+      [ODD]: cmsPage(ODD, DTEXT + ' ODD', { status: 'awaiting-legal' })
+    });
+    const row = writeFullRow(path.join(ROWS, 'life-' + t.out + '.json'), t.brands, t.id, pages);
+    const r = build([t.id, '--brands', rel(t.brands)].concat(t.env, ['--row', rel(row), '--out', dir]));
+    check(t.id + ': builds with a published, a draft and an unknown-status page', r.ok,
+      r.out.slice(-600));
+    const site = path.join(dir, t.out);
+    const files = walk(site);
+
+    check(t.id + ':   the published page is generated', files.indexOf(LIVE + '.html') > -1, files);
+    check(t.id + ':   the draft page is NOT', files.indexOf(DRAFT + '.html') === -1, files);
+    check(t.id + ':   nor is the unknown-status page', files.indexOf(ODD + '.html') === -1, files);
+    check(t.id + ':   no draft content reaches any generated file',
+      !files.filter(f => /\.(html|xml|txt)$/.test(f))
+        .some(f => fs.readFileSync(path.join(site, f), 'utf8').indexOf(DTEXT) > -1));
+    check(t.id + ':   while the published page does carry its own',
+      fs.readFileSync(path.join(site, LIVE + '.html'), 'utf8')
+        .indexOf('PUBLISHED SECTION IN A LIVE PAGE') > -1);
+    check(t.id + ':   and the build names what it did not publish',
+      new RegExp('Drafts\\s*:[^\\n]*"' + DRAFT + '"').test(r.out) &&
+      new RegExp('Drafts\\s*:[^\\n]*awaiting-legal').test(r.out),
+      (r.out.match(/Drafts.*/) || [''])[0]);
+
+    const smap = path.join(site, 'sitemap.xml');
+    if (fs.existsSync(smap)) {
+      const xml = fs.readFileSync(smap, 'utf8');
+      check(t.id + ':   the published page is in the sitemap', xml.indexOf(LIVE + '.html') > -1);
+      check(t.id + ':   the draft and unknown pages are not',
+        xml.indexOf(DRAFT) === -1 && xml.indexOf(ODD) === -1);
+    } else {
+      check(t.id + ':   a noindex host still publishes no sitemap at all', true);
+    }
+    /* The baked SEO a published generic page gets, on its own domain. */
+    const lh = fs.readFileSync(path.join(site, LIVE + '.html'), 'utf8');
+    check(t.id + ':   the published page has its SEO baked, on its own domain',
+      lh.indexOf('rel="canonical" href="https://' + t.out + '/' + LIVE + '.html"') > -1, t.out);
+  }
+
+  /* A draft record for a page a committed template publishes changes
+     nothing -- and is said out loud, because believing otherwise means
+     believing a public page is hidden. */
+  const committed = fs.readdirSync(path.join(ROOT, 'templates', 'pages'))
+    .filter(f => /^[a-z0-9][a-z0-9-]*\.html$/.test(f)).sort()[0];
+  const ckey = committed.replace(/\.html$/, '');
+  const cpages = rowFor2(brandsDir, A.id);
+  cpages[ckey] = Object.assign({}, cpages[ckey] || {},
+    { url: committed, status: 'draft', title: 'SHOULD STILL SHIP' });
+  const crow = writeFullRow(path.join(ROWS, 'life-committed.json'), brandsDir, A.id, cpages);
+  const cdir = mktmp('life-committed');
+  const cr = build([A.id].concat(A.env, ['--row', rel(crow), '--out', cdir]));
+  check('marking a committed page draft does not remove it', cr.ok &&
+    fs.existsSync(path.join(cdir, A.out, committed)), cr.out.slice(-400));
+  check('  and the build warns that the status does not hide it',
+    new RegExp('::warning::CMS page "' + ckey + '" has status "draft"').test(cr.out) &&
+    /is a committed page and still publishes/.test(cr.out),
+    (cr.out.match(/::warning::CMS page.*/) || [''])[0]);
+
+  /* No brand, domain or slug in the lifecycle itself. */
+  const codeOf = f => fs.readFileSync(path.join(ROOT, f), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+  ['tools/lib/pbbake.js', 'js/seo-files.js'].forEach(f =>
+    check(f + ': the lifecycle names no brand, domain or slug',
+      !/jsk-?1|playzone|[a-z0-9-]+\.(?:com|app)\b/i.test(codeOf(f)),
+      (codeOf(f).match(/jsk-?1|playzone|[a-z0-9-]+\.(?:com|app)\b/i) || [])[0]));
+  check('the admin writes an explicit status when it creates a page',
+    /status: 'published'/.test(fs.readFileSync(path.join(ROOT, 'js', 'admin.js'), 'utf8')));
+  check('  and offers the switch only for pages the CMS created',
+    /if \(!\(CMS\.DEFAULTS\.pages \|\| \{\}\)\[key\]\) head\.appendChild\(pageStatusField\(page\)\)/
+      .test(fs.readFileSync(path.join(ROOT, 'js', 'admin.js'), 'utf8')));
+}
+
 tmpRoots.forEach(d => { try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) {} });
 
 console.log(`\n==== ${pass} passed, ${fail} failed ====`);

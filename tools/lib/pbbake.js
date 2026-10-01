@@ -191,14 +191,59 @@ function publishedFromRecord(data) {
    and colliding names have to be refused with a message naming the brand.
    All of that is the generator's job, in tools/lib/brandkit.js, where the
    template set is known. This is the reader. */
+/* ------------------------------------------------------------
+   IS THIS PAGE PUBLISHED?
+   ------------------------------------------------------------
+   The same word the builder blocks above already use, on the page record
+   itself, and three rules rather than two:
+
+     'published'      published.
+     absent or empty  published. Every page record written before this
+                      lifecycle existed has no status, and they are live
+                      pages; reading them as drafts would unpublish a
+                      brand's site on the next deploy.
+     anything else    NOT published. 'draft' means draft, and so does a
+                      typo, a stray value, or a word some later version of
+                      the admin writes that this build does not know. The
+                      asymmetry is the point: the cost of wrongly hiding a
+                      page is a missing page, and the cost of wrongly
+                      showing one is publishing something nobody approved.
+
+   Compared case-insensitively and trimmed, because this value is typed by
+   a person somewhere upstream.
+   ------------------------------------------------------------ */
+const PAGE_PUBLISHED = 'published';
+
+function pageStatus(page) {
+    const raw = (page && page.status != null) ? String(page.status).trim().toLowerCase() : '';
+    if (raw === '' || raw === PAGE_PUBLISHED) return PAGE_PUBLISHED;
+    return 'draft';
+}
+
 function pagesFromRecord(data) {
     const out = {};
     if (!data || typeof data !== 'object' || !data.pages || typeof data.pages !== 'object') return out;
     Object.keys(data.pages).forEach(slug => {
         const p = data.pages[slug];
         if (!p || typeof p !== 'object') return;
-        if (p.status === 'draft') return;
+        if (pageStatus(p) !== PAGE_PUBLISHED) return;
         out[slug] = p;
+    });
+    return out;
+}
+
+/* The ones left out, so a build can say so rather than a page quietly not
+   being there. Each entry carries the status as written, because "draft"
+   and "whatever this is" are different things to whoever has to fix it. */
+function draftPagesFromRecord(data) {
+    const out = [];
+    if (!data || typeof data !== 'object' || !data.pages || typeof data.pages !== 'object') return out;
+    Object.keys(data.pages).sort().forEach(slug => {
+        const p = data.pages[slug];
+        if (!p || typeof p !== 'object') return;
+        if (pageStatus(p) === PAGE_PUBLISHED) return;
+        out.push({ slug: slug, status: String(p.status == null ? '' : p.status),
+                   url: typeof p.url === 'string' ? p.url : '' });
     });
     return out;
 }
@@ -417,6 +462,9 @@ module.exports = {
     publishedSections: publishedSections,
     publishedFromRecord: publishedFromRecord,
     pagesFromRecord: pagesFromRecord,
+    draftPagesFromRecord: draftPagesFromRecord,
+    pageStatus: pageStatus,
+    PAGE_PUBLISHED: PAGE_PUBLISHED,
     brandRecord: brandRecord,
     seoEngine: seoEngine,
     seoTags: seoTags,
