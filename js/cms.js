@@ -380,6 +380,40 @@
             ]
         },
 
+        /* ----------------------------------------------------------
+           FUTURE CONTENT-MODEL FIELDS (Phase 2C-A)
+
+           Five optional fields every page record carries, declared here so
+           the merge chain supplies them to a record written before they
+           existed. NOTHING READS THEM YET. They are inert by design: no
+           renderer, no SEO computation, no schema block, no admin control
+           looks at them, so a page that leaves them empty -- which is every
+           page today -- behaves exactly as it did before they were added.
+
+             type         which kind of content this page is. A NAME, to be
+                          read through an allow-list when a reader exists;
+                          never a value that reaches markup directly.
+             publishedAt  when the content was first published, as the same
+                          YYYY-MM-DD the sitemap's lastmod already requires.
+                          Distinct from updatedAt, which already exists and
+                          already moves on every edit.
+             excerpt      a short summary written for a listing. Deliberately
+                          NOT metaDescription: that is a meta tag, and one
+                          field serving both would make a change to a search
+                          snippet also change every card that links here.
+             author       an id into the `authors` collection below, not a
+                          name. A name stored per page would be a second
+                          source of truth the moment it is edited.
+             related      page keys this one points at, chosen by an author.
+                          An array, so the merge replaces it wholesale rather
+                          than blending two authors' lists.
+
+           WHY HERE AND NOT IN A MIGRATION. The record is JSONB and the read
+           path is merge(merge(DEFAULTS, CMS_BRAND), stored): a key added
+           here is present for every brand and every stored record at once,
+           with no row rewritten and no schema changed. An absent value and
+           an empty value are the same thing to every reader above.
+        ---------------------------------------------------------- */
         pages: {
 
             home: {
@@ -394,6 +428,11 @@
                 schema: { webPage: true, breadcrumb: false, contactPage: false },
                 inSitemap: true,
                 updatedAt: '',
+                type: '',
+                publishedAt: '',
+                excerpt: '',
+                author: '',
+                related: [],
                 title: '',
                 metaDescription: '',
                 heading: '',
@@ -413,6 +452,11 @@
                 schema: { webPage: false, breadcrumb: false, contactPage: false },
                 inSitemap: false,
                 updatedAt: '',
+                type: '',
+                publishedAt: '',
+                excerpt: '',
+                author: '',
+                related: [],
                 title: '',
                 metaDescription: '',
                 heading: '',
@@ -432,6 +476,11 @@
                 schema: { webPage: false, breadcrumb: false, contactPage: false },
                 inSitemap: false,
                 updatedAt: '',
+                type: '',
+                publishedAt: '',
+                excerpt: '',
+                author: '',
+                related: [],
                 title: '',
                 metaDescription: '',
                 heading: '',
@@ -451,6 +500,11 @@
                 inSitemap: true,
                 updatedAt: '',
                 url: 'about.html',
+                type: '',
+                publishedAt: '',
+                excerpt: '',
+                author: '',
+                related: [],
                 title: '',
                 metaDescription: '',
                 heading: '',
@@ -470,6 +524,11 @@
                 inSitemap: true,
                 updatedAt: '',
                 url: 'contact.html',
+                type: '',
+                publishedAt: '',
+                excerpt: '',
+                author: '',
+                related: [],
                 title: '',
                 metaDescription: '',
                 heading: '',
@@ -489,6 +548,11 @@
                 inSitemap: true,
                 updatedAt: '',
                 url: 'responsible-gaming.html',
+                type: '',
+                publishedAt: '',
+                excerpt: '',
+                author: '',
+                related: [],
                 title: '',
                 metaDescription: '',
                 heading: '',
@@ -509,6 +573,11 @@
                 updatedAt: '',
                 url: 'privacy-policy.html',
                 builderMount: true,
+                type: '',
+                publishedAt: '',
+                excerpt: '',
+                author: '',
+                related: [],
                 title: '',
                 metaDescription: '',
                 heading: '',
@@ -516,6 +585,25 @@
                 body: ''
             }
         },
+
+        /* ----------------------------------------------------------
+           AUTHORS (Phase 2C-A)
+
+           The collection that `pages.<slug>.author` names an entry in, keyed
+           the id it stores. EMPTY AND UNREAD at this stage: no admin panel
+           writes it, nothing renders a byline, and no schema block mentions
+           a Person. It is declared now so that the id on a page record has
+           somewhere to point when a reader exists, and so a brand's authors
+           arrive through the same per-brand record every other content key
+           uses -- which is what makes them unable to leak between brands.
+
+           A map rather than an array: a page stores an id, and a lookup by
+           id should not be a scan. The shape of an entry is deliberately
+           not fixed here, because fixing it before anything reads it would
+           be guessing.
+        ---------------------------------------------------------- */
+        authors: {},
+
 
         /* Saved white labels. Seeded on first run by the admin panel;
            each entry is { id, name, brand:{}, colors:{}, images:{} }. */
