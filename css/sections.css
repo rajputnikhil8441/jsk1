@@ -616,3 +616,35 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
     position: sticky;
     top: 0;
 }
+
+
+/* ---------- inline formatting (opt-in, see pbInlineInto) ---------- */
+
+/* These are nodes the renderer built, never parsed markup. Each carries a
+   class so a brand can restyle emphasis without reaching for the bare tag
+   and catching the rest of the page with it. */
+.pb-textblock .pb-strong,
+.pb-list .pb-strong { font-weight: 700; color: inherit; }
+
+.pb-textblock .pb-em,
+.pb-list .pb-em { font-style: italic; color: inherit; }
+
+.pb-textblock .pb-inline-link,
+.pb-list .pb-inline-link {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.pb-textblock .pb-inline-link:hover,
+.pb-list .pb-inline-link:hover { filter: brightness(1.2); }
+.pb-textblock .pb-inline-link:focus-visible,
+.pb-list .pb-inline-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* A quotation looks quoted. The rule is the only visual difference from a
+   paragraph; everything else still comes from the element's own controls. */
+.pb-el.pb-quote {
+    padding-inline-start: 14px;
+    border-inline-start: 3px solid currentColor;
+    font-style: italic;
+}

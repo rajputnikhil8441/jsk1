@@ -1684,7 +1684,11 @@
 
     var PB_CONTENT_KEYS = {
         heading:     ['text', 'level'],
-        text:        ['text'],
+        /* `rich` turns on the inline marks pbInlineInto() reads; `tag`
+           chooses the block element. Both are absent from everything
+           already published, which is why nothing already published
+           changes. */
+        text:        ['text', 'rich', 'tag'],
         image:       ['src', 'alt', 'width', 'height', 'href', 'newTab'],
         button:      ['text', 'href', 'newTab'],
         card:        ['title', 'text', 'image', 'imageAlt', 'imageWidth', 'imageHeight',
@@ -1706,7 +1710,7 @@
            "columns": that key already means a layout on the columns element
            and in PB_EL_TOKENS, and one name for two things is how a value
            ends up read by the wrong reader. */
-        list:        ['ordered'],
+        list:        ['ordered', 'rich'],
         table:       ['caption', 'cols', 'header']
     };
 
@@ -1724,7 +1728,8 @@
         variant:    function () { return PB_NOTICE_VARIANTS; },
         titleLevel: function () { return PB_HEADING_LEVELS; },
         platform:   function () { return PB_SOCIAL; },
-        level:      function () { return PB_ALL_LEVELS; }
+        level:      function () { return PB_ALL_LEVELS; },
+        tag:        function () { return PB_TEXT_TAGS; }
     };
 
     var PB_ALL_LEVELS = { h1: 1, h2: 1, h3: 1, h4: 1, h5: 1, h6: 1 };
@@ -2223,6 +2228,9 @@
     };
 
     var PB_NOTICE_VARIANTS = { info: 1, success: 1, warning: 1, danger: 1 };
+    /* The block tags a text element may be. Both are ordinary prose
+       containers; neither can hold anything the renderer does not build. */
+    var PB_TEXT_TAGS = { p: 1, blockquote: 1 };
     var PB_HEADING_LEVELS = { h2: 1, h3: 1, h4: 1, h5: 1, h6: 1 };
 
     /* Unique, valid HTML ids for the FAQ's aria wiring, even when an
@@ -2503,6 +2511,80 @@
         return node;
     }
 
+    /* ---- inline formatting, without ever parsing HTML ----
+
+       WHAT IT IS FOR. Body copy needs to be able to say "this phrase
+       matters" and "this phrase links there". Without that, a paragraph is
+       a wall of words and a page has no internal links for a crawler to
+       follow -- and the only way an author had to get either was the
+       shipped-body field, which is raw innerHTML.
+
+       WHAT IT IS NOT. It is not HTML. The stored value stays an ordinary
+       string: it still goes through pbScalar(), is still capped at 4000
+       characters, is still refused outright if it holds a control
+       character. The renderer reads a tiny set of marks out of that string
+       and builds NODES -- **bold** becomes a <strong> whose textContent is
+       the words between the marks, and nothing else can come out. There is
+       no path from a stored string to parsed markup, which is the entire
+       point of this file rendering with createElement and textContent.
+
+       A link's address goes through pbUrl() exactly like every other href
+       here, so [x](javascript:alert(1)) yields no anchor at all -- it
+       leaves the words "x" behind rather than a dead or dangerous link.
+
+       IT IS OPT-IN, per element, through content.rich. Left off -- which is
+       what every element already published has -- the text renders as one
+       textContent assignment exactly as before, so a paragraph that
+       happens to contain an asterisk is untouched on every live page.
+
+       Marks, and deliberately only these:
+         **strong**            emphasis that matters to meaning
+         *em*                  ordinary emphasis
+         [label](address)      a link, address through pbUrl()
+       Nesting is not supported and is not a gap: one level is what body
+       copy needs, and a parser that nests is a parser with corner cases. */
+    var PB_INLINE_RE = /(\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\([^()\s]+\))/;
+
+    function pbInlineInto(host, text) {
+        var parts = str(text).split(PB_INLINE_RE);
+        for (var i = 0; i < parts.length; i++) {
+            var s = parts[i];
+            if (!s) continue;
+            var node = null;
+            if (s.length > 4 && s.slice(0, 2) === '**' && s.slice(-2) === '**') {
+                node = pbEl('strong', 'pb-strong');
+                node.textContent = s.slice(2, -2);
+            } else if (s.length > 2 && s.charAt(0) === '*' && s.charAt(s.length - 1) === '*') {
+                node = pbEl('em', 'pb-em');
+                node.textContent = s.slice(1, -1);
+            } else if (s.charAt(0) === '[' && s.indexOf('](') > 0) {
+                var cut = s.indexOf('](');
+                var label = s.slice(1, cut);
+                var href = pbUrl(s.slice(cut + 2, -1));
+                if (href) {
+                    node = pbEl('a', 'pb-inline-link');
+                    node.setAttribute('href', href);
+                    node.textContent = label;
+                } else {
+                    /* A refused address leaves the words, not a dead link
+                       and not the raw mark. */
+                    s = label;
+                }
+            }
+            host.appendChild(node || document.createTextNode(s));
+        }
+    }
+
+    /* Write a stored string into a node: as formatted nodes when the
+       element asked for it, otherwise as the single textContent assignment
+       this file has always used. One helper, so no renderer has to decide
+       how to do it twice. */
+    function pbTextInto(node, text, content) {
+        if (content && content.rich === true) pbInlineInto(node, text);
+        else node.textContent = str(text);
+        return node;
+    }
+
     var PB_ELEMENTS = {
 
         heading: function (el) {
@@ -2515,8 +2597,13 @@
         },
 
         text: function (el) {
-            var n = pbEl('p', 'pb-el pb-textblock');
-            n.textContent = str((el.content || {}).text);
+            var c = el.content || {};
+            /* A quotation is a <blockquote>, not a paragraph styled to look
+               like one: the tag is the thing a crawler and a screen reader
+               read. Anything but a known tag falls back to <p>. */
+            var tag = pbPick(PB_TEXT_TAGS, str(c.tag).toLowerCase()) ? str(c.tag).toLowerCase() : 'p';
+            var n = pbEl(tag, 'pb-el pb-textblock' + (tag === 'blockquote' ? ' pb-quote' : ''));
+            pbTextInto(n, c.text, c);
             return pbId(n, el);
         },
 
@@ -2799,7 +2886,7 @@
                 var text = str((items[i] || {}).text);
                 if (!text) continue;
                 var li = pbEl('li', 'pb-list-item');
-                li.textContent = text;
+                pbTextInto(li, text, c);
                 n.appendChild(li);
                 made += 1;
             }

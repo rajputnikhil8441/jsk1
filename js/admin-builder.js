@@ -1642,7 +1642,12 @@ window.PBAdmin = function (host) {
     var PB_CONTENT_FIELDS = {
         heading: [['text', 'Text', 'text'],
                   ['level', 'Level', 'select', ['h1', 'h2', 'h3', 'h4']]],
-        text:    [['text', 'Text', 'area']],
+        text:    [['text', 'Text', 'area'],
+                  /* Blank is the paragraph: an element that was never given
+                     a kind stores no key at all, which is what everything
+                     already published looks like. */
+                  ['tag', 'Kind', 'select', [['', 'Paragraph'], ['blockquote', 'Quotation']]],
+                  ['rich', 'Allow basic formatting', 'bool']],
         image:   [['src', 'Image', 'asset'], ['alt', 'Alt text', 'text'],
                   ['width', 'Width (px)', 'num'], ['height', 'Height (px)', 'num'],
                   ['href', 'Links to', 'url'], ['newTab', 'Open in a new tab', 'bool']],
@@ -1676,7 +1681,8 @@ window.PBAdmin = function (host) {
         socialLinks: [],
 
         /* Phase 2A. The rows themselves are repeating items, below. */
-        list:    [['ordered', 'Numbered list', 'bool']],
+        list:    [['ordered', 'Numbered list', 'bool'],
+                  ['rich', 'Allow basic formatting', 'bool']],
         table:   [['caption', 'Caption (describes the table)', 'text'],
                   ['cols', 'Columns', 'select',
                       [['', 'As wide as the widest row'], ['1', '1'], ['2', '2'], ['3', '3'],
@@ -3374,6 +3380,20 @@ window.PBAdmin = function (host) {
                 nc.className = 'hint';
                 nc.textContent = 'This element has no content to set \u2014 use Design to style it.';
                 body.appendChild(nc);
+            }
+
+            /* What "Allow basic formatting" actually allows, said where it
+               is switched on. Three marks is the whole list, and saying so
+               is the difference between a feature and a guess. */
+            if (el.type === 'text' || el.type === 'list') {
+                var rh = document.createElement('p');
+                rh.className = 'hint';
+                rh.setAttribute('data-hint', 'rich');
+                rh.innerHTML = 'With formatting on: <code>**bold**</code>, ' +
+                    '<code>*italic*</code> and <code>[link text](page.html)</code>. ' +
+                    'Nothing else is markup — typed HTML stays visible as text, ' +
+                    'and a link address that is not allowed leaves the words behind.';
+                body.appendChild(rh);
             }
 
             /* Images without alt text cost the page in search and in

@@ -119,7 +119,23 @@ const FIXTURE = [
         ] }, style: {}, responsive: {} },
       { id: 'el_tb2', type: 'table', content: { header: false, cols: 2, items: [
           { c1: 'no header row', c2: 'second cell' }
-        ] }, style: {}, responsive: {} }
+        ] }, style: {}, responsive: {} },
+      /* Phase 2A inline formatting. Here for the byte-for-byte comparison
+         too: <strong>, <em> and an <a> built as sibling nodes around text
+         nodes is the one shape minidom had never been asked to serialise. */
+      { id: 'el_rich', type: 'text', content: { rich: true,
+          text: 'Read the **rules & terms** and the *small print*, ' +
+                'or see [our <contact> page](contact.html).' },
+        style: {}, responsive: {} },
+      { id: 'el_quote', type: 'text', content: { tag: 'blockquote', rich: true,
+          text: 'A **quotation**.' }, style: {}, responsive: {} },
+      { id: 'el_richoff', type: 'text', content: {
+          text: 'Stars *stay* as **typed** when formatting is off.' },
+        style: {}, responsive: {} },
+      { id: 'el_badmark', type: 'text', content: { rich: true,
+          text: 'Try [this](vbscript:x) and [that](data:text/html,x) ' +
+                'and [other](javascript:alert(1)).' },
+        style: {}, responsive: {} }
     ] },
   { id: 'sec_off', type: 'text', enabled: false,
     visibility: { desktop: true, tablet: true, mobile: true }, style: {}, responsive: {},
@@ -280,6 +296,28 @@ function buildBrand(brandsDir, id, outDir) {
       /data-el="el_tb2"><table class="pb-table-t"><tbody>/.test(node.html), true);
     check('  and no table carries an inline style or event attribute',
       !/<t(able|head|body|r|h|d)[^>]*\s(on\w+|style)=/.test(node.html), true);
+
+    /* ---- Phase 2A: inline formatting is NODES, never parsed markup ---- */
+    check('inline formatting bakes as real <strong>, <em> and <a> nodes',
+      node.html.includes('<strong class="pb-strong">rules &amp; terms</strong>') &&
+      node.html.includes('<em class="pb-em">small print</em>') &&
+      node.html.includes('<a class="pb-inline-link" href="contact.html">our &lt;contact&gt; page</a>'),
+      node.html.slice(node.html.indexOf('el_rich'), node.html.indexOf('el_rich') + 320));
+    check('  a quotation bakes as a <blockquote>, not a styled paragraph',
+      /<blockquote class="pb-el pb-textblock pb-quote" data-el="el_quote">/.test(node.html), true);
+    check('  with formatting off the marks are left as the author typed them',
+      node.html.includes('Stars *stay* as **typed** when formatting is off.'), true);
+    /* Two ways a bad address fails, both safe. An address the mark pattern
+       accepts goes to pbUrl(), which refuses it, and the LABEL is kept --
+       words, never an anchor. An address holding brackets never looks like
+       a link mark in the first place, so the whole thing stays as the plain
+       text it already was. Neither produces a link. */
+    check('  a refused link address leaves the words, not an anchor',
+      node.html.includes('>Try this and that and ') &&
+      node.html.includes('[other](javascript:alert(1)).<'),
+      node.html.slice(node.html.indexOf('el_badmark'), node.html.indexOf('el_badmark') + 180));
+    check('  and no inline node is an anchor to anywhere unsafe',
+      !/<a [^>]*href="\s*(javascript|data|vbscript):/i.test(node.html), true);
 
     check('no page errors', errs.length === 0, errs);
     await ctx.close();
