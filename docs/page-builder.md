@@ -233,6 +233,8 @@ whose CSS would ignore it.
 | button | bg, color, fontSize, fontWeight, align, padding, margin, border, radius, shadow |
 | card | bg, color, align, padding, margin, maxWidth, gap, border, radius, shadow |
 | columns | align, margin, maxWidth, gap |
+| list, toc | as heading/text, plus gap (space between items) |
+| table | as heading/text; `padding` is the space inside each cell |
 
 For image, button, card and columns, `align` is emitted as box alignment
 (`align-self`/`justify-self`) as well as `text-align`, because those are laid
@@ -1150,7 +1152,7 @@ what that turned up.
 | | |
 | --- | --- |
 | **Sections** | hero, text, image, image + text, cards, columns, banner |
-| **Elements** | heading, text, image, button, card, columns, divider, spacer, icon, notice, feature box, FAQ, social links |
+| **Elements** | heading, text, image, button, card, columns, divider, spacer, icon, notice, feature box, FAQ, social links — and, from Phase 2A, list, table, table of contents |
 | **Columns** | 13 ratio presets, per-breakpoint column counts, one level of nesting |
 | **Responsive** | desktop / tablet / mobile, at the site's own 1024px and 768px breakpoints; inheritance is the absence of a value |
 | **Global design** | 10 colour roles, 8 typography roles, referenced as `@role` and emitted as `var(--pbg-role, constant)` |
@@ -1332,11 +1334,17 @@ that has copy and no builder block at all. It reads
   `h2`, because the page already has its own `h1` above the mount)
 * anything else with text → a text element
 
-**Inline markup does not survive.** Heading and text elements are
-`textContent`-only — that is what keeps a published page free of injected
-markup — so a link inside a paragraph becomes plain words. The offer says
-so before it runs. It writes a **draft**; nothing on the live page changes
-until Publish.
+**Inline markup does not survive.** The migration's output is
+`textContent` only — a link inside a paragraph becomes plain words. The
+offer says so before it runs. It writes a **draft**; nothing on the live
+page changes until Publish.
+
+> Phase 2A added an opt-in inline reader to the text element (**bold**,
+> *italic* and `[label](page.html)`, built as nodes, never parsed as HTML —
+> see *Content authoring*). The migration does **not** use it: translating
+> arbitrary HTML into marks is guesswork, and guessing wrong changes what a
+> published page says. An author who wants formatting turns it on and types
+> the marks.
 
 The offer withdraws itself once any builder block exists, so it can never
 overwrite work, and it never appears on a page deliberately cleared to an
@@ -1358,7 +1366,12 @@ both halves.
 
 - **No arbitrary HTML.** Every element is built with `document.createElement`
   and `textContent`. `innerHTML` is never used for stored content, so markup in
-  a text field is shown literally rather than executed.
+  a text field is shown literally rather than executed. Phase 2A's inline
+  formatting does not change this: it is a *reader*, not a parser. The stored
+  value stays a plain string, and the renderer builds `<strong>`, `<em>` and
+  `<a>` **nodes** from the marks it recognises — there is still no path from
+  stored data to parsed markup. A link address goes through `pbUrl()` like
+  every other one, so a refused scheme leaves the words rather than a link.
 - **URL allow-list.** `pbUrl()` accepts `http:`, `https:`, `mailto:`, `tel:`,
   anything starting `#` or `/`, and plain relative file names. Everything else —
   `javascript:`, `data:` — becomes empty: a link falls back to `href="#"` and an
@@ -1492,9 +1505,265 @@ that is not in `PB_MOUNTED` in `js/cms.js`, set `builderMount: true` on its
 
 ---
 
+## Content authoring (Phase 2A)
+
+A page that needed a list of eligibility rules, a table of limits, a quoted
+sentence or a contents list had one of two options before this: bullet
+characters typed into a paragraph, or the shipped-body field, which is raw
+`innerHTML` *and* client-side only. The first is not markup a crawler can
+read as a list; the second is the one thing this project has spent its whole
+life not being, and its content never reaches the HTML the server sends.
+
+Everything below is built the way every other element here is built —
+`createElement` and `textContent`, every stored value through the same
+`pbScalar`/`pbUrl`/`pbEnumOk` cleaning — and everything below **bakes**, so
+it is in the static response before any JavaScript runs.
+
+### What already existed, and was not rebuilt
+
+The audit that opened this phase classified each requested capability before
+anything was written, and two of the seven needed no new feature:
+
+| Capability | Found as |
+| --- | --- |
+| FAQ element | `PB_ELEMENTS.faq` since V2 — accordion, `aria-expanded`/`aria-controls`/`role="region"`, items with no question dropped, its own CSS, covered by three suites. Only its **schema** was missing. |
+| SEO / content validation | `validatePage()` + `contentChecks()` + the SEO dashboard. Title and description length and absence, duplicates across pages, base URL and canonical shape, noindex, H1 count, empty body, word count, skipped heading levels, missing image alt, internal links to unknown pages, `data:`/`blob:` share images. Three levels, no numeric score, nothing that blocks a publish. **Extended** for the new elements; nothing replaced. |
+
+`CMS.sections.outline()` also already existed and already read a section
+tree's headings the way the renderer resolves them. The contents list calls
+it rather than reading headings a second way.
+
+### list
+
+```json
+{ "type": "list", "content": { "ordered": true, "rich": false,
+                               "items": [{ "text": "First" }, { "text": "Second" }] } }
+```
+
+A real `<ul>` or `<ol>` with `<li>` rows. A row with no text is skipped; a
+list that kept no row renders nothing.
+
+### table
+
+```json
+{ "type": "table", "content": { "caption": "Deposit limits", "cols": "3", "header": true,
+                                "items": [{ "c1": "Method", "c2": "Min", "c3": "Max" },
+                                          { "c1": "Card",   "c2": "100", "c3": "50000" }] } }
+```
+
+A `<table>` with an optional `<caption>`, a `<thead>` of `<th scope="col">`
+taken from the first row, and `<td>` rows under it. `scope="col"` is what
+makes the header functional rather than decorative: a screen reader
+announces the column name with each cell, and a crawler can tell a table of
+data from a grid used for layout.
+
+- **A row is `c1`…`c8`, not an array.** `pbScalar()` refuses anything that is
+  not a boolean, a number or a string, and that refusal is what stops a
+  nested payload riding in on a content key. Eight named cells need no second
+  kind of cleaning. Rows are capped at 100 by the existing items loop.
+- **`cols`, not `columns`.** That name already means a layout, on the
+  `columns` element and in `PB_EL_TOKENS`. One name for two things is how a
+  value ends up read by the wrong reader.
+- Absent `cols` means *as wide as the widest row*, so a table pasted in from
+  elsewhere is not silently clipped. The editor shows exactly as many cell
+  boxes as the table draws.
+- A header row with nothing under it renders **nothing** rather than an empty
+  table.
+- The `<table>` sits inside a wrapper that carries `.pb-el` and scrolls. A
+  table wider than a phone has to scroll inside its own box; one that widens
+  the *page* breaks every other section on it, and on a phone there is no way
+  back from that.
+
+### Inline formatting — a reader, not a parser
+
+Opt-in per element, through `content.rich`, on the **text** element and on
+**list** rows. Three marks, and only these:
+
+| Typed | Rendered |
+| --- | --- |
+| `**strong**` | `<strong>` whose `textContent` is the words between the marks |
+| `*em*` | `<em>`, likewise |
+| `[label](address)` | `<a>` whose `href` went through `pbUrl()` |
+
+The stored value stays an ordinary string: still through `pbScalar()`, still
+capped at 4000 characters, still refused outright for a control character.
+The renderer reads marks out of that string and builds **nodes**. There is no
+path from a stored string to parsed markup, so typed tags stay visible as
+text.
+
+A bad link address fails in one of two ways, both safe. An address the mark
+pattern accepts goes to `pbUrl()`, which refuses it, and the **label** is
+kept — words, never an anchor. An address holding brackets (`javascript:alert(1)`)
+never looks like a link mark at all, so the whole thing stays the plain text
+it already was.
+
+**Why opt-in.** The test is `=== true`, so a truthy string from an import
+cannot switch it on. Left off — which is what every element already published
+looks like — a text element renders through the same single `textContent`
+assignment as before, so a paragraph that happens to contain an asterisk is
+untouched on every live page. Nesting is not supported and is not a gap: one
+level is what body copy needs, and a parser that nests is a parser with
+corner cases.
+
+The text element also takes `tag`: `blockquote` instead of `p`. A quotation
+should *be* a quotation, not a paragraph styled to look like one — the tag is
+the part a crawler and a screen reader read. `tag` joins `PB_ENUM_KEYS`, so a
+value outside `{ p, blockquote }` is dropped when cleaned and falls back to
+`<p>` when rendered.
+
+### toc — a table of contents
+
+```json
+{ "type": "toc", "content": { "title": "On this page", "titleLevel": "h2",
+                              "depth": "h3", "ordered": false } }
+```
+
+A `<nav>` of links to the headings this page's sections draw, read from
+`CMS.sections.outline()` — the same heading reader the admin uses for its H1
+warning, so the list can never disagree with the page it describes.
+
+- **The H1 is never listed.** A page's H1 is its title, written above the
+  sections from `pages.<slug>.heading`, so an entry for one would point at a
+  second H1 that should not be there anyway.
+- **Below two entries it draws nothing.** A contents list of one link is
+  noise rather than navigation. The admin card says how many headings are in
+  range, so an element that is drawing nothing does not look broken.
+- Heading elements therefore carry an **id**. There is one rule for what that
+  id is, `pbAnchorId()`, read twice: by the heading that gets it and by the
+  list that points at it. Deliberately *not* `pbDomId()`, which invents an id
+  when the element's own is unusable — an invented id is no use to a list
+  that has to work out the same id from the section tree without having
+  rendered anything. When the element id could not go in a selector the
+  heading gets no id and the list skips it, so the two cannot disagree.
+- The contents list is the only element that needs to see past itself.
+  Rather than widen every renderer's signature, the top-level render call
+  leaves the section tree in one place for the length of its own synchronous
+  run and clears it in a `finally`.
+
+### FAQPage schema
+
+The FAQ element existed; structured data for it did not. One `FAQPage` block
+is emitted **with the sections**, not into the `<head>`:
+
+```html
+<script type="application/ld+json" data-pb-faq="1">
+{ "@type": "FAQPage", "mainEntity": [ { "@type": "Question", "name": "…",
+    "acceptedAnswer": { "@type": "Answer", "text": "…" } } ], "@context": "https://schema.org" }
+</script>
+```
+
+**Why not the head.** The head's four blocks (`ldOrganization`, `ldWebSite`,
+`ldPage`, `ldBreadcrumb`) are computed from a page *record* and written into
+script elements the template ships. An FAQ is not in the record — it is in
+the section tree, which is the thing that gets baked. Emitting the block
+beside the sections it describes means:
+
+- it is in the **static response** for every page with an FAQ, committed
+  template or CMS-generated alike, so the schema does not depend on
+  JavaScript — which is the rule for anything a crawler reads;
+- no template changes and no head slot is added, so no page gains an empty
+  `{}` block it did not earn;
+- **it cannot duplicate.** The mount is rewritten whole on every render, so
+  three FAQ elements on a page produce one `FAQPage`, never three.
+
+It uses `ldContext()` and `ldText()`, which are what the head blocks use.
+There is no second JSON-LD framework.
+
+**What it refuses**, each of which would otherwise be invalid or dishonest
+structured data: a question with no answer, an answer with no question, a
+blank pair, a disabled section or element, and a page with no FAQ. Each
+yields **no block**, not an empty `FAQPage`. A `Question` whose
+`acceptedAnswer` is empty is invalid, and inventing text to fill it would be
+worse than saying nothing.
+
+Google's requirement is that the question and the answer are on the page.
+They are: the FAQ element renders its answers into the HTML and hides the
+closed ones with `hidden`, which is display, not absence.
+
+`ldText()` escapes `<` as `<`. That is what makes the text safe to write
+into a `<script>` in *serialised* HTML — script contents are raw text, so a
+value holding `</script>` would otherwise close the block early. At runtime
+`textContent` never parses, so it costs nothing there. For the same reason
+`tools/lib/minidom.js` now treats `script` and `style` as raw-text elements,
+as HTML says: escaping their contents like ordinary text is *wrong* rather
+than merely different, because a JSON-LD block whose quotes came out as
+`&quot;` is not JSON and no crawler would parse it.
+
+### The internal link picker
+
+Every `href` in the builder was a bare text box, so an internal link was a
+file name typed from memory. A typo is a 404 a visitor finds and an internal
+link a crawler loses — and the admin's own checks only reported it
+afterwards. Image, button, card button, icon, notice and feature-box links
+now carry a picker beside the box. `socialLinks` deliberately does not: a
+social profile is somewhere else by definition.
+
+**Isolation here is the absence of a feature, not one.** The list is read
+from `CMS.data().pages` — the merged record of whichever brand resolved, and
+the only pages object `js/admin-builder.js` can see. There is no second page
+store, no request of its own, and no brand name, host or reach for the brand
+resolver anywhere in the file; `tests/test_brand_isolation.js` asserts all of
+that. One site's admin cannot be shown another site's page because the data
+is not there to show.
+
+**A draft page is not offered.** The build generates no file for one, so a
+link to it is a link to a 404 until it is published. That answer comes from
+`SEOFiles.isPublished()`, the same reader the sitemap uses.
+
+The text box stays authoritative: the picker writes into it, announces the
+change through the box's own listeners and resets to blank, so there is one
+value and it is the typed one. An external address, an anchor or a `mailto:`
+is still typed, and still checked by `pbUrl()`.
+
+### What the checks say about all of it
+
+Added to `contentChecks()`, in the same place and the same words as the rest:
+
+| Element | Says |
+| --- | --- |
+| table | **warns** with no header row, and with no caption |
+| list | **warns** at one item — a list of one reads as a paragraph with a bullet in front of it |
+| toc | **fails** on a link pointing at a heading that is not on the page. The only one here that is a fault rather than a judgement |
+| faq | **warns** per question with no answer, and says what it costs: those are left out of the page's `FAQPage` data. Counted through `CMS.sections.faqPairs()`, the reader the schema itself uses |
+| links | a link to a page that **exists but is a draft** now fails. Nothing about the page looks wrong, which makes it worse than a typo |
+
+`pageContent()` carries the published section tree beside the markup for the
+one question the markup cannot answer: an unanswered FAQ question renders —
+its panel is simply empty — but is absent from the schema, so the only way to
+tell an author why is to compare the tree with what the schema reader
+accepted.
+
+### Known limitations
+
+- **Inline formatting is three marks, not a toolbar.** There is no WYSIWYG
+  surface; an author types the marks and sees the result in the preview. A
+  toolbar would be a reasonable next step and would need no change to the
+  stored format.
+- **`rich` is per element, not per page or per site.** Turning it on for
+  twenty paragraphs is twenty checkboxes.
+- **Tables cap at eight columns** and have no row-header option
+  (`<th scope="row">`), no column spanning and no sorting. Each would be a
+  new content key and a new rendering branch.
+- **The contents list is rebuilt on every render.** There is no stored
+  outline, which is the point — but it also means an author cannot reorder or
+  rename entries independently of the headings.
+- **Heading ids are derived from element ids** (`pb-<elid>-h`), so they are
+  stable but not readable. A slug derived from the heading text would read
+  better in a URL and would need a collision rule; it is not built.
+- **`FAQPage` is the only schema the builder's content earns.** `HowTo`,
+  `Article` and `BreadcrumbList`-from-sections are not generated, and no
+  rating, review, offer or product schema is invented from anything —
+  asserted in two suites.
+- **The shipped-body field is still raw `innerHTML`** and still client-side
+  only. Phase 2A did not change it; see *The shipped-body field is still raw
+  HTML* above. The new elements are the safe, bakeable way to author the same
+  content.
+
+---
+
 ## Tests
 
-`tests/test_pagebuilder.js` — 329 assertions. Style questions are asserted on
+`tests/test_pagebuilder.js` — 343 assertions. Style questions are asserted on
 **computed style in a real browser**, not on the generated CSS text: the bug
 that prompted the hardening pass — a heading colour the page's own
 `.info-article h2` quietly won — is invisible to any test that only reads the
@@ -1537,7 +1806,7 @@ dirty state, a refused write, and zero POSTs; keyboard reordering with focus fol
 touch; library and template independence; and 30 sections / 90 columns /
 240 elements with a MutationObserver proving nothing is rebuilt mid-drag.
 
-`tests/test_pagebuilder_seo.js` — 174 assertions, milestone E. The claim
+`tests/test_pagebuilder_seo.js` — 232 assertions, milestone E onwards. The claim
 under test is that builder content and the SEO record share a page without
 either becoming the other.
 
@@ -1556,12 +1825,12 @@ the admin's own state, saving, page switching and disabled reasons; and the
 admin at 1440, 900 and 390px with accessible names, tab order and a visible
 keyboard focus ring.
 
-`tests/test_pb_bake.js` — 91 assertions. The claim under test is that the
+`tests/test_pb_bake.js` — 119 assertions. The claim under test is that the
 published builder content is in the **initial HTML response**, produced by the
 runtime renderer and not by a second one.
 
 Covered: our HTML serialisation asserted **byte-identical** to a real browser's
-`innerHTML` for a fixture covering all thirteen element types, escaping, void and
+`innerHTML` for a fixture covering every element type, escaping, void and
 boolean attributes and nested columns; the content present in the delivered file;
 two brands built through one pipeline with neither leaking into the other;
 nothing published, draft-only and a published empty canvas; every SEO tag,
@@ -1587,7 +1856,7 @@ commit producing identical HTML; and every SEO tag, the baked markup and the
 `cmsBuilder` styles identical with and without a provenance declaration, which is
 also asserted never to reach a visitor's page.
 
-`tests/test_pagebuilder_hardening.js` — 203 assertions, milestone F. Aimed at
+`tests/test_pagebuilder_hardening.js` — 224 assertions, milestone F. Aimed at
 the public render path, because that is the one place the whole-tree sanitiser
 deliberately does not run.
 
@@ -1595,9 +1864,29 @@ Covered: a stored type of `constructor`, `toString`, `valueOf`, `__proto__` or
 `hasOwnProperty` in every position that reads an allow-list; `__proto__` as a
 key in localStorage and in the Supabase row; eighteen shapes of corrupted or
 malformed storage; every structural limit; a hostile library file; all
-thirteen element types with nothing and with everything, then again with real
+every element type with nothing and with everything, then again with real
 content and their accessibility attributes; three breakpoints with inheritance
 and overrides in both directions; the share-card preview against ten CSS
 injection attempts; drafts, library and recovery staying off the wire and out
 of the page; 30 sections / 90 columns / 240 elements with repaint, sanitise
 and style-tag counts; and the pages that are not builder pages.
+
+### Phase 2A
+
+Phase 2A added no suite of its own. Every claim it makes is asserted inside
+the suite that already owned the question, which is also what forced the
+existing coverage to grow rather than sit beside something new.
+
+| Suite | Was | Now | What it gained |
+| --- | --- | --- | --- |
+| `test_pb_bake.js` | 91 | 119 | the new elements in the byte-for-byte fixture, including `<ul>`/`<ol>`/`<table>` and `<strong>`/`<em>`/`<a>` as siblings of text nodes; every contents link resolving to an id in the same HTML; one `FAQPage` block, valid JSON once served, with the pair the author wrote |
+| `test_pagebuilder_seo.js` | 184 | 232 | `FAQPage` earned and the four ways it is not; one block from three FAQ elements; the link picker's rule, computed from the record; every new content check firing, and staying quiet on sound content |
+| `test_pagebuilder_hardening.js` | 212 | 224 | ten payloads through the inline reader — tags, an event handler, a script element, four refused schemes — and a `rich` flag that is not boolean `true` |
+| `test_pagebuilder_v2.js` | 141 | 145 | the palette count, and each new type offering exactly its working design controls |
+| `test_brand_isolation.js` | 76 | 78 | the link picker's only page source, and the file never reaching for the brand resolver |
+| `test_pagebuilder_design.js` | 90 | 97 | probe content for the new types, and the key list asserted against the renderer's own type list |
+| `test_pagebuilder_defaults.js` | 55 | 58 | the new types added, rendered and measured like the rest |
+
+Three assertions in those suites were counting to a literal `13`. They now
+compare against `CMS.sections.elementTypes`, which is what they were trying
+to say and does not go stale the next time a type is added.

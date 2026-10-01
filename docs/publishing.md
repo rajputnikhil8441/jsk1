@@ -561,10 +561,19 @@ through the one pipeline and asserts each page contains its own content and
 ### Baking sections changes no page's SEO
 
 On a page that ships its own template, title, meta description, canonical,
-robots, Open Graph, Twitter/X, JSON-LD, `sitemap.xml`, `robots.txt`, the H1 and
-the URL structure are exactly as they were. A test builds the same brand with
-and without published builder content and asserts every one of those is
-identical; the only difference is body content.
+robots, Open Graph, Twitter/X, the four head JSON-LD blocks, `sitemap.xml`,
+`robots.txt`, the H1 and the URL structure are exactly as they were. A test
+builds the same brand with and without published builder content and asserts
+every one of those is identical; the only difference is body content.
+
+**One exception, and it is content rather than metadata.** A page whose
+sections carry an FAQ with at least one complete question-and-answer pair
+bakes a single `FAQPage` JSON-LD block alongside those sections, inside the
+mount — not in the `<head>`, and not in any template. It describes content
+that is on the page, it appears only when that content is, and it cannot
+duplicate because the mount is rewritten whole on every render. Nothing in
+the `<head>` moves. See *Content authoring* in `docs/page-builder.md` for
+what it refuses and why.
 
 A page the CMS creates is a different matter: it has no committed template, so
 its SEO is baked from the record. See **A page the CMS creates** below.
