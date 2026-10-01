@@ -841,6 +841,12 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
     gap: var(--pbe-gap, 16px);
     background: var(--pbe-bg, transparent);
     color: var(--pbe-color, inherit);
+    /* Read here as well as on the number below, so a typography role reaches
+       the whole block rather than only the figure. Without a value this is
+       `inherit`, which is what the rule did before -- and the number keeps
+       its own 32px default either way. */
+    font-size: var(--pbe-font-size, inherit);
+    font-weight: var(--pbe-font-weight, inherit);
     letter-spacing: var(--pbe-letter-spacing, inherit);
     text-align: var(--pbe-align, center);
     padding: var(--pbe-padding, 0);

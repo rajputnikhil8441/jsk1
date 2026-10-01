@@ -3706,28 +3706,27 @@ window.PBAdmin = function (host) {
                    of its own. */
                 var cdesign = document.createElement('details');
                 cdesign.className = 'pb-details pb-col-design';
-                cdesign.innerHTML = '<summary>Container design</summary>';
+                cdesign.innerHTML = '<summary>Container design and visibility</summary>';
                 var ckey = el.id + ':col' + ci;
                 cdesign.open = !!pbDesignOpen[ckey];
                 cdesign.addEventListener('toggle', function () {
                     pbDesignOpen[ckey] = cdesign.open;
                 });
+                /* ONE panel, not two. A column box sits inside an element
+                   card inside a section, and every collapsed row added here
+                   pushes everything below it further down -- which is a cost
+                   an author pays on every page, and which was enough to
+                   stretch the admin's own drag fixture past a 1900px
+                   viewport. Design and visibility share the panel. */
                 var chost = document.createElement('div');
                 pbDesignEditor(chost, col, pbContainerStyleKeys(), PB_CONTAINER_LABELS,
                     function () { pbPaintPreview(); }, ckey);
                 cdesign.appendChild(chost);
-                box.appendChild(cdesign);
-
-                var cvis = document.createElement('details');
-                cvis.className = 'pb-details pb-col-design';
-                cvis.innerHTML = '<summary>Container visibility</summary>';
-                var cvkey = ckey + ':vis';
-                cvis.open = !!pbDesignOpen[cvkey];
-                cvis.addEventListener('toggle', function () { pbDesignOpen[cvkey] = cvis.open; });
                 var cvhost = document.createElement('div');
+                cvhost.className = 'pb-col-vis';
                 pbVisibilityEditor(cvhost, col, 'container');
-                cvis.appendChild(cvhost);
-                box.appendChild(cvis);
+                cdesign.appendChild(cvhost);
+                box.appendChild(cdesign);
 
                 if (!col.elements) col.elements = [];
                 pbElementList(box, col.elements, depth + 1,

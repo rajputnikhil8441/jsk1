@@ -3214,3 +3214,11 @@ body.pb-dragging #pbList iframe {
 }
 
 .pb-col-design > summary { font-size: .82rem; }
+
+/* The visibility checkboxes share the container's panel with its design
+   controls, so they need a line between them to read as a separate question. */
+.pb-col-vis {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--a-line, rgba(0, 0, 0, .12));
+}
