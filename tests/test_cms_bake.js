@@ -1599,6 +1599,45 @@ console.log('\n===== NOTHING STILL DESCRIBES THE OLD WORKFLOW =====');
     /Nothing in the `<head>` moves/.test(pubf) &&
     /the four head JSON-LD blocks/.test(pubf), 'seo exception');
 
+  /* ---- Phase 2B ---- */
+  check('page-builder.md documents the advanced layout work',
+    /## Advanced layout and widgets \(Phase 2B\)/.test(pbf));
+  check('  and records what the audit found ALREADY built, so nobody rebuilds it',
+    /What the audit found already built/i.test(pbf) &&
+    /\*\*`faq` element is one\*\*/.test(pbf) &&
+    /A page-level feature/.test(pbf), 'audit record');
+  check('  it names the two it deliberately did NOT build, and why',
+    /A second accordion would have been this one renamed, so there is none/.test(pbf) &&
+    /a competing `BreadcrumbList` on the page, so there is none/.test(pbf), 'reuse');
+  check('  the container address, and why it is a position',
+    /Position, not an id of its own/.test(pbf) &&
+    /data-col="&lt;columns element id&gt;-&lt;index&gt;"|data-col="<columns element id>-<index>"/.test(pbf),
+    'container');
+  check('  every layout control with its token and its allowed names',
+    /--pbe-justify-content/.test(pbf) && /--pbe-align-items/.test(pbf) &&
+    /`space-between`|between/.test(pbf), 'controls');
+  check('  why min-width falls back to auto rather than 0',
+    /a grid item.s default is `auto`, and flipping it would let a wide child/.test(pbf),
+    'min-width');
+  check('  that hiding is display and not absence',
+    /it does not remove it from the page a crawler reads/.test(pbf), 'visibility');
+  check('  that no review, rating or invented statistic is produced',
+    /\*\*No review or rating schema\*\*/.test(pbf) &&
+    /\*\*No count-up animation\.\*\*/.test(pbf), 'no fakery');
+  check('  that a video src is BUILT from an id, never copied',
+    /the address is \*\*never\*\* the author.s string/.test(pbf) &&
+    /is \*built\* from that id and a constant/.test(pbf), 'video');
+  check('  the CTA decision and the defect it turned up',
+    /under a new name/.test(pbf) && /<undefined class="pb-feature-title">/.test(pbf),
+    'cta');
+  check('  and it says what this work deliberately does NOT do',
+    /### Known limitations/.test(pbf.slice(pbf.indexOf('## Advanced layout'))) &&
+    /deferred by decision/.test(pbf), 'limits');
+  /* The deferral is a decision, not an omission, so it is recorded as one. */
+  check('  including that global reusable sections were deferred, not forgotten',
+    /Global, synchronised reusable sections are deferred by decision/.test(pbf) &&
+    /device-local and stripped from the published payload/.test(pbf), 'deferral');
+
   /* A count in a document is a claim too. Every suite the Phase 2A table
      names has to still report the number written next to it. */
   {

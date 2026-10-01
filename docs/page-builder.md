@@ -1152,8 +1152,8 @@ what that turned up.
 | | |
 | --- | --- |
 | **Sections** | hero, text, image, image + text, cards, columns, banner |
-| **Elements** | heading, text, image, button, card, columns, divider, spacer, icon, notice, feature box, FAQ, social links — and, from Phase 2A, list, table, table of contents |
-| **Columns** | 13 ratio presets, per-breakpoint column counts, one level of nesting |
+| **Elements** | heading, text, image, button, card, columns, divider, spacer, icon, notice, feature box, FAQ, social links — from Phase 2A, list, table, table of contents — from Phase 2B, testimonials, stats, pricing, gallery, progress, tabs, carousel, video |
+| **Columns** | 13 ratio presets, per-breakpoint column counts, nesting bounded at three levels of recursion; from Phase 2B each container is a styled box with its own flex controls |
 | **Responsive** | desktop / tablet / mobile, at the site's own 1024px and 768px breakpoints; inheritance is the absence of a value |
 | **Global design** | 10 colour roles, 8 typography roles, referenced as `@role` and emitted as `var(--pbg-role, constant)` |
 | **Reusable sections** | device-local library, export / import, inserted as an independent copy |
@@ -1761,6 +1761,202 @@ accepted.
 
 ---
 
+## Advanced layout and widgets (Phase 2B)
+
+The builder could put text, images, buttons, cards, a FAQ, a list, a table
+and a contents list on a page, in sections and in columns. What it could not
+do was make a *box* — somewhere with its own background, padding and
+direction that other elements live inside — and it had none of the widgets a
+modern page is built from.
+
+### What the audit found already built
+
+Ten of the twenty-five things the phase set out to check needed nothing but
+verification, and two more were reuse decisions rather than builds. Recorded
+here so a later phase does not go looking to build them again:
+
+| Already there | Where |
+| --- | --- |
+| Nesting | `columns` elements hold `content.columns[].elements`; the renderer recurses. Four levels deep renders. |
+| Column presets | 13 track presets, with per-breakpoint column counts (`--pbe-cols-t`/`-m`). |
+| Responsive spacing, typography, width, alignment | Real `@media (max-width:1024px)` and `(max-width:768px)` rules, per element, per section. Not JavaScript. |
+| Saved sections | `CMS.sections.library` — save, list, rename, duplicate, remove, insert, export, import. |
+| Section and element duplication | `pbDuplicate`, with fresh ids so a copy cannot address the original's CSS. |
+| Templates / page starters | A code registry of 6 (now 8), with versions and counts. |
+| Drag, reorder, keyboard, touch | `data-pb-drag`, arrow buttons, 195 assertions in `test_pagebuilder_dnd.js`. |
+| Responsive preview | The real page in an iframe at three widths. |
+| **Accordion** | The **`faq` element is one** — `single` gives one-open-at-a-time, with `aria-expanded`, `aria-controls` and `role="region"`. A second accordion would have been this one renamed, so there is none. |
+| **Breadcrumb** | A page-level feature: `pages.<slug>.breadcrumb = {label, show}`, visible markup in the templates, and `buildBreadcrumb()` → `ldBreadcrumb` already matched to it. A builder *element* would put a second breadcrumb and a competing `BreadcrumbList` on the page, so there is none. |
+
+### A container is a box
+
+`content.columns[i]` was `{elements: []}`. It had no style, and the
+`<div class="pb-column">` it rendered carried no attribute, so no generated
+rule could reach it. It now carries `style` and `responsive` like any other
+node and is addressed by its **position**:
+
+```html
+<div class="pb-column" data-col="<columns element id>-<index>">
+```
+```css
+.pb-columns .pb-column[data-col="…"] { … }
+```
+
+**Position, not an id of its own.** Position is already how the admin
+addresses a container (`{sec, el, col}`), so moving one moves its style with
+it — both travel in the same object — and a duplicated columns element gets a
+fresh element id and therefore fresh container rules for free. `pbReidSections`
+needed no change. One function, `pbContainerRef()`, decides what that address
+is called, and both the renderer and the CSS writer ask it, so the attribute
+and the selector cannot disagree.
+
+A container is cleaned by `pbCleanStyle`/`pbCleanResponsive` and written by
+`pbScopedCSS` — the same functions a section and an element use — so
+per-breakpoint overrides came for free rather than being built again.
+
+### Layout controls
+
+`.pb-column` was always `display: flex; flex-direction: column`. It had no
+controls. Five tokens were added to the existing registry:
+
+| Control | Token | Values |
+| --- | --- | --- |
+| direction | `--pbe-direction` | `column`, `row`, `column-reverse`, `row-reverse` |
+| justify | `--pbe-justify-content` | `start`, `center`, `end`, `between`, `around`, `evenly` |
+| alignItems | `--pbe-align-items` | `stretch`, `start`, `center`, `end`, `baseline` |
+| wrap | `--pbe-wrap` | `nowrap`, `wrap` |
+| minWidth | `--pbe-min-width` | a number |
+
+Each value is a **name**, and what reaches the property is the constant
+stored against it — the rule `PB_COL_LAYOUTS` already followed. An
+unrecognised name emits nothing. The names are the author's words, translated
+to CSS in the renderer rather than in the admin, and the admin builds its
+selects from `CMS.sections.layoutNames` so the two cannot drift.
+`pbCleanStyle` validates them at import as well: the renderer already refused
+an unknown one, but storing `direction: "constructor"` is pointless as well
+as inert.
+
+`justify` writes `--pbe-justify-CONTENT`. `--pbe-justify` is already the
+`justify-self` half of `PB_SELF`, and one property name for two meanings is
+how a value ends up read by the wrong rule.
+
+**Nothing that already exists changes.** Every declaration in the
+`.pb-column` rule reads a token whose fallback is the value the rule already
+had — listed line by line in the CSS. `min-width` falls back to `auto`, not
+`0`: a grid item's default is `auto`, and flipping it would let a wide child
+shrink its track on pages nobody has touched. `align-self` and `justify-self`
+are deliberately **not** read, because `PB_SELF` writes those whenever
+`align` is set — including on the columns element — and a container reading
+them would start moving itself inside its track on existing pages.
+
+### Hiding on one screen size
+
+Sections could do this; elements and containers could not, so an author could
+hide a whole band on a phone but not the one button inside it that did not
+fit. All three now carry the same three booleans, through the same cleaner,
+rendered by the same classes, hidden by the same media queries. The selectors
+became a plain class each, so there is one idea of what hidden means instead
+of three.
+
+`display: none`, not `visibility` or `opacity`: a hidden element must take no
+space and must not be reachable by keyboard while invisible. **The content
+stays in the HTML at every width** — this hides a thing at one screen size,
+it does not remove it from the page a crawler reads.
+
+### The widgets
+
+Five of them need no JavaScript at all, and that is not a coincidence: a
+testimonial, a number, a price and a caption are the words a page is *for*.
+Interaction can be added on top of content; content cannot be added on top of
+interaction.
+
+| Element | Markup | Notes |
+| --- | --- | --- |
+| `testimonials` | `<figure>` + `<blockquote>` + `<figcaption>` | **No review or rating schema**, and none should be: a testimonial an author typed is not a verified review. |
+| `stats` | text | **No count-up animation.** The simplest guarantee that the number a crawler reads is the number an author typed is for nothing to compute it. The label is a heading only if asked for. |
+| `plans` | heading + price + `<ul>` + link | The recommended card carries `data-highlight` in the markup as well as a heavier border, so which one it is does not depend on seeing a colour. Features are `f1`…`f6`: `pbScalar()` refuses a control character, so a newline-delimited list cannot be stored at all. |
+| `gallery` | `<figure>` + `<figcaption>` per image | Each image goes through the **one** image renderer, so lazy loading, async decoding and alt text are not written twice. No lightbox — one would be a click handler, a focus trap and an escape key for a feature nobody asked to be modal. |
+| `progress` | the native `<progress>` | The usual way to draw one is a div whose width comes from the value, which means an inline style built from stored content. The native element needs none, is announced correctly with no ARIA to get wrong, and degrades to its own text. The value is printed as words too, so what it says never depends on a coloured bar. |
+
+Three are interactive, and each is built so the content is in the HTML first:
+
+- **`tabs`** — every panel is in the response body; the inactive ones carry
+  `hidden`, which is display and not absence, exactly as the FAQ element has
+  always done. A tablist of real `<button>`s, each owning its panel through
+  `aria-controls`, each panel pointing back with `aria-labelledby`, **one** tab
+  in the tab order at a time, and `Left`/`Right`/`Home`/`End` moving between
+  them with focus following selection. Panels are focusable, or a keyboard
+  user who tabs past the list cannot reach the content.
+
+- **`carousel`** — **it works with no JavaScript at all.** The slides are a
+  row that scrolls with CSS scroll-snapping, so a visitor can swipe or scroll
+  and a keyboard user can reach the strip before a line of script runs.
+  Prev/next and autoplay are enhancements on top. Autoplay never starts for a
+  visitor who asked for less motion, stops on hover and on focus, and always
+  has a pause control that reports its own state. The glyphs are drawn in CSS,
+  so a control does not wait for an icon font.
+
+- **`video`** — an `<iframe>` runs a third party's code in the page, so the
+  address is **never** the author's string. `pbVideoRef()` matches it against
+  the hosts this builder embeds (YouTube, Vimeo) and returns an **id**; the
+  `src` is *built* from that id and a constant. An address no host recognises
+  becomes a **link**; an unsafe one becomes nothing. An address that merely
+  *contains* a `youtube.com/watch?v=` is not one. The nocookie and `dnt=1`
+  forms are used where the host offers them: an embed should not set a
+  tracking cookie on someone who only read a page. The frame is named,
+  sandboxed, lazy, and has a tightened referrer policy.
+
+### CTA was already there, and was broken
+
+`featureBox` already did icon or image, a heading, body copy and an action.
+The only thing it could not do was offer a second, quieter action — so that
+is what it gained, rather than a CTA element that would have been this one
+under a new name.
+
+While adding it, a defect present since V2 came out:
+
+```js
+var lvl = pbPick(PB_HEADING_LEVELS, String(c.titleLevel || 'h3').toLowerCase())
+    ? String(c.titleLevel).toLowerCase() : 'h3';
+```
+
+The default was tested and then thrown away — the guard checked
+`titleLevel || 'h3'` and the branch read `titleLevel` alone. A feature box
+with no explicit level, which is **every one the admin adds** since its blank
+content sets none, resolved to the string `"undefined"` and rendered
+`<undefined class="pb-feature-title">`. The title was visible and was not a
+heading: nothing in the page outline, nothing announced as a heading, nothing
+for a crawler. Fixed; one value, worked out once.
+
+### Known limitations
+
+- **A tab panel holds text, not elements.** Rich inline formatting works
+  inside it, but a panel cannot contain an image or a nested layout. Doing
+  that would mean a second nesting shape to clean, render, re-id and
+  drag-address; the columns element is the one that nests.
+- **Nesting is bounded at three levels of recursion**, and content past the
+  bound is dropped silently by both the sanitiser and the renderer. They agree
+  with each other, so nothing renders that was not stored — but an author gets
+  no warning. The bound is deliberate; the silence is not ideal.
+- **A container is not an element.** It cannot be dragged out of its columns
+  element, and the palette offers "Columns", not "Container" — a container is
+  one column of one.
+- **Global, synchronised reusable sections are deferred by decision.** Saved
+  sections remain local reusable copies: the library is in `LOCAL_ONLY_KEYS`,
+  device-local and stripped from the published payload. Making a block truly
+  shared would put it in the published record, and that was explicitly held
+  back from this phase.
+- **The carousel has no dots or slide counter**, and does not announce slide
+  changes to a screen reader beyond the scroll position.
+- **`video` embeds two hosts.** A third needs an entry in `PB_VIDEO_HOSTS`,
+  which is one object with a pattern and a builder — not a code change
+  anywhere else.
+- **No lightbox, no count-up animation, no Theme Builder, no dynamic
+  templates.** Each was considered and left out; the first three are in the
+  table above with the reasoning.
+
+---
+
 ## Tests
 
 `tests/test_pagebuilder.js` — 343 assertions. Style questions are asserted on
@@ -1890,3 +2086,42 @@ existing coverage to grow rather than sit beside something new.
 Three assertions in those suites were counting to a literal `13`. They now
 compare against `CMS.sections.elementTypes`, which is what they were trying
 to say and does not go stale the next time a type is added.
+
+### Phase 2B
+
+No suite of its own here either. Every claim is asserted in the suite that
+already owned the question.
+
+| Suite | Was | Now | What it gained |
+| --- | --- | --- | --- |
+| `test_cms_bake.js` | 349 | 372 | one page carrying every new element, built for JSK1, Playzone9 and a synthetic third brand: markup asserted IDENTICAL where it should be, no cross-brand contamination, container CSS and media query baked for each |
+| `test_pagebuilder_hardening.js` | 224 | 271 | the tabs driven from the keyboard with focus asserted, the carousel's strip scrolling from CSS alone, and eight video addresses against what each is allowed to become |
+| `test_pb_bake.js` | 124 | 156 | all eight new elements plus a styled container in the byte-for-byte fixture |
+| `test_pagebuilder_design.js` | 97 | 113 | probe content for every new type, and `minWidth` added to the probe map |
+| `test_pagebuilder_v2.js` | 145 | 157 | the palette count taken from the renderer's own type list |
+| `test_pagebuilder_columns.js` | 58 | 84 | a container styled every way it can be, read from computed style at three widths, an untouched one asserted value by value to be unchanged, and a hostile one |
+| `test_pagebuilder.js` | 343 | 349 | element and container visibility at 1280/900/390, and that hidden content is still in the HTML |
+| `test_pagebuilder_defaults.js` | 58 | 66 | the new types added, rendered and measured |
+| `test_pagebuilder_library.js` | 140 | 141 | the two new starters |
+
+Four problems in the suites themselves surfaced while adding these, and each
+was a bug in the test rather than in the code:
+
+- `test_pagebuilder_hardening.js` and `test_pagebuilder_design.js` seeded
+  `localStorage` from `addInitScript`, which runs in **every frame**. In a
+  sandboxed cross-origin one — which the video element puts on the page —
+  that throws a `SecurityError` which arrives as a page error and reads as a
+  failure of whatever put the frame there. Both now guard on being the top
+  document, rather than wrapping the call in a `try` that would hide a real
+  storage failure too.
+- `test_pagebuilder_design.js` had no probe value for `minWidth`, so the probe
+  set `undefined`, nothing changed, and three elements were reported as
+  offering controls that do nothing.
+- and its `columns` probe collides with the gallery's own default: at that
+  viewport the box is 826px, where `auto-fill minmax(180px, 1fr)` resolves to
+  four 199px tracks — identical to what the `4` preset asks for. A per-type
+  override exists now, with the arithmetic written down.
+
+Two genuine omissions those probes caught: `fontWeight` was allow-listed for
+`plans` and `carousel` and the CSS did not read it. A control is offered only
+if it does something.
