@@ -357,11 +357,35 @@ const cs = (p, sel, prop) => p.$eval(sel, (n, k) => getComputedStyle(n)[k], prop
       faq: { items: [{ question: 'Q', answer: 'A' }] },
       socialLinks: { items: [{ platform: 'whatsapp', url: '#' }] },
       icon: { icon: 'star', label: 'i' }, divider: {}, spacer: {},
-      columns: { columns: [{ elements: [] }, { elements: [] }] }, image: { src: 'assets/images/favicon.png', alt: 'a' }
+      columns: { columns: [{ elements: [] }, { elements: [] }] }, image: { src: 'assets/images/favicon.png', alt: 'a' },
+      list: { items: [{ text: 'L one' }, { text: 'L two' }] },
+      /* Three rows: the first is the header row, and a table with only a
+         header renders nothing at all. */
+      table: { cols: 2, header: true,
+               items: [{ c1: 'A', c2: 'B' }, { c1: 'r1', c2: 'v1' }, { c1: 'r2', c2: 'v2' }] },
+      /* A contents list describes the headings around it, so it needs
+         siblings; SIBLINGS below supplies them rather than leaving this
+         case to depend on which other types happen to be on the page. */
+      toc: { title: 'On this page', depth: 'h3' }
     };
+    /* A contents list cannot render alone. Identical for every probe on
+       the page, so it cannot be what a comparison sees change. */
+    const SIBLINGS = [
+      el('g_sib_a', 'heading', { text: 'Sibling one', level: 'h2' }),
+      el('g_sib_b', 'heading', { text: 'Sibling two', level: 'h2' })
+    ];
     const colorTypes = Object.keys(keys).filter(t => keys[t].indexOf('color') > -1);
     const typoTypes = Object.keys(keys).filter(t => keys[t].indexOf('typography') > -1);
-    const elements = colorTypes.map(t => el('c_' + t, t, CONTENT[t], { color: '@danger' }))
+    /* The fixture has to cover every type the renderer offers these keys
+       for, or a missing entry silently becomes an element with no content
+       -- which renders nothing and reads as a failing role rather than as
+       a gap in the test. That is exactly how this suite failed when the
+       list and table types were added. */
+    const uncovered = [...new Set(colorTypes.concat(typoTypes))]
+      .filter(t => !Object.prototype.hasOwnProperty.call(CONTENT, t));
+    check('the fixture covers every type these roles apply to', uncovered.length === 0, uncovered);
+    const elements = SIBLINGS
+      .concat(colorTypes.map(t => el('c_' + t, t, CONTENT[t], { color: '@danger' })))
       .concat(typoTypes.map(t => el('y_' + t, t, CONTENT[t], { typography: '@h1' })));
     const { ctx, p, errs } = await page(b, [sec('s1', 'text', { elements })]);
 

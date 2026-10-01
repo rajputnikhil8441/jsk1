@@ -3324,7 +3324,8 @@
             html: sstr(p.body),
             published: false,        /* is builder content live for this page */
             draftPending: false,     /* a draft says something else */
-            draftOnly: false         /* a draft exists but nothing is published */
+            draftOnly: false,        /* a draft exists but nothing is published */
+            sections: null           /* the published tree, for checks the markup cannot answer */
         };
         if (!CMS.sections || typeof CMS.sections.published !== 'function' ||
             typeof CMS.sections.renderInto !== 'function') return out;
@@ -3348,6 +3349,12 @@
         out.published = true;
         out.draftPending = !!(st && st.dirty);
         out.html = renderPublishedHtml(key, pub);
+        /* Kept alongside the markup for the one question the markup cannot
+           answer: an FAQ question with no answer renders (the panel is
+           simply empty) but is deliberately left out of the FAQPage
+           schema, so the only way to tell an author why is to compare the
+           tree with what the schema reader accepted. */
+        out.sections = pub;
         return out;
     }
 
@@ -3359,6 +3366,21 @@
         var what = builder ? 'published page content' : 'page body';
         var doc = contentDoc(content.html);
         var body = doc && doc.body;
+
+        /* The renderer emits a JSON-LD block inside the mount for an FAQ,
+           and textContent concatenates EVERY descendant text node -- script
+           contents included. Left in, the schema's own JSON would be counted
+           as page words, and on an otherwise empty page it would answer "is
+           there anything at all" with yes. It is removed from this inert
+           copy before anything is measured: these checks are about what a
+           reader sees, and nobody reads a script. The schema is judged
+           separately, from the section tree, further down. */
+        if (body) {
+            var scripts = body.querySelectorAll('script');
+            for (var s = scripts.length - 1; s >= 0; s--) {
+                if (scripts[s].parentNode) scripts[s].parentNode.removeChild(scripts[s]);
+            }
+        }
 
         if (builder) {
             if (content.draftPending)
@@ -3430,6 +3452,88 @@
             if (flagged[href]) continue;
             var known = Object.keys(pages).some(function (k) { return pages[k].url === href; });
             if (!known) { flagged[href] = 1; warn('Links to <code>' + esc(href) + '</code>, which is not a page the CMS knows about.'); }
+            /* A link to a page that exists but is a DRAFT is a link to a
+               404 until it is published, which is worse than a typo
+               because nothing about the page looks wrong. */
+            else {
+                var target = null;
+                Object.keys(pages).forEach(function (k) { if (pages[k].url === href) target = pages[k]; });
+                if (target && window.SEOFiles && !SEOFiles.isPublished(target)) {
+                    bad('Links to <code>' + esc(href) + '</code>, which is a DRAFT page. ' +
+                        'The build generates no file for it, so the link is a 404 until it is published.');
+                }
+            }
+        }
+
+        /* ---- the Phase 2A elements, judged on what they rendered ----
+
+           Read from the rendered HTML rather than from the section data,
+           like every check above it: what reaches a reader is the markup,
+           and a section tree that renders nothing is not a problem worth
+           reporting twice. Each of these is a WARNING, not a blocker --
+           an author decides what their page says. */
+
+        /* A table with no header row gives a screen reader nothing to
+           announce per cell, and a crawler no column names. */
+        var tables = body ? body.querySelectorAll('.pb-table-t') : [];
+        var noHead = 0, noCap = 0;
+        for (i = 0; i < tables.length; i++) {
+            if (!tables[i].querySelector('th')) noHead += 1;
+            if (!tables[i].querySelector('caption')) noCap += 1;
+        }
+        if (tables.length) {
+            if (noHead) warn(noHead + ' of ' + tables.length + ' table(s) have no header row. ' +
+                             'Turn on “First row is a header row” so the columns have names.');
+            else ok('Every table has a header row.');
+            if (noCap) warn(noCap + ' of ' + tables.length + ' table(s) have no caption. ' +
+                            'A caption is what a screen reader reads before the contents.');
+        }
+
+        /* A one-item list is a paragraph with a bullet in front of it. */
+        var lists = body ? body.querySelectorAll('.pb-list') : [];
+        var thin = 0;
+        for (i = 0; i < lists.length; i++) {
+            if (lists[i].querySelectorAll('.pb-list-item').length < 2) thin += 1;
+        }
+        if (thin) warn(thin + ' list(s) have only one item. A list of one reads as a ' +
+                       'paragraph with a bullet in front of it.');
+
+        /* A contents list whose links point at nothing is the one case here
+           that is a fault rather than a judgement. */
+        var tocs = body ? body.querySelectorAll('.pb-toc') : [];
+        var deadLinks = 0;
+        for (i = 0; i < tocs.length; i++) {
+            var tl = tocs[i].querySelectorAll('.pb-toc-link');
+            for (var t = 0; t < tl.length; t++) {
+                var id = String(tl[t].getAttribute('href') || '').replace(/^#/, '');
+                if (!id || !body.querySelector('[id="' + id.replace(/"/g, '') + '"]')) deadLinks += 1;
+            }
+        }
+        if (tocs.length) {
+            if (deadLinks) bad(deadLinks + ' contents link(s) point at a heading that is not on this page.');
+            else ok('Every contents link points at a heading on this page.');
+        }
+
+        /* ---- the FAQ, and the schema it does or does not earn ----
+           Counted through the renderer's own readers so this says what the
+           page will really publish: pb-faq-item is what rendered, faqPairs
+           is what the FAQPage block accepted. A question with no answer is
+           the difference, and it is the one thing an author cannot see. */
+        var faqItems = body ? body.querySelectorAll('.pb-faq-item').length : 0;
+        if (faqItems && content.sections && CMS.sections.faqPairs) {
+            var pairs = 0;
+            try { pairs = CMS.sections.faqPairs(content.sections).length; } catch (e) { pairs = 0; }
+            var short = faqItems - pairs;
+            if (short > 0)
+                warn(short + ' of ' + faqItems + ' FAQ question(s) have no answer, so they are left ' +
+                     'out of this page’s FAQPage data for search engines. An answer is what ' +
+                     'makes a question worth marking up.');
+            if (pairs > 0)
+                ok(pairs + ' FAQ question(s) are published as FAQPage data, in the HTML the site ' +
+                   'serves — so a search engine can show them without running JavaScript.');
+            else
+                warn('This page has an FAQ but no complete question-and-answer pair, so it ' +
+                     'publishes no FAQPage data.');
         }
     }
 

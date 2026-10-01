@@ -278,6 +278,11 @@
     return {
         version: 1,
         sitemap: sitemap,
+        /* Exported because the admin needs the same answer this module
+           already gives the sitemap: a draft page has no generated file,
+           so nothing should offer it as somewhere to link. One reader,
+           asked twice. */
+        isPublished: isPublished,
         robots: robots,
         sitemapPages: sitemapPages,
         sitemapAudit: sitemapAudit,

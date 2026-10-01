@@ -1624,7 +1624,11 @@ window.PBAdmin = function (host) {
         ['notice',      'Notice'],
         ['featureBox',  'Feature box'],
         ['faq',         'FAQ'],
-        ['socialLinks', 'Social links']
+        ['socialLinks', 'Social links'],
+        /* Phase 2A */
+        ['list',        'List'],
+        ['table',       'Table'],
+        ['toc',         'Table of contents']
     ];
 
     /* Choice lists come from the renderer's own allow-lists, so the admin
@@ -1639,15 +1643,20 @@ window.PBAdmin = function (host) {
     var PB_CONTENT_FIELDS = {
         heading: [['text', 'Text', 'text'],
                   ['level', 'Level', 'select', ['h1', 'h2', 'h3', 'h4']]],
-        text:    [['text', 'Text', 'area']],
+        text:    [['text', 'Text', 'area'],
+                  /* Blank is the paragraph: an element that was never given
+                     a kind stores no key at all, which is what everything
+                     already published looks like. */
+                  ['tag', 'Kind', 'select', [['', 'Paragraph'], ['blockquote', 'Quotation']]],
+                  ['rich', 'Allow basic formatting', 'bool']],
         image:   [['src', 'Image', 'asset'], ['alt', 'Alt text', 'text'],
                   ['width', 'Width (px)', 'num'], ['height', 'Height (px)', 'num'],
-                  ['href', 'Links to', 'url'], ['newTab', 'Open in a new tab', 'bool']],
-        button:  [['text', 'Label', 'text'], ['href', 'Links to', 'url'],
+                  ['href', 'Links to', 'pageLink'], ['newTab', 'Open in a new tab', 'bool']],
+        button:  [['text', 'Label', 'text'], ['href', 'Links to', 'pageLink'],
                   ['newTab', 'Open in a new tab', 'bool']],
         card:    [['title', 'Title', 'text'], ['text', 'Text', 'area'],
                   ['image', 'Image', 'asset'], ['imageAlt', 'Image alt', 'text'],
-                  ['buttonText', 'Button label', 'text'], ['buttonHref', 'Button links to', 'url'],
+                  ['buttonText', 'Button label', 'text'], ['buttonHref', 'Button links to', 'pageLink'],
                   ['buttonNewTab', 'Open in a new tab', 'bool']],
 
         /* V2. Divider and Spacer are pure styling and carry no content, so
@@ -1655,11 +1664,11 @@ window.PBAdmin = function (host) {
            showing an empty panel. */
         icon:    [['icon', 'Icon', 'iconSelect'],
                   ['label', 'Accessible label', 'text'],
-                  ['href', 'Links to', 'url'], ['newTab', 'Open in a new tab', 'bool']],
+                  ['href', 'Links to', 'pageLink'], ['newTab', 'Open in a new tab', 'bool']],
         notice:  [['text', 'Text', 'area'],
                   ['variant', 'Type', 'select', ['info', 'success', 'warning', 'danger']],
                   ['icon', 'Icon', 'iconSelect'],
-                  ['linkText', 'Link text', 'text'], ['href', 'Links to', 'url'],
+                  ['linkText', 'Link text', 'text'], ['href', 'Links to', 'pageLink'],
                   ['newTab', 'Open in a new tab', 'bool']],
         featureBox: [['icon', 'Icon', 'iconSelect'],
                   ['image', 'Image (used when no icon)', 'asset'],
@@ -1667,10 +1676,23 @@ window.PBAdmin = function (host) {
                   ['title', 'Heading', 'text'],
                   ['titleLevel', 'Heading level', 'select', ['h2', 'h3', 'h4', 'h5', 'h6']],
                   ['text', 'Description', 'area'],
-                  ['linkText', 'Link text', 'text'], ['href', 'Links to', 'url'],
+                  ['linkText', 'Link text', 'text'], ['href', 'Links to', 'pageLink'],
                   ['newTab', 'Open in a new tab', 'bool']],
         faq:     [['single', 'Only one answer open at a time', 'bool']],
-        socialLinks: []
+        socialLinks: [],
+
+        /* Phase 2A. The rows themselves are repeating items, below. */
+        list:    [['ordered', 'Numbered list', 'bool'],
+                  ['rich', 'Allow basic formatting', 'bool']],
+        table:   [['caption', 'Caption (describes the table)', 'text'],
+                  ['cols', 'Columns', 'select',
+                      [['', 'As wide as the widest row'], ['1', '1'], ['2', '2'], ['3', '3'],
+                       ['4', '4'], ['5', '5'], ['6', '6'], ['7', '7'], ['8', '8']]],
+                  ['header', 'First row is a header row', 'bool']],
+        toc:     [['title', 'Heading above it (optional)', 'text'],
+                  ['titleLevel', 'Heading level', 'select', ['h2', 'h3', 'h4', 'h5', 'h6']],
+                  ['depth', 'Include down to', 'tocDepth'],
+                  ['ordered', 'Numbered', 'bool']]
     };
 
     /* Repeating sub-items: which element types have them, what one blank
@@ -1699,8 +1721,68 @@ window.PBAdmin = function (host) {
             title: function (it) { return String((it && it.platform) || 'Link'); },
             fields: [['platform', 'Platform', 'socialSelect'], ['url', 'URL', 'url'],
                      ['label', 'Accessible label (optional)', 'text']]
+        },
+
+        list: {
+            key: 'items', label: 'Items', addLabel: 'Add item',
+            blank: function () { return { text: 'List item' }; },
+            title: function (it) { return String((it && it.text) || 'Item'); },
+            fields: [['text', 'Text', 'area']]
+        },
+
+        table: {
+            key: 'items', label: 'Rows', addLabel: 'Add row',
+            blank: function () { return { c1: '' }; },
+            title: function (it) { return String((it && it.c1) || 'Row'); },
+            /* The only item config whose fields depend on the element:
+               showing eight cell boxes for a three-column table would be
+               eight chances to type into a column that is not drawn. The
+               count comes from the same content key the renderer reads. */
+            fields: function (el) {
+                var out = [];
+                for (var i = 1; i <= pbTableCols(el); i++) {
+                    out.push(['c' + i, 'Cell ' + i, 'text']);
+                }
+                return out;
+            }
         }
     };
+
+    /* How many cell boxes a table row shows. The author's choice when they
+       made one; otherwise the widest row, which is what the renderer falls
+       back to as well, so the editor and the page never disagree about how
+       many columns there are. */
+    /* The renderer's own h-name -> deepest-level map, read rather than
+       copied: the same rule icons and platforms follow, so the admin can
+       never count to a depth the renderer does not honour. */
+    function pbTocDepths() { return CMS.sections.tocDepths || { h2: 2, h3: 3, h4: 4 }; }
+
+    /* The depth control's options, in level order, labelled. */
+    function pbTocDepthOptions() {
+        var d = pbTocDepths();
+        return Object.keys(d)
+            .sort(function (a, b) { return d[a] - d[b]; })
+            .map(function (k) {
+                var names = [];
+                for (var lv = 2; lv <= d[k]; lv++) names.push('H' + lv);
+                return [k, names.length === 1 ? 'H2 only'
+                    : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1]];
+            });
+    }
+
+    function pbTableCols(el) {
+        var c = (el && el.content) || {};
+        var n = parseInt(c.cols, 10);
+        if (n >= 1) return Math.min(n, 8);
+        var rows = Array.isArray(c.items) ? c.items : [];
+        var widest = 0;
+        rows.forEach(function (r) {
+            for (var k = 8; k > widest; k--) {
+                if (String((r || {})['c' + k] || '').trim()) { widest = k; break; }
+            }
+        });
+        return Math.max(1, widest);
+    }
 
     var PB_STYLE_FIELDS = [
         /* V2: column tracks. First in the list because it is the control
@@ -1845,7 +1927,10 @@ window.PBAdmin = function (host) {
         spacer:      { height: 'Height (px)', maxWidth: 'Max width (px)' },
         divider:     { maxWidth: 'Width (px)' },
         icon:        { fontSize: 'Icon size (px)' },
-        socialLinks: { fontSize: 'Icon size (px)', gap: 'Space between icons (px)' }
+        socialLinks: { fontSize: 'Icon size (px)', gap: 'Space between icons (px)' },
+        list:        { gap: 'Space between items (px)' },
+        table:       { padding: 'Space inside cells (px)' },
+        toc:         { gap: 'Space between entries (px)' }
     };
 
     var PB_DEVICES = [['base', 'Desktop'], ['tablet', 'Tablet'], ['mobile', 'Mobile']];
@@ -2374,6 +2459,108 @@ window.PBAdmin = function (host) {
        thumbnail of whatever is currently set. The text input stays because
        a page may already name an image the picker does not list, and that
        must remain editable. */
+    /* ---------- the internal link picker ----------
+
+       WHY. Every href in the builder was a bare text box, so linking to
+       another page of this site meant remembering its file name and typing
+       it correctly. A typo is a 404 a visitor finds and an internal link a
+       crawler loses. The admin's SEO checks already flag one afterwards --
+       "links to X, which is not a page the CMS knows about" -- and offering
+       the list is how that stops happening in the first place.
+
+       BRAND AWARENESS HERE IS THE ABSENCE OF A FEATURE, NOT ONE. The list
+       comes from CMS.data().pages: the merged record of whichever brand
+       resolved, and the only pages object this file can see. There is no
+       second page store to query, no request of its own, and no brand id
+       or host anywhere in this file -- so one site's admin cannot be shown
+       another site's page, because the data is not there to show. The
+       brand-free rule this relies on is asserted in
+       tests/test_brand_isolation.js.
+
+       A DRAFT PAGE IS NOT OFFERED. The build generates no file for one, so
+       a link to it is a link to a 404 until someone publishes it. Published
+       is decided by SEOFiles.isPublished(), the same reader the sitemap
+       uses, rather than a fourth copy of the rule.
+
+       The text box stays, and stays authoritative: the picker writes into
+       it. Anything the picker cannot offer -- an external address, an
+       anchor, a mailto: -- is still typed, and still checked by pbUrl() as
+       it always was. */
+    function pbInternalPages() {
+        var pages = (CMS.data() || {}).pages || {};
+        var out = [], k;
+        for (k in pages) {
+            if (!Object.prototype.hasOwnProperty.call(pages, k)) continue;
+            var p = pages[k] || {};
+            var url = String(p.url == null ? '' : p.url).trim();
+            /* The home page's url is empty by convention; it is reachable
+               as "/", which is what a link to it has to say. */
+            var href = url === '' ? '/' : url;
+            /* Only a plain page file name, which is the only shape the
+               build generates and the only one the SEO checks recognise. */
+            if (href !== '/' && !/^[a-z0-9-]+\.html$/i.test(href)) continue;
+            if (!SEOFiles.isPublished(p)) continue;
+            out.push({ href: href, label: String(p.label || k), key: k });
+        }
+        out.sort(function (a, b) { return a.label.localeCompare(b.label); });
+        return out;
+    }
+
+    function pbPageLinkField(spec, bag, key, ctx) {
+        var row = pbFieldFor([spec[0], spec[1], 'url'], bag, key, ctx);
+        var input = row.querySelector('.pb-in');
+
+        var bar = document.createElement('span');
+        bar.className = 'pb-linkpick';
+
+        var sel = document.createElement('select');
+        sel.className = 'pb-in pb-linkpick-sel';
+        sel.setAttribute('data-act', 'pick-page');
+        var list = pbInternalPages();
+        var blank = document.createElement('option');
+        blank.value = '';
+        blank.textContent = list.length
+            ? '\u2026 or pick a page on this site'
+            : 'No published pages to link to yet';
+        sel.appendChild(blank);
+        list.forEach(function (p) {
+            var o = document.createElement('option');
+            o.value = p.href;
+            o.textContent = p.label + ' (' + p.href + ')';
+            sel.appendChild(o);
+        });
+        sel.disabled = !list.length;
+
+        /* The select is a shortcut into the text box, never a second store:
+           it reports what the box holds and it resets to blank after a
+           choice, so there is only ever one value and it is the typed one. */
+        function sync() {
+            var v = String(bag[key] == null ? '' : bag[key]).trim();
+            sel.value = list.some(function (p) { return p.href === v; }) ? v : '';
+        }
+
+        sel.addEventListener('change', function () {
+            if (!sel.value) return;
+            bag[key] = sel.value;
+            if (input) input.value = sel.value;
+            /* The box's own listeners are what the rest of the card reacts
+               to, so the change is announced through it rather than
+               duplicated here. */
+            if (input) input.dispatchEvent(new Event('change', { bubbles: true }));
+            pbEdited(false);
+            sync();
+        });
+        if (input) {
+            input.addEventListener('input', sync);
+            input.addEventListener('change', sync);
+        }
+        sync();
+
+        bar.appendChild(sel);
+        row.appendChild(bar);
+        return row;
+    }
+
     function pbImagePickField(spec, bag, key, ctx) {
         var row = pbFieldFor([spec[0], spec[1], 'url'], bag, key, ctx);
         var input = row.querySelector('.pb-in');
@@ -2666,10 +2853,12 @@ window.PBAdmin = function (host) {
            is optional on a notice and a feature box. */
         if (spec[2] === 'iconSelect')   spec = [spec[0], spec[1], 'select', [''].concat(pbIconNames())];
         if (spec[2] === 'socialSelect') spec = [spec[0], spec[1], 'select', pbSocialNames()];
+        if (spec[2] === 'tocDepth')     spec = [spec[0], spec[1], 'select', pbTocDepthOptions()];
         if (spec[2] === 'colsSelect') {
             spec = [spec[0], spec[1], 'select', pbColOptions((ctx && ctx.device) || 'base')];
         }
         if (spec[2] === 'asset')        return pbImagePickField(spec, bag, key, ctx);
+        if (spec[2] === 'pageLink')     return pbPageLinkField(spec, bag, key, ctx);
         if (spec[2] === 'colorRef')     return pbColorRefField(spec, bag, key, ctx);
         if (spec[2] === 'typoRef')      return pbTypoRefField(spec, bag, key, ctx);
         if (spec[2] === 'borderParts')  return pbBorderField(spec, bag, key, ctx);
@@ -3056,7 +3245,27 @@ window.PBAdmin = function (host) {
         faq:         function () {
             return { items: [{ question: 'Frequently asked question', answer: 'Answer', open: false }] };
         },
-        socialLinks: function () { return { items: [{ platform: 'whatsapp', url: '#' }] }; }
+        socialLinks: function () { return { items: [{ platform: 'whatsapp', url: '#' }] }; },
+
+        /* Phase 2A. Both refuse to draw anything without rows -- a list
+           with no item and a table with only a header row each return
+           null by design -- so they ship with enough to be visible the
+           moment they are added. The table's first row is its header,
+           which is why it has two. */
+        list:  function () {
+            return { items: [{ text: 'First item' }, { text: 'Second item' }] };
+        },
+        table: function () {
+            return { cols: '2', header: true,
+                     items: [{ c1: 'Column one', c2: 'Column two' },
+                             { c1: 'Value', c2: 'Value' }] };
+        },
+        /* The one type that cannot be made to render by its own defaults:
+           a table of contents lists the headings AROUND it, so on a page
+           with none there is nothing to list and it draws nothing. The
+           hint below says that, rather than leaving an author staring at
+           an element that appears to be broken. */
+        toc:   function () { return { title: 'On this page', depth: 'h3' }; }
     };
 
     function pbBlankElement(type) {
@@ -3284,7 +3493,13 @@ window.PBAdmin = function (host) {
                 dimensionKeys: PB_ASSET_DIMS[el.type],
                 /* Choosing an image can fill in the width and height boxes
                    beside it, so those inputs have to be rebuilt. */
-                repaint: function () { pbPersist(); repaint(); pbPaintPreview(); }
+                repaint: function () { pbPersist(); repaint(); pbPaintPreview(); },
+                /* A table's column count decides how many cell boxes each
+                   row shows, so changing it has to rebuild them. Every
+                   other content key leaves the card alone. */
+                onChange: function (key) {
+                    if (el.type === 'table' && key === 'cols') cctx.repaint();
+                }
             };
             (PB_CONTENT_FIELDS[el.type] || []).forEach(function (spec) {
                 grid.appendChild(pbFieldFor(spec, el.content, spec[0], cctx));
@@ -3299,6 +3514,43 @@ window.PBAdmin = function (host) {
                 nc.className = 'hint';
                 nc.textContent = 'This element has no content to set \u2014 use Design to style it.';
                 body.appendChild(nc);
+            }
+
+            /* What "Allow basic formatting" actually allows, said where it
+               is switched on. Three marks is the whole list, and saying so
+               is the difference between a feature and a guess. */
+            if (el.type === 'text' || el.type === 'list') {
+                var rh = document.createElement('p');
+                rh.className = 'hint';
+                rh.setAttribute('data-hint', 'rich');
+                rh.innerHTML = 'With formatting on: <code>**bold**</code>, ' +
+                    '<code>*italic*</code> and <code>[link text](page.html)</code>. ' +
+                    'Nothing else is markup — typed HTML stays visible as text, ' +
+                    'and a link address that is not allowed leaves the words behind.';
+                body.appendChild(rh);
+            }
+
+            /* A table of contents is the one element whose content is the
+               rest of the page, so the card has to say what it found. The
+               count comes from the renderer's own heading reader, which is
+               what decides whether anything is drawn. */
+            if (el.type === 'toc') {
+                var th = document.createElement('p');
+                th.className = 'hint';
+                th.setAttribute('data-hint', 'toc');
+                var deepest = pbTocDepths()[String((el.content || {}).depth || 'h3')] || 3;
+                var found = CMS.sections.outline(pbDraft).items.filter(function (it) {
+                    var lv = parseInt(it.level.slice(1), 10);
+                    return lv >= 2 && lv <= deepest && String(it.text || '').trim();
+                }).length;
+                th.textContent = found < 2
+                    ? 'This page\u2019s sections have ' + found + ' heading(s) in range, so nothing ' +
+                      'is drawn yet. Add headings below it \u2014 a contents list of one link is ' +
+                      'noise rather than navigation. The page H1 is never listed.'
+                    : 'Lists ' + found + ' heading(s) from this page\u2019s sections. The page H1 is ' +
+                      'never listed, and the list is rebuilt from the headings every time the ' +
+                      'page renders.';
+                body.appendChild(th);
             }
 
             /* Images without alt text cost the page in search and in
@@ -3417,7 +3669,10 @@ window.PBAdmin = function (host) {
 
                 var g = document.createElement('div');
                 g.className = 'pb-grid';
-                cfg.fields.forEach(function (spec) {
+                /* A fields list may depend on the element -- a table's row
+                   shows one box per column it actually draws. */
+                var specs = typeof cfg.fields === 'function' ? cfg.fields(el) : cfg.fields;
+                specs.forEach(function (spec) {
                     g.appendChild(pbFieldFor(spec, it, spec[0]));
                 });
                 row.appendChild(g);

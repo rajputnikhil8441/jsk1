@@ -310,6 +310,33 @@ async function serveAsOtherBrand(ctx, brandJs) {
       check(`${f} carries no brand name`,
         !BRAND_WORDS.test(fs.readFileSync(path.join(ROOT, f), 'utf8')));
     }
+
+    /* ---- the link picker's page list (Phase 2A) ----
+       It offers the author a list of pages to link to, so the question
+       "whose pages?" has to have exactly one answer. Isolation here is
+       not a check the picker performs -- it is the absence of any way to
+       reach another brand: the list is read from CMS.data(), the merged
+       record of whichever brand resolved, and the file holds no second
+       page source, no request of its own and no host or brand id to aim
+       one at. A behavioural check that the options ARE exactly that
+       record's publishable pages is in tests/test_pagebuilder_seo.js. */
+    {
+      const ab = fs.readFileSync(path.join(ROOT, 'js', 'admin-builder.js'), 'utf8');
+      const picker = (ab.match(/function pbInternalPages\(\)[\s\S]*?\n    \}/) || [''])[0];
+      check('the link picker reads its pages from the resolved CMS record',
+        /CMS\.data\(\)[\s\S]*?\.pages/.test(picker), picker.slice(0, 160));
+      check('  and from nothing else: no fetch, no storage, no second store',
+        !/fetch\(|XMLHttpRequest|localStorage|sessionStorage|supabase/i.test(picker), picker);
+      /* The brand-free check above covers a brand NAME. This covers the
+         other way a file could aim at one: the hostname table the
+         resolver uses. Reading it here would be a second page source. */
+      check('  the whole file never reaches for the brand resolver',
+        !/CMS_BRANDS|CMS_BRAND\b|cmsConfig/.test(ab),
+        (ab.match(/.{0,40}CMS_BRAND.{0,40}/) || [])[0]);
+      check('  and it asks SEOFiles for what “published” means, not a copy',
+        /SEOFiles\.isPublished\(/.test(picker) &&
+        (ab.match(/status[\s\S]{0,40}published/g) || []).length === 0, picker.slice(0, 400));
+    }
     /* js/admin.js is admin-only, never served to a visitor, but an admin
        for another brand should not read JSK1's domain in a help hint. */
     const adm = fs.readFileSync(path.join(ROOT, 'js', 'admin.js'), 'utf8');

@@ -359,10 +359,11 @@ const shot = p => p.evaluate(() => {
   /* ================================================================
      5. EVERY ELEMENT TYPE, EMPTY AND HOSTILE
      ================================================================ */
-  console.log('\n===== ALL THIRTEEN TYPES, WITH NOTHING AND WITH EVERYTHING =====');
+  console.log('\n===== ALL FIFTEEN TYPES, WITH NOTHING AND WITH EVERYTHING =====');
   {
     const TYPES = ['heading', 'text', 'image', 'button', 'card', 'columns', 'divider',
-                   'spacer', 'icon', 'notice', 'featureBox', 'faq', 'socialLinks'];
+                   'spacer', 'icon', 'notice', 'featureBox', 'faq', 'socialLinks',
+                   'list', 'table', 'toc'];
     const HOSTILE = {
       text: '<img src=x onerror=window.__pwned=1>', level: 'javascript:',
       src: 'javascript:alert(1)', alt: '"><script>window.__pwned=2</script>',
@@ -372,8 +373,17 @@ const shot = p => p.evaluate(() => {
       platform: 'prototype', url: 'vbscript:msgbox(1)', label: 'x', linkText: 'x',
       buttonText: 'x', buttonHref: '//evil.example/x', width: 'expression(1)',
       height: '-99', newTab: 'yes',
+      /* Phase 2A content keys, hostile too: a column count that is not a
+         number, a caption carrying markup, and rows whose cells hold a
+         script payload and a nested object. */
+      cols: 'constructor', caption: '<script>window.__pwned=9</script>', ordered: 'yes',
+      header: 'maybe', depth: '__proto__', tag: 'script', rich: 'yes',
+      titleLevel: 'toString',
       items: [{ question: '<script>q</script>', answer: 'a' },
-              { platform: 'constructor', url: 'javascript:x' }]
+              { platform: 'constructor', url: 'javascript:x' },
+              { text: '<img src=x onerror=window.__pwned=5>' },
+              { c1: '<script>window.__pwned=6</script>', c2: { nested: 1 },
+                c3: '<b>bold</b>' }]
     };
     const HOSTILE_STYLE = { color: 'red;}body{display:none}', bgImage: 'javascript:x',
       padding: 'var(--evil)', border: '1px solid url(x)', align: '__proto__' };
@@ -385,7 +395,10 @@ const shot = p => p.evaluate(() => {
            mode === 'empty' ? {} : { mobile: { fontSize: 'expression(9)' } })]));
       const r = await page(b, { sections });
       const s = await shot(r.p);
-      check(mode + ': every section is drawn', s.secs === 13, s.secs);
+      /* One section per type, counted from TYPES rather than a literal, so
+         a type added without a section to render it fails here. */
+      check(mode + ': every section is drawn', s.secs === TYPES.length,
+            { drew: s.secs, types: TYPES.length });
       check(mode + ': no script ran', s.pwned === undefined, s.pwned);
       check(mode + ': no script element was created', s.scripts === 0);
       check(mode + ': no event-handler attribute survived', s.handlers === 0);
@@ -785,6 +798,87 @@ const shot = p => p.evaluate(() => {
     }));
     check('the homepage still has no builder mount at all', home.mounts === 0, home);
     check('and exactly one H1', home.h1 === 1, home);
+    await r.ctx.close();
+  }
+
+  /* ================================================================
+     INLINE FORMATTING IS A READER, NOT A PARSER  (Phase 2A)
+     ----------------------------------------------------------------
+     content.rich turns on three marks that the renderer reads out of an
+     ordinary string and turns into NODES. The danger would be if that
+     string ever reached innerHTML instead, so this drives it with the
+     payloads that would prove it had: tags, an event handler, a script
+     element, and link marks pointing at every scheme pbUrl() refuses.
+     ================================================================ */
+  console.log('\n===== INLINE FORMATTING NEVER BECOMES MARKUP =====');
+  {
+    const PAYLOADS = [
+      '<img src=x onerror=window.__pwned=21>',
+      '**<script>window.__pwned=22</script>**',
+      '*<svg onload=window.__pwned=23>*',
+      '[click](javascript:window.__pwned=24)',
+      '[click](data:text/html,<script>window.__pwned=25</script>)',
+      '[click](vbscript:msgbox(1))',
+      '[click](//evil.example/x)',
+      '[<b>label</b>](about.html)',
+      '**unclosed and *mixed ** marks [half](',
+      '[](about.html)'
+    ];
+    const r = await page(b, { sections: PAYLOADS.map((t, i) =>
+      sec('p' + i, 'text', [el('pe' + i, 'text', { rich: true, text: t }),
+                            el('pl' + i, 'list', { rich: true, items: [{ text: t }] })])) });
+    const s = await r.p.evaluate(() => ({
+      pwned: Object.keys(window).filter(k => k === '__pwned').length,
+      scripts: document.querySelectorAll('.pb-section script').length,
+      svg: document.querySelectorAll('.pb-section svg').length,
+      imgs: document.querySelectorAll('.pb-section img').length,
+      bolds: document.querySelectorAll('.pb-section b').length,
+      onAttrs: [...document.querySelectorAll('.pb-section *')].filter(
+        e => [...e.attributes].some(a => /^on/i.test(a.name))).length,
+      hrefs: [...document.querySelectorAll('.pb-section a')].map(a => a.getAttribute('href')),
+      /* The tags the reader IS allowed to have built. */
+      made: [...document.querySelectorAll('.pb-section .pb-strong, .pb-section .pb-em,' +
+                                          ' .pb-section .pb-inline-link')]
+             .map(e => e.tagName).sort().filter((v, i, a) => a.indexOf(v) === i),
+      secs: document.querySelectorAll('.pb-section').length,
+      text: document.body.innerText
+    }));
+    check('nothing executed', s.pwned === 0 && r.p.url().length > 0, s.pwned);
+    check('no script element was created', s.scripts === 0, s.scripts);
+    check('no svg, img or b element was created from a payload',
+      s.svg === 0 && s.imgs === 0 && s.bolds === 0, s);
+    check('no event-handler attribute exists anywhere in a section',
+      s.onAttrs === 0, s.onAttrs);
+    check('every anchor the reader built points somewhere pbUrl allows',
+      s.hrefs.every(h => /^(about\.html|#|\/|https?:|mailto:|tel:)/.test(h || '')), s.hrefs);
+    check('  and no anchor was built for a refused scheme',
+      !s.hrefs.some(h => /^\s*(javascript|data|vbscript):/i.test(h || '')) &&
+      !s.hrefs.some(h => /^\/\//.test(h || '')), s.hrefs);
+    check('the only tags it builds are strong, em and a',
+      s.made.every(t => ['STRONG', 'EM', 'A'].indexOf(t) > -1), s.made);
+    check('the payloads are still visible as text, which is the point',
+      s.text.includes('<img src=x onerror=window.__pwned=21>'), s.text.slice(0, 120));
+    check('every section still drew', s.secs === PAYLOADS.length, s.secs);
+    check('nothing threw', r.errs.length === 0, r.errs);
+    await r.ctx.close();
+  }
+
+  /* A rich flag that is not the boolean true leaves formatting OFF: the
+     renderer tests `=== true`, so a truthy string from an import cannot
+     switch the reader on behind an author's back. */
+  {
+    const r = await page(b, { sections: [sec('rs', 'text', [
+      el('r1', 'text', { rich: 'yes', text: 'Not **formatted**.' }),
+      el('r2', 'text', { rich: 1, text: 'Nor **this**.' }),
+      el('r3', 'text', { rich: true, text: 'But **this** is.' })])] });
+    const s = await r.p.evaluate(() => ({
+      strongs: document.querySelectorAll('.pb-section .pb-strong').length,
+      one: document.querySelector('[data-el="r1"]').textContent,
+      three: document.querySelector('[data-el="r3"]').textContent
+    }));
+    check('a rich flag that is not boolean true leaves the marks alone',
+      s.strongs === 1 && s.one === 'Not **formatted**.' && s.three === 'But this is.', s);
+    check('nothing threw', r.errs.length === 0, r.errs);
     await r.ctx.close();
   }
 

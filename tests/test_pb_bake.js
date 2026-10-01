@@ -97,7 +97,57 @@ const FIXTURE = [
       { id: 'el_soc', type: 'socialLinks', content: { items: [
           { platform: 'telegram', url: 'https://t.me/example', label: 'Telegram & chat' },
           { platform: 'notAPlatform', url: 'https://example.com' }
-        ] }, style: {}, responsive: {} }
+        ] }, style: {}, responsive: {} },
+      /* Phase 2A. Both are here for the same reason every other type is:
+         section A compares this fixture's baked HTML with the browser's
+         own innerHTML byte for byte, so a <ul>, an <ol> and a <table>
+         that minidom serialises differently from a real DOM would fail
+         there rather than in production. Ampersands and angle brackets
+         are in the content on purpose. */
+      { id: 'el_ul', type: 'list', content: { items: [
+          { text: 'Bullet one & two' },
+          { text: '' },
+          { text: '<not a tag>' }
+        ] }, style: {}, responsive: {} },
+      { id: 'el_ol', type: 'list', content: { ordered: true, items: [
+          { text: 'Step one' }, { text: 'Step two' }
+        ] }, style: {}, responsive: {} },
+      { id: 'el_tb', type: 'table', content: { caption: 'Odds & ends', header: true, items: [
+          { c1: 'Market', c2: 'Price' },
+          { c1: 'Home & away', c2: '1.90' },
+          { c1: '<b>Draw</b>', c2: '' }
+        ] }, style: {}, responsive: {} },
+      { id: 'el_tb2', type: 'table', content: { header: false, cols: 2, items: [
+          { c1: 'no header row', c2: 'second cell' }
+        ] }, style: {}, responsive: {} },
+      /* Phase 2A inline formatting. Here for the byte-for-byte comparison
+         too: <strong>, <em> and an <a> built as sibling nodes around text
+         nodes is the one shape minidom had never been asked to serialise. */
+      { id: 'el_rich', type: 'text', content: { rich: true,
+          text: 'Read the **rules & terms** and the *small print*, ' +
+                'or see [our <contact> page](contact.html).' },
+        style: {}, responsive: {} },
+      { id: 'el_quote', type: 'text', content: { tag: 'blockquote', rich: true,
+          text: 'A **quotation**.' }, style: {}, responsive: {} },
+      { id: 'el_richoff', type: 'text', content: {
+          text: 'Stars *stay* as **typed** when formatting is off.' },
+        style: {}, responsive: {} },
+      { id: 'el_badmark', type: 'text', content: { rich: true,
+          text: 'Try [this](vbscript:x) and [that](data:text/html,x) ' +
+                'and [other](javascript:alert(1)).' },
+        style: {}, responsive: {} },
+      /* Phase 2A table of contents. It points at the headings this very
+         fixture draws, which is what makes the anchor-integrity check
+         below meaningful: every href it bakes has to match an id that is
+         also in the baked HTML. */
+      { id: 'el_toc', type: 'toc', content: { title: 'On this page', depth: 'h3' },
+        style: {}, responsive: {} },
+      { id: 'el_h2a', type: 'heading', content: { text: 'Deposits & limits', level: 'h2' },
+        style: {}, responsive: {} },
+      { id: 'el_h3a', type: 'heading', content: { text: 'A sub point', level: 'h3' },
+        style: {}, responsive: {} },
+      { id: 'el_h4a', type: 'heading', content: { text: 'Too deep to list', level: 'h4' },
+        style: {}, responsive: {} }
     ] },
   { id: 'sec_off', type: 'text', enabled: false,
     visibility: { desktop: true, tablet: true, mobile: true }, style: {}, responsive: {},
@@ -226,6 +276,117 @@ function buildBrand(brandsDir, id, outDir) {
       !node.html.includes('no question, must be skipped'), true);
     check('an unknown social platform is skipped',
       !node.html.includes('notAPlatform'), true);
+
+    /* ---- Phase 2A: semantic list and table markup, in the STATIC HTML ----
+       The point of each of these is that a crawler reading the response
+       body, before any JavaScript, sees real list and table semantics. */
+    check('a list bakes as a real <ul> with <li> rows',
+      /<ul class="pb-el pb-list" data-el="el_ul">/.test(node.html) &&
+      node.html.includes('<li class="pb-list-item">Bullet one &amp; two</li>'),
+      node.html.slice(node.html.indexOf('el_ul') - 40, node.html.indexOf('el_ul') + 160));
+    check('  a numbered list bakes as an <ol>',
+      /<ol class="pb-el pb-list pb-list-ord" data-el="el_ol">/.test(node.html), true);
+    check('  a list row with no text is skipped, not drawn empty',
+      (node.html.match(/<li class="pb-list-item">/g) || []).length === 4, true);
+    check('  markup in a list row stays text',
+      node.html.includes('&lt;not a tag&gt;') && !node.html.includes('<not a tag>'), true);
+
+    check('a table bakes as a real <table> inside its scroll wrapper',
+      /<div class="pb-el pb-table" data-el="el_tb"><table class="pb-table-t">/.test(node.html), true);
+    check('  its caption is first, where HTML requires it',
+      /<table class="pb-table-t"><caption class="pb-table-cap">Odds &amp; ends<\/caption>/.test(node.html), true);
+    check('  the first row becomes <th scope="col">, so the columns are named',
+      node.html.includes('<th class="pb-table-h" scope="col">Market</th>') &&
+      node.html.includes('<th class="pb-table-h" scope="col">Price</th>'), true);
+    check('  data rows are <td> in a <tbody>',
+      /<tbody><tr class="pb-table-r"><td class="pb-table-c">Home &amp; away<\/td>/.test(node.html), true);
+    check('  an empty cell is drawn, because a blank cell is real data',
+      node.html.includes('<td class="pb-table-c"></td>'), true);
+    check('  markup in a cell stays text',
+      node.html.includes('&lt;b&gt;Draw&lt;/b&gt;') && !node.html.includes('<b>Draw'), true);
+    check('  header:false bakes no <thead> at all',
+      /data-el="el_tb2"><table class="pb-table-t"><tbody>/.test(node.html), true);
+    check('  and no table carries an inline style or event attribute',
+      !/<t(able|head|body|r|h|d)[^>]*\s(on\w+|style)=/.test(node.html), true);
+
+    /* ---- Phase 2A: inline formatting is NODES, never parsed markup ---- */
+    check('inline formatting bakes as real <strong>, <em> and <a> nodes',
+      node.html.includes('<strong class="pb-strong">rules &amp; terms</strong>') &&
+      node.html.includes('<em class="pb-em">small print</em>') &&
+      node.html.includes('<a class="pb-inline-link" href="contact.html">our &lt;contact&gt; page</a>'),
+      node.html.slice(node.html.indexOf('el_rich'), node.html.indexOf('el_rich') + 320));
+    check('  a quotation bakes as a <blockquote>, not a styled paragraph',
+      /<blockquote class="pb-el pb-textblock pb-quote" data-el="el_quote">/.test(node.html), true);
+    check('  with formatting off the marks are left as the author typed them',
+      node.html.includes('Stars *stay* as **typed** when formatting is off.'), true);
+    /* Two ways a bad address fails, both safe. An address the mark pattern
+       accepts goes to pbUrl(), which refuses it, and the LABEL is kept --
+       words, never an anchor. An address holding brackets never looks like
+       a link mark in the first place, so the whole thing stays as the plain
+       text it already was. Neither produces a link. */
+    check('  a refused link address leaves the words, not an anchor',
+      node.html.includes('>Try this and that and ') &&
+      node.html.includes('[other](javascript:alert(1)).<'),
+      node.html.slice(node.html.indexOf('el_badmark'), node.html.indexOf('el_badmark') + 180));
+    check('  and no inline node is an anchor to anywhere unsafe',
+      !/<a [^>]*href="\s*(javascript|data|vbscript):/i.test(node.html), true);
+
+    /* ---- Phase 2A: the contents list, and that its links go somewhere ---- */
+    check('a table of contents bakes as a <nav> with a real list',
+      /<nav class="pb-el pb-toc" aria-labelledby="pb-el_toc-t" data-el="el_toc">/.test(node.html) &&
+      node.html.includes('<ul class="pb-toc-list">'), true);
+    check('  headings carry the anchor id the list points at',
+      node.html.includes('<h2 class="pb-el pb-heading" id="pb-el_h2a-h"') &&
+      node.html.includes('<a class="pb-toc-link" href="#pb-el_h2a-h">Deposits &amp; limits</a>'),
+      true);
+    check('  it lists down to the depth asked for and no deeper',
+      node.html.includes('href="#pb-el_h3a-h"') && !node.html.includes('href="#pb-el_h4a-h"'),
+      true);
+    check('  the H1 a page already has is never listed',
+      !/pb-toc-link"[^>]*>Section Heading</.test(node.html), true);
+    /* The claim that matters: every anchor the contents list baked resolves
+       to an id that is ALSO in the baked HTML. A link to a heading that was
+       never given an id is a dead link in the served page, and this is what
+       would catch it. */
+    {
+      const targets = (node.html.match(/href="#(pb-[A-Za-z0-9_-]+-h)"/g) || [])
+        .map(m => m.replace(/.*#/, '').replace(/"$/, ''));
+      const dead = targets.filter(id => !node.html.includes('id="' + id + '"'));
+      check('  every contents link resolves to an id in the same HTML',
+        targets.length > 0 && dead.length === 0, { targets, dead });
+    }
+
+    /* ---- Phase 2A: FAQPage schema, IN THE STATIC HTML ----
+       The fixture's faq element carries two complete pairs and one with no
+       question. A crawler reading the response body, before any JavaScript,
+       has to find one FAQPage block holding the two. */
+    {
+      const blocks = node.html.match(
+        /<script type="application\/ld\+json" data-pb-faq="1">([\s\S]*?)<\/script>/g) || [];
+      check('a FAQ bakes exactly one FAQPage block into the HTML',
+        blocks.length === 1, blocks.length);
+      const txt = blocks.length
+        ? blocks[0].replace(/^<script[^>]*>/, '').replace(/<\/script>$/, '') : '';
+      let obj = null;
+      try { obj = JSON.parse(txt); } catch (e) { obj = { parseError: String(e) }; }
+      /* The reason tools/lib/minidom.js treats script as raw text: escaped
+         like ordinary text, these quotes would come out as &quot; and this
+         parse would fail -- which is to say a crawler's would too. */
+      check('  and it is valid JSON once served, not entity-escaped',
+        obj && obj['@type'] === 'FAQPage', obj);
+      check('  with the question and answer the author wrote, as a Question',
+        obj && obj.mainEntity && obj.mainEntity.length === 2 &&
+        obj.mainEntity[0].name === 'Is it open?' &&
+        obj.mainEntity[0].acceptedAnswer.text === 'Yes & always',
+        obj && obj.mainEntity);
+      check('  the item with no question is not in it',
+        !/must be skipped/.test(txt), txt.slice(0, 200));
+      check('  < is beyond reach, so nothing can close the block early',
+        txt.indexOf('<') === -1, txt.slice(0, 120));
+      check('  and the questions are also readable in the page body itself',
+        node.html.includes('>Is it open?<') && node.html.includes('>Yes &amp; always<'), true);
+    }
+
     check('no page errors', errs.length === 0, errs);
     await ctx.close();
   }

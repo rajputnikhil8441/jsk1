@@ -529,3 +529,175 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
 .pb-social .pb-social-link:hover { filter: brightness(1.15); }
 .pb-social .pb-social-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .pb-social-icon { font-size: inherit; color: inherit; line-height: 1; }
+
+
+/* ---------- list ---------- */
+
+.pb-el.pb-list {
+    /* A real <ul>/<ol>, so the marker and the indent come from the browser
+       and are reset here to the page's own rhythm rather than left at the
+       user-agent default. */
+    list-style-position: outside;
+    margin: var(--pbe-margin, 0);
+    padding: var(--pbe-padding, 0);
+    padding-inline-start: 1.35em;
+    background: var(--pbe-bg, transparent);
+    color: var(--pbe-color, inherit);
+    font-size: var(--pbe-font-size, 15px);
+    font-weight: var(--pbe-font-weight, 400);
+    line-height: var(--pbe-line-height, 1.6);
+    letter-spacing: var(--pbe-letter-spacing, inherit);
+    text-align: var(--pbe-align, inherit);
+    max-width: var(--pbe-max-width, none);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+}
+
+/* Spacing BETWEEN rows, not around them: a gap set on a list should not
+   push the first bullet away from the heading above it. */
+.pb-list .pb-list-item + .pb-list-item { margin-top: var(--pbe-gap, 4px); }
+.pb-list .pb-list-item { color: inherit; }
+
+
+/* ---------- table ---------- */
+
+/* The wrapper is the element: it carries .pb-el and the generated CSS, and
+   it is what scrolls. A table wider than the viewport must scroll inside
+   its own box -- a table that widens the PAGE breaks every other section
+   on it, and on a phone there is no way back from that. */
+.pb-el.pb-table {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    background: var(--pbe-bg, transparent);
+    color: var(--pbe-color, inherit);
+    font-size: var(--pbe-font-size, 14px);
+    font-weight: var(--pbe-font-weight, 400);
+    letter-spacing: var(--pbe-letter-spacing, inherit);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+}
+
+.pb-table .pb-table-t {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: var(--pbe-align, left);
+    font: inherit;
+    letter-spacing: inherit;
+}
+
+/* The caption is the table's accessible name, so it is shown, not hidden:
+   a visitor gets the same label a screen reader reads out. */
+.pb-table .pb-table-cap {
+    padding: var(--pbe-padding, 8px) 10px;
+    text-align: inherit;
+    font-weight: 600;
+    color: inherit;
+}
+
+.pb-table .pb-table-h,
+.pb-table .pb-table-c {
+    padding: var(--pbe-padding, 8px) 10px;
+    border: 1px solid rgba(0, 0, 0, .12);
+    line-height: var(--pbe-line-height, 1.45);
+    color: inherit;
+    vertical-align: top;
+}
+
+.pb-table .pb-table-h {
+    background: rgba(0, 0, 0, .04);
+    font-weight: 600;
+    text-align: inherit;
+    /* Sticks while the row scrolls sideways, so the column a cell belongs
+       to is still legible on a narrow screen. */
+    position: sticky;
+    top: 0;
+}
+
+
+/* ---------- inline formatting (opt-in, see pbInlineInto) ---------- */
+
+/* These are nodes the renderer built, never parsed markup. Each carries a
+   class so a brand can restyle emphasis without reaching for the bare tag
+   and catching the rest of the page with it. */
+.pb-textblock .pb-strong,
+.pb-list .pb-strong { font-weight: 700; color: inherit; }
+
+.pb-textblock .pb-em,
+.pb-list .pb-em { font-style: italic; color: inherit; }
+
+.pb-textblock .pb-inline-link,
+.pb-list .pb-inline-link {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.pb-textblock .pb-inline-link:hover,
+.pb-list .pb-inline-link:hover { filter: brightness(1.2); }
+.pb-textblock .pb-inline-link:focus-visible,
+.pb-list .pb-inline-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* A quotation looks quoted. The rule is the only visual difference from a
+   paragraph; everything else still comes from the element's own controls. */
+.pb-el.pb-quote {
+    padding-inline-start: 14px;
+    border-inline-start: 3px solid currentColor;
+    font-style: italic;
+}
+
+
+/* ---------- table of contents ---------- */
+
+.pb-el.pb-toc {
+    background: var(--pbe-bg, transparent);
+    color: var(--pbe-color, inherit);
+    font-size: var(--pbe-font-size, 15px);
+    font-weight: var(--pbe-font-weight, 400);
+    line-height: var(--pbe-line-height, 1.5);
+    letter-spacing: var(--pbe-letter-spacing, inherit);
+    text-align: var(--pbe-align, inherit);
+    padding: var(--pbe-padding, 0);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+}
+
+.pb-toc .pb-toc-title {
+    margin: 0 0 8px;
+    font-size: inherit;
+    font-weight: 600;
+    color: inherit;
+}
+
+.pb-toc .pb-toc-list {
+    list-style-position: outside;
+    margin: 0;
+    padding-inline-start: 1.2em;
+}
+
+.pb-toc .pb-toc-item + .pb-toc-item { margin-top: var(--pbe-gap, 4px); }
+
+/* The indent says how deep a heading is, so the list reads as an outline
+   rather than a flat set of links. */
+.pb-toc .pb-toc-l3 { padding-inline-start: 1em; }
+.pb-toc .pb-toc-l4 { padding-inline-start: 2em; }
+
+.pb-toc .pb-toc-link {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.pb-toc .pb-toc-link:hover { filter: brightness(1.2); }
+.pb-toc .pb-toc-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* A heading jumped to from the contents should not land flush against the
+   top of the viewport. Browser-level, and costs nothing on a page with no
+   contents list on it. */
+.pb-heading { scroll-margin-top: 16px; }

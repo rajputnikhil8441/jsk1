@@ -81,7 +81,8 @@ const head = p => p.evaluate(() => {
     breadcrumbs: document.querySelectorAll('.breadcrumb').length,
     crumbLabel: (document.querySelector('.breadcrumb-current') || {}).textContent,
     ld: [...document.querySelectorAll('script[type="application/ld+json"]')]
-          .map(s => ({ id: s.id, txt: s.textContent })),
+          .map(s => ({ id: s.id, txt: s.textContent,
+                       faq: s.hasAttribute('data-pb-faq') })),
     sections: document.querySelectorAll('.pb-section').length,
     bodyText: document.body.innerText
   };
@@ -533,15 +534,99 @@ const openSec = async (p, i) => {
     let r = await page(b, withBuilder('about', loud));
     let h = await head(r.p);
     const all = h.ld.map(x => x.txt).join('\n');
+    /* Two populations now, and the distinction is the whole point. The
+       PAGE-LEVEL blocks describe the page record -- its title, its
+       breadcrumb -- and the builder's prose must not leak into them. The
+       FAQ block is the one piece of schema the builder's content earns,
+       and it is earned only by an FAQ element with a question AND an
+       answer: structured Q&A data, not prose a reader guessed at. */
+    const pageLd = h.ld.filter(x => !x.faq).map(x => x.txt).join('\n');
+    const faqLd = h.ld.filter(x => x.faq);
     check('the builder renders its FAQ on the page', /Is this a FAQ\?/.test(h.bodyText));
-    check('but no builder text appears in any structured data',
-      !/Five star|10\/10|Reviewed by nobody|Is this a FAQ/.test(all), all.slice(0, 300));
-    check('no rating, review or aggregate schema is invented',
-      !/aggregateRating|"Review"|reviewRating|ratingValue|FAQPage|Question/i.test(all), all.slice(0, 300));
+    check('but no builder text appears in the page-level structured data',
+      !/Five star|10\/10|Reviewed by nobody|Is this a FAQ/.test(pageLd), pageLd.slice(0, 300));
+    check('no rating, review or aggregate schema is invented, anywhere',
+      !/aggregateRating|"Review"|reviewRating|ratingValue|"Offer"|"Product"/i.test(all),
+      all.slice(0, 300));
+    check('and no FAQPage is invented from a heading or a paragraph',
+      !/FAQPage/.test(pageLd), pageLd.slice(0, 200));
+
+    /* The FAQ element earns exactly one block, built from its own pairs. */
+    check('a real FAQ element produces exactly one FAQPage block',
+      faqLd.length === 1, faqLd.length);
+    {
+      let obj = null;
+      try { obj = JSON.parse(faqLd[0].txt); } catch (e) { obj = { parseError: String(e) }; }
+      check('  it is valid JSON and a FAQPage',
+        obj && obj['@type'] === 'FAQPage' && obj['@context'] === 'https://schema.org', obj);
+      check('  with the question and the answer the author actually wrote',
+        obj && Array.isArray(obj.mainEntity) && obj.mainEntity.length === 1 &&
+        obj.mainEntity[0]['@type'] === 'Question' &&
+        obj.mainEntity[0].name === 'Is this a FAQ?' &&
+        obj.mainEntity[0].acceptedAnswer['@type'] === 'Answer' &&
+        obj.mainEntity[0].acceptedAnswer.text === 'Yes.', obj && obj.mainEntity);
+      check('  and the heading and paragraph on the same page are not in it',
+        !/Five star|Reviewed by nobody/.test(faqLd[0].txt), faqLd[0].txt.slice(0, 200));
+    }
     check('the WebPage block is still the CMS one',
       /"@type": "WebPage"/.test(all) && /About JSK1|About —|About/.test(all), all.slice(0, 200));
-    check('this page carries the two blocks it ships, and no more',
-      h.ld.map(x => x.id).join(',') === 'ldPage,ldBreadcrumb', h.ld.map(x => x.id));
+    check('this page carries the two head blocks it ships, and no more',
+      h.ld.filter(x => !x.faq).map(x => x.id).join(',') === 'ldPage,ldBreadcrumb',
+      h.ld.map(x => x.id + (x.faq ? '(faq)' : '')));
+
+    /* WHEN THERE IS NO FAQPage. Four ways a page earns none, each of which
+       would otherwise be an invalid or a dishonest block. */
+    for (const [why, secs] of [
+      ['there is no FAQ element at all',
+        [sec('n1', [el('n1e', 'heading', { text: 'Questions', level: 'h2' }),
+                    el('n1f', 'text', { text: 'Q: is this an FAQ? A: no.' })])]],
+      ['a question has no answer',
+        [sec('n2', [el('n2f', 'faq', { items: [{ question: 'Unanswered?' }] })])]],
+      ['an answer has no question',
+        [sec('n3', [el('n3f', 'faq', { items: [{ answer: 'Orphan answer.' }] })])]],
+      ['every pair is blank',
+        [sec('n4', [el('n4f', 'faq', { items: [{ question: '  ', answer: '  ' }] })])]]
+    ]) {
+      const n = await page(b, withBuilder('about', secs));
+      const nh = await head(n.p);
+      check('no FAQPage when ' + why,
+        nh.ld.filter(x => x.faq).length === 0,
+        nh.ld.filter(x => x.faq).map(x => x.txt.slice(0, 120)));
+      check('  and the page keeps the two head blocks it always had',
+        nh.ld.filter(x => !x.faq).map(x => x.id).join(',') === 'ldPage,ldBreadcrumb',
+        nh.ld.map(x => x.id));
+      check('  no page errors', n.errs.length === 0, n.errs);
+      await n.ctx.close();
+    }
+
+    /* ONE BLOCK PER PAGE, however many FAQ elements it has. Two accordions
+       and a third inside a columns container: three elements, five pairs,
+       one FAQPage. Duplicate FAQPage blocks are a structured-data error,
+       so this is the case that has to hold. */
+    {
+      const many = [sec('m1', [
+        el('m1f', 'faq', { items: [{ question: 'One?', answer: 'A one.' },
+                                   { question: 'Two?', answer: 'A two.' }] }),
+        el('m1g', 'faq', { items: [{ question: 'Three?', answer: 'A three.' }] }),
+        el('m1c', 'columns', { columns: [{ elements: [
+          el('m1h', 'faq', { items: [{ question: 'Four?', answer: 'A four.' },
+                                     { question: 'Five?', answer: '' }] })] }] })
+      ])];
+      const m = await page(b, withBuilder('about', many));
+      const mh = await head(m.p);
+      const blocks = mh.ld.filter(x => x.faq);
+      check('three FAQ elements still produce exactly one FAQPage block',
+        blocks.length === 1, blocks.length);
+      let obj = null;
+      try { obj = JSON.parse(blocks[0].txt); } catch (e) { obj = { parseError: String(e) }; }
+      check('  holding every complete pair, in document order, nested ones included',
+        obj && obj.mainEntity.map(q => q.name).join('|') === 'One?|Two?|Three?|Four?',
+        obj && obj.mainEntity && obj.mainEntity.map(q => q.name));
+      check('  and the pair with no answer is not in it',
+        obj && !/Five\?/.test(blocks[0].txt), blocks[0].txt.slice(0, 200));
+      check('  no page errors', m.errs.length === 0, m.errs);
+      await m.ctx.close();
+    }
     /* The shipped block is indented four spaces and begins with a newline;
        what writeLd() produces begins at the brace and indents two. That the
        CMS wrote it at all is the point -- the blocks sit below js/cms.js in
@@ -1020,6 +1105,261 @@ const openSec = async (p, i) => {
         return n.getAttribute('data-act') + '@' + (host ? host.getAttribute('data-sec-id') : '?');
       })) === 'up@' + before[2]);
     check('no page errors', a.errs.length === 0, a.errs);
+    await a.ctx.close();
+  }
+
+  /* ================================================================
+     THE CONTENT CHECKS COVER THE NEW ELEMENTS  (Phase 2A)
+     ----------------------------------------------------------------
+     validatePage()/contentChecks() already judged title length, meta
+     description, duplicates, H1 count, word count, heading order, image
+     alt text and internal links. The new element types have to be judged
+     too, or an author gets a clean report on a page with a headerless
+     table and a contents list pointing at nothing.
+
+     Each check is read off the SEO dashboard, which is where an author
+     reads it. Nothing here is a publish blocker, which is the other half
+     of the requirement: an author decides what their page says.
+     ================================================================ */
+  console.log('\n===== THE CHECKS JUDGE THE NEW ELEMENTS TOO =====');
+  {
+    /* One page, every fault at once, so one dashboard read covers them. */
+    const faulty = [sec('c1', [
+      el('c_h2', 'heading', { text: 'A heading to point at', level: 'h2' }),
+      /* a table with neither a header row nor a caption */
+      el('c_tb', 'table', { header: false, cols: 2,
+        items: [{ c1: 'a', c2: 'b' }, { c1: 'c', c2: 'd' }] }),
+      /* a list of one */
+      el('c_li', 'list', { items: [{ text: 'The only item' }] }),
+      /* an FAQ where one question has no answer */
+      el('c_fq', 'faq', { items: [{ question: 'Answered?', answer: 'Yes.' },
+                                  { question: 'Unanswered?' }] }),
+      /* a link to a page that exists but is a draft */
+      el('c_bt', 'button', { text: 'Go', href: 'not-yet.html' })
+    ])];
+    const a = await adminPage(b, {
+      pages: {
+        about: { label: 'About', url: 'about.html',
+                 builder: { schemaVersion: 2, status: 'published',
+                            updatedAt: '2026-09-28', sections: faulty } },
+        notyet: { label: 'Not yet', url: 'not-yet.html', status: 'draft' }
+      }
+    });
+    await a.p.click('.adm-nav-item[data-panel="seo"]');
+    await a.p.waitForTimeout(900);
+    const said = await a.p.evaluate(() => {
+      const row = document.querySelector('#seoDashboard [data-seorow="about"]');
+      return row ? [...row.querySelectorAll('.seochecks li')]
+        .map(li => li.className.replace('chk-', '') + '|' + li.textContent.trim()) : [];
+    });
+    const has = (lvl, re) => said.some(s => s.indexOf(lvl + '|') === 0 && re.test(s));
+    check('the dashboard reports on this page at all', said.length > 0, said.length);
+    check('a table with no header row is a warning',
+      has('warn', /no header row/), said);
+    check('a table with no caption is a warning', has('warn', /no caption/), said);
+    check('a list of one item is a warning', has('warn', /only one item/), said);
+    check('an unanswered FAQ question is a warning that names the schema',
+      has('warn', /no answer.*FAQPage/), said);
+    check('  and the answered one is reported as published FAQPage data',
+      has('ok', /1 FAQ question\(s\) are published as FAQPage data/), said);
+    check('a link to a DRAFT page is a failure, not a warning',
+      has('bad', /DRAFT page/) && /404 until it is published/.test(said.join('|')), said);
+    check('nothing about any of it blocks publishing',
+      (await a.p.$eval('#pbPublish', n => n.disabled)) !== undefined, true);
+
+    /* The FAQPage block lives INSIDE the mount, and textContent
+       concatenates every descendant text node -- script contents
+       included. Left in, the schema's own JSON would be counted as page
+       words, and on an otherwise empty page it would answer "is there
+       anything at all" with yes. This measures the same thing the check
+       should: the rendered sections with the script removed. */
+    const wc = await a.p.evaluate(() => {
+      const row = document.querySelector('#seoDashboard [data-seorow="about"]');
+      const said = [...row.querySelectorAll('.seochecks li')].map(li => li.textContent.trim());
+      const count = html => {
+        const h = document.createElement('div');
+        h.innerHTML = html;
+        const vis = document.createElement('div');
+        vis.innerHTML = html;
+        [...vis.querySelectorAll('script')].forEach(n => n.remove());
+        const t = s => { const v = String(s.textContent || '').replace(/\s+/g, ' ').trim();
+                         return v ? v.split(/\s+/).length : 0; };
+        return { withScript: t(h), visible: t(vis) };
+      };
+      const host = document.createElement('div');
+      CMS.sections.renderInto(host, CMS.sections.published('about'));
+      return Object.assign({ line: said.find(s => /is about \d+ words/.test(s)) || '' },
+                           count(host.innerHTML));
+    });
+    check('the word count counts what a reader sees, not the FAQ schema JSON',
+      new RegExp('is about ' + wc.visible + ' words').test(wc.line), wc);
+    check('  and that is not vacuous: the schema text would have added words',
+      wc.withScript > wc.visible, wc);
+
+    check('no admin console errors', a.errs.length === 0, a.errs);
+    await a.ctx.close();
+  }
+
+  /* The same checks must stay QUIET on content that is fine, or they are
+     noise rather than review. */
+  {
+    const sound = [sec('g1', [
+      el('g_toc', 'toc', { title: 'On this page', depth: 'h3' }),
+      el('g_h2a', 'heading', { text: 'First topic', level: 'h2' }),
+      el('g_h2b', 'heading', { text: 'Second topic', level: 'h2' }),
+      el('g_tb', 'table', { header: true, cols: 2, caption: 'Limits',
+        items: [{ c1: 'Method', c2: 'Limit' }, { c1: 'Card', c2: '100' }] }),
+      el('g_li', 'list', { items: [{ text: 'One' }, { text: 'Two' }] }),
+      el('g_fq', 'faq', { items: [{ question: 'Answered?', answer: 'Yes.' }] }),
+      el('g_bt', 'button', { text: 'Contact', href: 'contact.html' })
+    ])];
+    const a = await adminPage(b, { pages: { about: { label: 'About', url: 'about.html',
+      builder: { schemaVersion: 2, status: 'published', updatedAt: '2026-09-28',
+                 sections: sound } } } });
+    await a.p.click('.adm-nav-item[data-panel="seo"]');
+    await a.p.waitForTimeout(900);
+    const said = await a.p.evaluate(() => {
+      const row = document.querySelector('#seoDashboard [data-seorow="about"]');
+      return row ? [...row.querySelectorAll('.seochecks li')]
+        .map(li => li.className.replace('chk-', '') + '|' + li.textContent.trim()) : [];
+    });
+    const all = said.join('\n');
+    check('sound content draws none of the new warnings',
+      !/no header row|no caption|only one item|no answer|DRAFT page|not on this page/.test(all),
+      said);
+    check('  and it is told what it got right',
+      /ok\|.*header row/.test(all) && /ok\|.*contents link/.test(all) &&
+      /ok\|.*FAQPage data/.test(all), said);
+    check('no admin console errors', a.errs.length === 0, a.errs);
+    await a.ctx.close();
+  }
+
+  /* ================================================================
+     THE INTERNAL LINK PICKER  (Phase 2A)
+     ----------------------------------------------------------------
+     Every href in the builder was a bare text box, so an internal link
+     was a file name typed from memory. The list offered instead has to
+     come from the resolved brand's own pages object and nowhere else,
+     must leave out a page the build generates nothing for, and must not
+     become a second place a value is stored.
+     ================================================================ */
+  console.log('\n===== THE LINK PICKER OFFERS THIS BRAND\u2019S PAGES, AND ONLY THOSE =====');
+  {
+    const a = await adminPage(b, { pages: {
+      about:   { label: 'About', url: 'about.html' },
+      sitedraft: { label: 'Unfinished page', url: 'unfinished.html', status: 'draft' },
+      sitelive:  { label: 'Finished page', url: 'finished.html', status: 'published' },
+      oddurl:    { label: 'Not a page file', url: 'deep/path/x.html' }
+    } });
+    await openBuilder(a.p);
+    await a.p.click('#pbAdd .pb-addbtn[data-type="text"]'); await a.p.waitForTimeout(400);
+    const sid = await a.p.$eval('#pbList .pb-sec', e => e.getAttribute('data-sec-id'));
+    const TOP = `#pbList .pb-sec[data-sec-id="${sid}"] > .pb-sec-body > .pb-subbody`;
+    await a.p.click(`${TOP} > .pb-add-el > .pb-addbtn[data-el-type="button"]`);
+    await a.p.waitForTimeout(450);
+
+    const r = await a.p.evaluate(() => {
+      const sel = document.querySelector('.pb-elcard select[data-act="pick-page"]');
+      const pages = CMS.data().pages || {};
+      return {
+        exists: !!sel,
+        opts: sel ? [...sel.options].map(o => ({ v: o.value, t: o.textContent })) : [],
+        /* Every url the resolved record holds, for the containment check. */
+        own: Object.keys(pages).map(k => String(pages[k].url == null ? '' : pages[k].url).trim())
+      };
+    });
+    check('an href field offers a page picker', r.exists, r.exists);
+    const values = r.opts.map(o => o.v).filter(Boolean);
+    check('  it offers the home page as "/"', values.indexOf('/') > -1, values);
+    check('  it offers a published page', values.indexOf('finished.html') > -1, values);
+    check('  it leaves out a DRAFT page, which the build generates nothing for',
+      values.indexOf('unfinished.html') === -1, values);
+    check('  it leaves out a url that is not a plain page file name',
+      !values.some(v => v.indexOf('/') > -1 && v !== '/'), values);
+    check('  every option it offers is a url from THIS brand\u2019s own record',
+      values.every(v => v === '/' ? r.own.indexOf('') > -1 : r.own.indexOf(v) > -1),
+      { values, own: r.own });
+    check('  and each is labelled with the page name and the file',
+      r.opts.filter(o => o.v === 'finished.html')
+            .every(o => o.t === 'Finished page (finished.html)'),
+      r.opts.map(o => o.t));
+
+    /* Choosing writes through the text box, which stays the one value. */
+    await a.p.selectOption('.pb-elcard select[data-act="pick-page"]', 'finished.html');
+    await a.p.waitForTimeout(400);
+    const after = await a.p.evaluate(() => {
+      /* The section template ships with elements of its own, so the card
+         under test is the one holding the picker, not the first one. */
+      const card = document.querySelector('select[data-act="pick-page"]')
+                     .closest('.pb-elcard');
+      const id = card.getAttribute('data-el-id');
+      const d = JSON.parse(localStorage.getItem('whiteLabelCMS')).builderDrafts || {};
+      let stored = null;
+      for (const k in d) for (const s of d[k].sections || []) for (const e of s.elements || []) {
+        if (e.id === id) stored = e.content;
+      }
+      const boxes = [...card.querySelectorAll('.pb-in-url')].map(i => i.value);
+      return { stored, boxes,
+               sel: card.querySelector('select[data-act="pick-page"]').value };
+    });
+    check('picking a page fills the text box', after.boxes.indexOf('finished.html') > -1, after.boxes);
+    check('  and is stored once, as the href the renderer reads',
+      after.stored && after.stored.href === 'finished.html', after.stored);
+    check('  the select reports the value rather than holding its own',
+      after.sel === 'finished.html', after.sel);
+    check('no admin console errors', a.errs.length === 0, a.errs);
+    await a.ctx.close();
+  }
+
+  /* THE RULE, not a list. The assertion above names pages the fixture put
+     in the record, which is fine for those. This one states the rule the
+     picker follows and checks it against whatever the record happens to
+     hold: exactly the pages that are published AND whose url is a plain
+     page file name, plus the home page as "/". Nothing brand-specific is
+     written down, so it holds for any brand's record. */
+  {
+    const a = await adminPage(b, { pages: {
+      about:  { label: 'About', url: 'about.html' },
+      d1:     { label: 'Draft one', url: 'draft-one.html', status: 'draft' },
+      d2:     { label: 'Odd status', url: 'odd.html', status: 'in review' },
+      ok1:    { label: 'Live one', url: 'live-one.html', status: 'published' },
+      ok2:    { label: 'Live two', url: 'live-two.html' },
+      deep:   { label: 'Directory url', url: 'a/b.html' },
+      ext:    { label: 'Offsite', url: 'https://example.com/x' }
+    } });
+    await openBuilder(a.p);
+    await a.p.click('#pbAdd .pb-addbtn[data-type="text"]'); await a.p.waitForTimeout(400);
+    const sid = await a.p.$eval('#pbList .pb-sec', e => e.getAttribute('data-sec-id'));
+    await a.p.click(`#pbList .pb-sec[data-sec-id="${sid}"] > .pb-sec-body > .pb-subbody` +
+                    ` > .pb-add-el > .pb-addbtn[data-el-type="button"]`);
+    await a.p.waitForTimeout(450);
+    const r = await a.p.evaluate(() => {
+      const sel = document.querySelector('.pb-elcard select[data-act="pick-page"]');
+      const pages = CMS.data().pages || {};
+      /* The expectation, worked out from the record in the page rather
+         than written into the test. */
+      const want = [];
+      Object.keys(pages).forEach(k => {
+        const p = pages[k] || {};
+        const url = String(p.url == null ? '' : p.url).trim();
+        const href = url === '' ? '/' : url;
+        if (href !== '/' && !/^[a-z0-9-]+\.html$/i.test(href)) return;
+        if (!SEOFiles.isPublished(p)) return;
+        if (want.indexOf(href) === -1) want.push(href);
+      });
+      return { got: [...sel.options].map(o => o.value).filter(Boolean).sort(),
+               want: want.sort(),
+               disabled: sel.disabled };
+    });
+    check('the picker offers exactly the published, plain-file pages of this record',
+      r.got.join(',') === r.want.join(','), r);
+    check('  it is not vacuous: the record has pages it had to leave out',
+      r.got.length > 0 && r.got.indexOf('draft-one.html') === -1 &&
+      r.got.indexOf('odd.html') === -1 && r.got.indexOf('a/b.html') === -1 &&
+      !r.got.some(v => /^https?:/.test(v)), r.got);
+    check('  and it is enabled, because there is something to offer',
+      r.disabled === false, r.disabled);
+    check('no admin console errors', a.errs.length === 0, a.errs);
     await a.ctx.close();
   }
 

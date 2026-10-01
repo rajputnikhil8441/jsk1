@@ -44,6 +44,20 @@ const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input'
    setAttribute, and which browsers serialise as boolean attributes. */
 const BOOL_PROPS = new Set(['hidden']);
 
+/* RAW TEXT ELEMENTS. In HTML, the contents of <script> and <style> are raw
+   text: the parser does not resolve entities inside them, and a browser
+   serialising one writes its text out unchanged. Escaping it the way
+   ordinary text is escaped would be WRONG, not merely different -- a JSON-LD
+   block whose quotes came out as &quot; is not JSON any more, and no crawler
+   would parse it.
+
+   This matters now because the section renderer emits a JSON-LD block of
+   its own (the FAQPage schema). Whatever goes in one must therefore already
+   be safe to write raw, which is why js/cms.js escapes < as \u003c on the
+   way in: with no < in the text there is no way to close the element early,
+   and the bytes match what a browser's innerHTML would give. */
+const RAW_TEXT = new Set(['script', 'style']);
+
 function escText(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -162,7 +176,12 @@ class Element {
         if (s !== '') this.appendChild(new TextNode(s));
     }
 
-    get innerHTML() { return this.childNodes.map(n => n.outerHTML).join(''); }
+    get innerHTML() {
+        if (RAW_TEXT.has(this.localName)) {
+            return this.childNodes.map(n => n.nodeType === 3 ? n.data : n.outerHTML).join('');
+        }
+        return this.childNodes.map(n => n.outerHTML).join('');
+    }
 
     get outerHTML() {
         let out = '<' + this.localName;

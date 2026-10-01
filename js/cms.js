@@ -1243,11 +1243,24 @@
         return obj;
     }
 
+    /* One JSON-LD serialiser.
+
+       The < escape is what makes the text safe to write into a <script>
+       element in SERIALISED HTML: script contents are raw text, so a value
+       holding </script> would otherwise close the block early. At runtime
+       textContent never parses, so this costs nothing there -- but the
+       section renderer's block is baked into the HTML a crawler reads, and
+       one escape in one place is better than a second serialiser that
+       remembers to do it. \u003c is the same JSON; a parser sees '<'. */
+    function ldText(obj) {
+        if (!obj) return '{}';
+        return JSON.stringify(ldContext(obj), null, 2).replace(/</g, '\\u003c');
+    }
+
     function writeLd(id, obj) {
         var el = document.getElementById(id);
         if (!el) return;
-        if (!obj) { el.textContent = '{}'; return; }
-        el.textContent = JSON.stringify(ldContext(obj), null, 2);
+        el.textContent = ldText(obj);
     }
 
     function buildOrganization() {
@@ -1627,7 +1640,21 @@
         faq:         ['typography', 'bg', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
                       'align', 'padding', 'margin',
                       'maxWidth', 'gap', 'border', 'radius', 'shadow'],
-        socialLinks: ['color', 'fontSize', 'align', 'bg', 'padding', 'margin', 'gap', 'radius']
+        socialLinks: ['color', 'fontSize', 'align', 'bg', 'padding', 'margin', 'gap', 'radius'],
+
+        /* Phase 2A. Same rule as the V2 entries above: a key is here only
+           because the CSS below reads it. A list gets `gap` because the
+           rule sets row-gap from it; a table does not, because its spacing
+           is cell padding, which is not an element-level control. */
+        list:        ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+                      'align', 'bg', 'padding', 'margin', 'maxWidth', 'gap',
+                      'border', 'radius', 'shadow'],
+        table:       ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+                      'align', 'bg', 'padding', 'margin', 'maxWidth',
+                      'border', 'radius', 'shadow'],
+        toc:         ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+                      'align', 'bg', 'padding', 'margin', 'maxWidth', 'gap',
+                      'border', 'radius', 'shadow']
     };
 
     /* The keys a SECTION reacts to. Derived from the section token map, so
@@ -1673,7 +1700,11 @@
 
     var PB_CONTENT_KEYS = {
         heading:     ['text', 'level'],
-        text:        ['text'],
+        /* `rich` turns on the inline marks pbInlineInto() reads; `tag`
+           chooses the block element. Both are absent from everything
+           already published, which is why nothing already published
+           changes. */
+        text:        ['text', 'rich', 'tag'],
         image:       ['src', 'alt', 'width', 'height', 'href', 'newTab'],
         button:      ['text', 'href', 'newTab'],
         card:        ['title', 'text', 'image', 'imageAlt', 'imageWidth', 'imageHeight',
@@ -1686,7 +1717,18 @@
         featureBox:  ['icon', 'image', 'imageAlt', 'title', 'titleLevel', 'text',
                       'linkText', 'href', 'newTab'],
         faq:         ['single'],
-        socialLinks: []
+        socialLinks: [],
+
+        /* Phase 2A. A list's rows and a table's cells are repeating items,
+           so they arrive through the items path below; what sits here is
+           only the handful of scalars that describe the whole element.
+           `cols` is the table's column count and is deliberately NOT named
+           "columns": that key already means a layout on the columns element
+           and in PB_EL_TOKENS, and one name for two things is how a value
+           ends up read by the wrong reader. */
+        list:        ['ordered', 'rich'],
+        table:       ['caption', 'cols', 'header'],
+        toc:         ['title', 'titleLevel', 'depth', 'ordered']
     };
 
     /* Which content keys hold a URL, and which hold a repeating list. */
@@ -1703,7 +1745,9 @@
         variant:    function () { return PB_NOTICE_VARIANTS; },
         titleLevel: function () { return PB_HEADING_LEVELS; },
         platform:   function () { return PB_SOCIAL; },
-        level:      function () { return PB_ALL_LEVELS; }
+        level:      function () { return PB_ALL_LEVELS; },
+        tag:        function () { return PB_TEXT_TAGS; },
+        depth:      function () { return PB_TOC_DEPTHS; }
     };
 
     var PB_ALL_LEVELS = { h1: 1, h2: 1, h3: 1, h4: 1, h5: 1, h6: 1 };
@@ -1713,9 +1757,19 @@
         if (!get) return true;
         return !!pbPick(get(), String(value).toLowerCase());
     }
+    /* The named cells one table row can hold. Eight is a cap, not a
+       preference: a row is a fixed set of named scalars because pbScalar()
+       refuses anything that is not a boolean, a number or a string, and
+       that refusal is what stops a nested payload riding in on a content
+       key. An array of cells would need a second kind of cleaning. */
+    var PB_TABLE_MAX_COLS = 8;
+    var PB_TABLE_KEYS = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8'];
+
     var PB_ITEM_KEYS = {
         faq:         ['question', 'answer', 'open'],
-        socialLinks: ['platform', 'url', 'label']
+        socialLinks: ['platform', 'url', 'label'],
+        list:        ['text'],
+        table:       PB_TABLE_KEYS
     };
 
     /* A row that lost one of these is not a row the renderer could draw, so
@@ -1723,7 +1777,13 @@
        notice is broken. */
     var PB_ITEM_REQUIRED = {
         faq:         ['question'],
-        socialLinks: ['platform', 'url']
+        socialLinks: ['platform', 'url'],
+        list:        ['text'],
+        /* No cell is required: a blank cell in the middle of a table is
+           real data, not a broken row. A row with NOTHING in it is still
+           dropped, because the loop below keeps only rows that kept a
+           value. */
+        table:       []
     };
 
     /* A single stored value: kept as a boolean, a finite number or a string
@@ -2186,6 +2246,13 @@
     };
 
     var PB_NOTICE_VARIANTS = { info: 1, success: 1, warning: 1, danger: 1 };
+    /* The block tags a text element may be. Both are ordinary prose
+       containers; neither can hold anything the renderer does not build. */
+    var PB_TEXT_TAGS = { p: 1, blockquote: 1 };
+    /* How deep a table of contents goes, as the deepest level it lists.
+       The value is the number the renderer compares against, so the
+       allow-list and the limit are one thing rather than two. */
+    var PB_TOC_DEPTHS = { h2: 2, h3: 3, h4: 4 };
     var PB_HEADING_LEVELS = { h2: 1, h3: 1, h4: 1, h5: 1, h6: 1 };
 
     /* Unique, valid HTML ids for the FAQ's aria wiring, even when an
@@ -2195,6 +2262,17 @@
         var base = pbCssId(el && el.id);
         if (!base) { pbAutoId += 1; base = 'a' + pbAutoId; }
         return 'pb-' + base + '-' + suffix;
+    }
+
+    /* A heading's anchor id, or '' when its element id is not one an
+       attribute selector could hold. Deliberately NOT pbDomId(): that
+       invents an id when it has to, and an invented one is no use here --
+       the table of contents has to work out the SAME id from the section
+       tree, without having rendered anything. One rule, read twice, so a
+       link can never point at an id the heading did not get. */
+    function pbAnchorId(elId) {
+        var base = pbCssId(elId);
+        return base ? 'pb-' + base + '-h' : '';
     }
 
     /* An element's own box alignment, for the types that are laid out as a
@@ -2466,6 +2544,80 @@
         return node;
     }
 
+    /* ---- inline formatting, without ever parsing HTML ----
+
+       WHAT IT IS FOR. Body copy needs to be able to say "this phrase
+       matters" and "this phrase links there". Without that, a paragraph is
+       a wall of words and a page has no internal links for a crawler to
+       follow -- and the only way an author had to get either was the
+       shipped-body field, which is raw innerHTML.
+
+       WHAT IT IS NOT. It is not HTML. The stored value stays an ordinary
+       string: it still goes through pbScalar(), is still capped at 4000
+       characters, is still refused outright if it holds a control
+       character. The renderer reads a tiny set of marks out of that string
+       and builds NODES -- **bold** becomes a <strong> whose textContent is
+       the words between the marks, and nothing else can come out. There is
+       no path from a stored string to parsed markup, which is the entire
+       point of this file rendering with createElement and textContent.
+
+       A link's address goes through pbUrl() exactly like every other href
+       here, so [x](javascript:alert(1)) yields no anchor at all -- it
+       leaves the words "x" behind rather than a dead or dangerous link.
+
+       IT IS OPT-IN, per element, through content.rich. Left off -- which is
+       what every element already published has -- the text renders as one
+       textContent assignment exactly as before, so a paragraph that
+       happens to contain an asterisk is untouched on every live page.
+
+       Marks, and deliberately only these:
+         **strong**            emphasis that matters to meaning
+         *em*                  ordinary emphasis
+         [label](address)      a link, address through pbUrl()
+       Nesting is not supported and is not a gap: one level is what body
+       copy needs, and a parser that nests is a parser with corner cases. */
+    var PB_INLINE_RE = /(\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\([^()\s]+\))/;
+
+    function pbInlineInto(host, text) {
+        var parts = str(text).split(PB_INLINE_RE);
+        for (var i = 0; i < parts.length; i++) {
+            var s = parts[i];
+            if (!s) continue;
+            var node = null;
+            if (s.length > 4 && s.slice(0, 2) === '**' && s.slice(-2) === '**') {
+                node = pbEl('strong', 'pb-strong');
+                node.textContent = s.slice(2, -2);
+            } else if (s.length > 2 && s.charAt(0) === '*' && s.charAt(s.length - 1) === '*') {
+                node = pbEl('em', 'pb-em');
+                node.textContent = s.slice(1, -1);
+            } else if (s.charAt(0) === '[' && s.indexOf('](') > 0) {
+                var cut = s.indexOf('](');
+                var label = s.slice(1, cut);
+                var href = pbUrl(s.slice(cut + 2, -1));
+                if (href) {
+                    node = pbEl('a', 'pb-inline-link');
+                    node.setAttribute('href', href);
+                    node.textContent = label;
+                } else {
+                    /* A refused address leaves the words, not a dead link
+                       and not the raw mark. */
+                    s = label;
+                }
+            }
+            host.appendChild(node || document.createTextNode(s));
+        }
+    }
+
+    /* Write a stored string into a node: as formatted nodes when the
+       element asked for it, otherwise as the single textContent assignment
+       this file has always used. One helper, so no renderer has to decide
+       how to do it twice. */
+    function pbTextInto(node, text, content) {
+        if (content && content.rich === true) pbInlineInto(node, text);
+        else node.textContent = str(text);
+        return node;
+    }
+
     var PB_ELEMENTS = {
 
         heading: function (el) {
@@ -2473,13 +2625,24 @@
             var lvl = String(c.level || 'h2').toLowerCase();
             if (['h1','h2','h3','h4','h5','h6'].indexOf(lvl) === -1) lvl = 'h2';
             var n = pbEl(lvl, 'pb-el pb-heading');
+            /* Deep-linkable, and what a table of contents points at. An
+               element whose id could not be put in a selector gets none,
+               which is the same condition pbAnchorId() reports to the
+               table of contents, so the two never disagree. */
+            var anchor = pbAnchorId(el && el.id);
+            if (anchor) n.setAttribute('id', anchor);
             n.textContent = str(c.text);
             return pbId(n, el);
         },
 
         text: function (el) {
-            var n = pbEl('p', 'pb-el pb-textblock');
-            n.textContent = str((el.content || {}).text);
+            var c = el.content || {};
+            /* A quotation is a <blockquote>, not a paragraph styled to look
+               like one: the tag is the thing a crawler and a screen reader
+               read. Anything but a known tag falls back to <p>. */
+            var tag = pbPick(PB_TEXT_TAGS, str(c.tag).toLowerCase()) ? str(c.tag).toLowerCase() : 'p';
+            var n = pbEl(tag, 'pb-el pb-textblock' + (tag === 'blockquote' ? ' pb-quote' : ''));
+            pbTextInto(n, c.text, c);
             return pbId(n, el);
         },
 
@@ -2742,6 +2905,171 @@
             }
             if (!made) return null;
             return pbId(wrap, el);
+        },
+
+        /* ---------------- Phase 2A elements ---------------- */
+
+        /* An ordered or unordered list. Real <ul>/<ol>/<li>, so the markup
+           a crawler reads says "this is a list" rather than showing one
+           drawn with bullet characters in a paragraph. Rows with no text
+           are skipped rather than drawn empty, and a list that kept none
+           renders nothing at all -- the same contract every other
+           repeating element here holds to. */
+        list: function (el) {
+            var c = el.content || {};
+            var items = isArr(c.items) ? c.items : [];
+            var ordered = c.ordered === true;
+            var n = pbEl(ordered ? 'ol' : 'ul', 'pb-el pb-list' + (ordered ? ' pb-list-ord' : ''));
+            var made = 0;
+            for (var i = 0; i < items.length; i++) {
+                var text = str((items[i] || {}).text);
+                if (!text) continue;
+                var li = pbEl('li', 'pb-list-item');
+                pbTextInto(li, text, c);
+                n.appendChild(li);
+                made += 1;
+            }
+            if (!made) return null;
+            return pbId(n, el);
+        },
+
+        /* A data table. The first row is the header row unless the author
+           says otherwise, which is what makes <th scope="col"> correct
+           rather than decorative -- a screen reader announces the column
+           name with every cell, and a crawler can tell a table of data
+           from a grid used for layout.
+
+           The <table> sits inside a wrapper, and the wrapper is what
+           carries .pb-el and the generated CSS: a table that is wider
+           than a phone has to be able to scroll inside its own box
+           instead of widening the page. */
+        table: function (el) {
+            var c = el.content || {};
+            var rows = isArr(c.items) ? c.items : [];
+            if (!rows.length) return null;
+
+            /* How many columns to draw: the author's number when they set
+               one, otherwise the widest row, so a table pasted in from
+               somewhere else is not silently clipped to a narrower shape
+               than the data it holds. */
+            var cols = parseInt(c.cols, 10);
+            if (!(cols >= 1)) {
+                cols = 0;
+                for (var r = 0; r < rows.length; r++) {
+                    for (var k = PB_TABLE_MAX_COLS; k > cols; k--) {
+                        if (str((rows[r] || {})[PB_TABLE_KEYS[k - 1]])) { cols = k; break; }
+                    }
+                }
+            }
+            if (cols < 1) return null;                 /* every cell was empty */
+            if (cols > PB_TABLE_MAX_COLS) cols = PB_TABLE_MAX_COLS;
+
+            var head = c.header !== false;
+            var body = head ? rows.slice(1) : rows;
+            /* A header row with nothing under it is not a table, it is a
+               row of labels. Refusing it here is kinder than drawing a
+               table a crawler would read as empty. */
+            if (!body.length) return null;
+
+            function cell(tag, value, scope) {
+                var n = pbEl(tag, tag === 'th' ? 'pb-table-h' : 'pb-table-c');
+                if (scope) n.setAttribute('scope', scope);
+                n.textContent = str(value);
+                return n;
+            }
+
+            var wrap = pbEl('div', 'pb-el pb-table');
+            var t = pbEl('table', 'pb-table-t');
+            /* A caption is the table's accessible name and is read before
+               its contents, so it goes first -- which is also the only
+               place HTML allows it. */
+            if (str(c.caption)) {
+                var cap = pbEl('caption', 'pb-table-cap');
+                cap.textContent = str(c.caption);
+                t.appendChild(cap);
+            }
+            var i, j;
+            if (head) {
+                var thead = pbEl('thead');
+                var hr = pbEl('tr', 'pb-table-r');
+                for (i = 0; i < cols; i++) {
+                    hr.appendChild(cell('th', (rows[0] || {})[PB_TABLE_KEYS[i]], 'col'));
+                }
+                thead.appendChild(hr);
+                t.appendChild(thead);
+            }
+            var tb = pbEl('tbody');
+            for (j = 0; j < body.length; j++) {
+                var tr = pbEl('tr', 'pb-table-r');
+                for (i = 0; i < cols; i++) {
+                    tr.appendChild(cell('td', (body[j] || {})[PB_TABLE_KEYS[i]], ''));
+                }
+                tb.appendChild(tr);
+            }
+            t.appendChild(tb);
+            wrap.appendChild(t);
+            return pbId(wrap, el);
+        },
+
+        /* A table of contents: a <nav> of links to the headings this page's
+           sections draw.
+
+           It reads pbOutline(), the heading reader the admin already uses
+           for its H1 warning, so the list is resolved exactly as the page
+           resolves it -- including a heading element with no level falling
+           back to h2. There is no second heading reader to drift.
+
+           H1 is never listed. A page's H1 is its title, written above the
+           sections from pages.<slug>.heading, so a contents entry for one
+           would point at a second H1 that should not be there anyway.
+
+           Nothing is drawn when there is nothing to point at: fewer than
+           two entries is a list of one link, which is noise rather than
+           navigation. */
+        toc: function (el) {
+            var c = el.content || {};
+            var deepest = pbPick(PB_TOC_DEPTHS, str(c.depth)) ? str(c.depth) : 'h3';
+            var limit = PB_TOC_DEPTHS[deepest];
+            var items = pbOutline(pbRenderTree || []).items;
+            var rows = [];
+            for (var i = 0; i < items.length; i++) {
+                var lv = parseInt(items[i].level.slice(1), 10);
+                if (lv < 2 || lv > limit) continue;       /* never the H1 */
+                var text = str(items[i].text);
+                var href = pbAnchorId(items[i].id);
+                if (!text || !href) continue;
+                rows.push({ text: text, href: href, level: lv });
+            }
+            if (rows.length < 2) return null;
+
+            var nav = pbEl('nav', 'pb-el pb-toc');
+            var label = str(c.title);
+            nav.setAttribute('aria-label', label || 'On this page');
+            if (label) {
+                var lvl = pbPick(PB_HEADING_LEVELS, str(c.titleLevel).toLowerCase())
+                    ? str(c.titleLevel).toLowerCase() : 'h2';
+                var h = pbEl(lvl, 'pb-toc-title');
+                h.textContent = label;
+                /* The heading names the nav, so the nav does not need a
+                   second name of its own. */
+                var hid = pbDomId(el, 't');
+                h.setAttribute('id', hid);
+                nav.setAttribute('aria-labelledby', hid);
+                nav.removeAttribute('aria-label');
+                nav.appendChild(h);
+            }
+            var listTag = c.ordered === true ? 'ol' : 'ul';
+            var list = pbEl(listTag, 'pb-toc-list');
+            for (i = 0; i < rows.length; i++) {
+                var li = pbEl('li', 'pb-toc-item pb-toc-l' + rows[i].level);
+                var a = pbEl('a', 'pb-toc-link');
+                a.setAttribute('href', '#' + rows[i].href);
+                a.textContent = rows[i].text;
+                li.appendChild(a);
+                list.appendChild(li);
+            }
+            nav.appendChild(list);
+            return pbId(nav, el);
         }
 
     };
@@ -3033,7 +3361,29 @@
         return pbUpgrade(b.sections, pbSchemaOf(b));
     }
 
+    /* The section tree the current render is drawing.
+
+       Every element renderer is handed its own element and nothing else,
+       which is right: an element that could read the rest of the page is
+       an element that can be surprised by it. The table of contents is the
+       one exception -- it exists to describe the headings around it -- so
+       instead of widening every renderer's signature, the top-level call
+       leaves the tree here for the length of its own synchronous run and
+       clears it afterwards. Read through pbOutline(), which is the same
+       heading reader the admin uses, so there is no second idea of what a
+       heading is. */
+    var pbRenderTree = null;
+
     function renderSectionsInto(host, sections) {
+        pbRenderTree = isArr(sections) ? sections : null;
+        try {
+            renderSectionsBody(host, sections);
+        } finally {
+            pbRenderTree = null;
+        }
+    }
+
+    function renderSectionsBody(host, sections) {
         var frag = document.createDocumentFragment();
         for (var i = 0; i < sections.length; i++) {
             var sec = sections[i];
@@ -3049,6 +3399,18 @@
             pbRenderElements(inner, sec.elements, 0);
             node.appendChild(inner);
             frag.appendChild(node);
+        }
+        /* One FAQPage block for the whole mount, after the sections it
+           describes. A script element's contents are never parsed as
+           markup, and ldText() has already put the one character that
+           could close it early beyond reach. */
+        var faq = pbFaqSchema(sections);
+        if (faq) {
+            var ld = pbEl('script');
+            ld.setAttribute('type', 'application/ld+json');
+            ld.setAttribute('data-pb-faq', '1');
+            ld.textContent = ldText(faq);
+            frag.appendChild(ld);
         }
         host.textContent = '';
         host.appendChild(frag);
@@ -3681,6 +4043,78 @@
     function pbHeadingLevel(el) {
         var lvl = String(((el || {}).content || {}).level || 'h2').toLowerCase();
         return pbPick(PB_ALL_LEVELS, lvl) ? lvl : 'h2';
+    }
+
+    /* ----------------------------------------------------------
+       FAQPage, FROM THE FAQ ELEMENTS A PAGE ACTUALLY DRAWS
+
+       WHY HERE AND NOT IN schemaBlocks(). The head's four blocks are
+       computed from a PAGE RECORD -- its title, description, breadcrumb --
+       and written into script elements the template already ships. An FAQ
+       is not in the record; it is in the section tree, and the section tree
+       is the thing that gets baked into the HTML. Emitting this block
+       alongside the sections it describes means it is in the STATIC
+       response for every page carrying an FAQ, committed template or
+       CMS-generated alike, with no template to change and no head slot to
+       add. It also cannot duplicate: the mount is rewritten whole on every
+       render, so there is exactly one block per page, never two.
+
+       It uses ldContext() and ldText(), which are what the head blocks use.
+       There is no second JSON-LD framework here.
+
+       WHAT IS LEFT OUT, AND WHY. Google's requirement is that the question
+       and the answer are on the page. They are -- the FAQ element renders
+       its answers into the HTML and hides the closed ones with `hidden`,
+       which is display, not absence. But a question with no answer is
+       dropped: a Question whose acceptedAnswer is empty is invalid
+       structured data, and inventing text to fill it would be worse than
+       saying nothing. A page whose FAQs yield no complete pair gets no
+       block at all rather than an empty FAQPage.
+    ---------------------------------------------------------- */
+    function pbFaqEntries(sections) {
+        var out = [];
+        (function walkSecs(list) {
+            if (!isArr(list)) return;
+            for (var i = 0; i < list.length; i++) {
+                var sec = list[i];
+                if (!sec || sec.enabled === false) continue;
+                walkEls(sec.elements, 0);
+            }
+        })(sections);
+        function walkEls(list, depth) {
+            if (!isArr(list) || depth > 4) return;
+            for (var i = 0; i < list.length; i++) {
+                var el = list[i];
+                if (!el || el.enabled === false) continue;
+                if (el.type === 'faq') {
+                    var items = isArr((el.content || {}).items) ? el.content.items : [];
+                    for (var j = 0; j < items.length; j++) {
+                        var q = str((items[j] || {}).question);
+                        var a = str((items[j] || {}).answer);
+                        /* Both halves, or neither. */
+                        if (q && a) out.push({ q: q, a: a });
+                    }
+                }
+                var cols = (el.content || {}).columns;
+                if (isArr(cols)) {
+                    for (var c = 0; c < cols.length; c++) {
+                        walkEls((cols[c] || {}).elements, depth + 1);
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    function pbFaqSchema(sections) {
+        var rows = pbFaqEntries(sections);
+        if (!rows.length) return null;
+        var main = [];
+        for (var i = 0; i < rows.length; i++) {
+            main.push({ '@type': 'Question', name: rows[i].q,
+                        acceptedAnswer: { '@type': 'Answer', text: rows[i].a } });
+        }
+        return { '@type': 'FAQPage', mainEntity: main };
     }
 
     function pbOutline(sections) {
@@ -5069,6 +5503,13 @@
             sectionStyleKeys: PB_SEC_STYLE_KEYS,
             icons: PB_ICONS,
             social: PB_SOCIAL,
+            /* Phase 2A allow-lists, exported for the same reason icons and
+               social are: the admin builds its controls from the
+               renderer's own lists, so it can never offer a value the
+               renderer would refuse, and there is no second copy to drift. */
+            textTags: PB_TEXT_TAGS,
+            tocDepths: PB_TOC_DEPTHS,
+            tableMaxCols: PB_TABLE_MAX_COLS,
             colLayouts: PB_COL_LAYOUTS,
             /* Global design (stage 6). `roleColor`/`roleTypo` resolve a role
                the way the stylesheet does, which is what lets the admin show
@@ -5125,6 +5566,11 @@
 
             /* what a tree would render, read-only (milestone E) */
             outline: pbOutline,
+            /* The FAQ pairs a section tree would publish, and the FAQPage
+               block built from them -- the same ones the renderer bakes, so
+               the admin's checks judge what the page will really say. */
+            faqPairs: pbFaqEntries,
+            faqSchema: pbFaqSchema,
 
             /* page templates (code registry) */
             templates: templateList,
