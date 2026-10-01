@@ -340,6 +340,148 @@ console.log('\n===== THE SHARED LOGIC NAMES NO BRAND =====');
     });
   }
 
+  /* ==================================================================
+     7. BUILD PARITY — WHAT THE STATIC HTML CARRIES IS WHAT THE BROWSER
+        WOULD COMPUTE
+     ------------------------------------------------------------------
+     Section 6 proved paintSeo() applies the table. This proves the
+     STATIC BUILD writes the same table: a generic CMS page is built by
+     the real CLI, its head is read back as plain text, and every value
+     is compared with what a browser computes from the same record for
+     the same slug. Two computations, one answer -- and the HTML side
+     never ran a line of JavaScript to get there.
+     ================================================================== */
+  console.log('\n===== THE STATIC HTML CARRIES WHAT THE BROWSER WOULD COMPUTE =====');
+  {
+    const { execFileSync } = require('child_process');
+    const os2 = require('os');
+    const SLUG = 'parity-fixture';
+    const BRANDS = path.join(ROOT, 'brands');
+    /* The first real brand, whichever it is -- this names none. */
+    const brandId = fs.readdirSync(BRANDS, { withFileTypes: true })
+      .filter(e => e.isDirectory()).map(e => e.name).sort()[0];
+    const brandJson = JSON.parse(fs.readFileSync(path.join(BRANDS, brandId, 'brand.json'), 'utf8'));
+    const brandRecord = pbbake.brandRecord(
+      fs.readFileSync(path.join(BRANDS, brandId, 'brand.js'), 'utf8'));
+    const seoCfg = JSON.parse(fs.readFileSync(path.join(BRANDS, brandId, 'seo-config.json'), 'utf8'));
+
+    /* Whatever the committed layer publishes has to be in the row too, or
+       the build refuses to empty those pages. */
+    const pages = {};
+    Object.keys(brandRecord.pages || {}).forEach(k => {
+      const p = brandRecord.pages[k];
+      if (p && p.builder && p.builder.status === 'published') pages[k] = { builder: p.builder };
+    });
+    pages[SLUG] = {
+      label: 'Parity Fixture', slug: SLUG, url: SLUG + '.html', canonical: '',
+      robots: { index: true, follow: true }, inSitemap: true,
+      og: { title: 'Parity OG', description: '', image: 'assets/images/ssl.png' },
+      twitter: { title: '', description: 'Parity TW description', image: '' },
+      breadcrumb: { label: 'Parity Fixture', show: true },
+      schema: { webPage: true, breadcrumb: true, contactPage: false },
+      updatedAt: '2026-10-01', title: 'Parity Fixture Title',
+      metaDescription: 'Parity fixture description.', heading: 'Parity Fixture',
+      lead: '', body: '', builderMount: true
+    };
+    const rowData = { seo: seoCfg.seo || {}, pages: pages };
+
+    const work = fs.mkdtempSync(path.join(os2.tmpdir(), 'seoparity-'));
+    const rowFile = path.join(work, 'row.json');
+    fs.writeFileSync(rowFile, JSON.stringify({ data: rowData, updated_at: '2026-10-01T00:00:00+00:00' }));
+    let built = true;
+    try {
+      execFileSync(process.execPath, [path.join(ROOT, 'tools', 'build-site.js'), brandId,
+        '--row', rowFile, '--out', path.join(work, 'out')],
+        { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (e) { built = false; console.log(((e.stdout || '') + (e.stderr || '')).slice(-500)); }
+    check('the build produced a generic page to compare against', built);
+
+    const file = path.join(work, 'out', brandJson.output || brandId, SLUG + '.html');
+    const html = built && fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+    check('  and it is on disk', !!html, file);
+
+    /* Read back, anchored on the attribute that names each tag. */
+    const metaOfHtml = (kind, name) => {
+      const m = new RegExp('<meta\\s+' + kind + '="' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
+        '"[^>]*content="([^"]*)"', 'i').exec(html);
+      return m ? m[1] : null;
+    };
+    const unesc = v => v == null ? null : v
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+    const staticSide = {
+      title: unesc((/<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html) || [, null])[1]),
+      description: unesc(metaOfHtml('name', 'description')),
+      robots: unesc(metaOfHtml('name', 'robots')),
+      canonical: unesc((/<link\s+rel="canonical"[^>]*href="([^"]*)"/i.exec(html) || [, null])[1]),
+      'og:title': unesc(metaOfHtml('property', 'og:title')),
+      'og:description': unesc(metaOfHtml('property', 'og:description')),
+      'og:url': unesc(metaOfHtml('property', 'og:url')),
+      'og:image': unesc(metaOfHtml('property', 'og:image')),
+      'twitter:title': unesc(metaOfHtml('name', 'twitter:title')),
+      'twitter:description': unesc(metaOfHtml('name', 'twitter:description')),
+      'twitter:image': unesc(metaOfHtml('name', 'twitter:image'))
+    };
+    const ldFromHtml = id => {
+      const m = new RegExp('<script[^>]*id="' + id + '"[^>]*>([\\s\\S]*?)</script>', 'i').exec(html);
+      if (!m) return null;
+      try { return JSON.parse(m[1]); } catch (e) { return 'UNPARSEABLE'; }
+    };
+
+    /* The browser side: the same record, installed the way the build
+       installs it, and the engine asked the same question. */
+    await p.goto(BASE + '/about.html', { waitUntil: 'load' });
+    await p.waitForFunction(() => window.CMS && typeof CMS.seo === 'object', null, { timeout: 15000 });
+    const browserSide = await p.evaluate(args => {
+      const [brand, row, baseUrl, slug] = args;
+      const record = CMS.merge(brand, row);
+      record.seo = CMS.merge(record.seo || {}, { baseUrl: baseUrl });
+      CMS.replace(record);
+      const page = CMS.seo.page(slug);
+      if (!page) return null;
+      const t = CMS.seo.tags(page, { breadcrumbNav: true });
+      const out = { title: t.title, canonical: t.links[0].href };
+      t.metas.forEach(m => { out[m.name] = m.content; });
+      out.__ld = { ldPage: t.jsonLd.ldPage, ldBreadcrumb: t.jsonLd.ldBreadcrumb };
+      return out;
+    }, [brandRecord, rowData, 'https://' + (brandJson.domain || brandId), SLUG]);
+
+    check('the browser resolves the same page from the same record', !!browserSide);
+    if (browserSide) {
+      ['title', 'description', 'canonical', 'robots', 'og:title', 'og:description', 'og:url',
+       'og:image', 'twitter:title', 'twitter:description'].forEach(k => {
+        check('static HTML == browser computation for ' + k,
+          staticSide[k] === browserSide[k], [k, staticSide[k], browserSide[k]]);
+      });
+      /* The one field where "nothing" is the right answer, and both sides
+         have to agree on that too. */
+      check('static HTML == browser computation for twitter:image',
+        (browserSide['twitter:image'] || '') === (staticSide['twitter:image'] || ''),
+        [staticSide['twitter:image'], browserSide['twitter:image']]);
+      check('  and that is a real value, not two nulls',
+        !!browserSide['og:image'] && !!staticSide['og:image'],
+        [staticSide['og:image'], browserSide['og:image']]);
+
+      ['ldPage', 'ldBreadcrumb'].forEach(id => {
+        check('static HTML == browser computation for ' + id,
+          JSON.stringify(ldFromHtml(id)) === JSON.stringify(browserSide.__ld[id]),
+          [JSON.stringify(ldFromHtml(id) || null).slice(0, 160),
+           JSON.stringify(browserSide.__ld[id] || null).slice(0, 160)]);
+      });
+      check('  and those blocks are not empty on either side',
+        !!browserSide.__ld.ldPage && !!browserSide.__ld.ldBreadcrumb &&
+        !!ldFromHtml('ldPage') && !!ldFromHtml('ldBreadcrumb'));
+
+      /* The whole point: no script had to run for the static side. */
+      check('the static values were read from text, with no JavaScript executed',
+        html.indexOf(staticSide.title) > -1 && html.indexOf('<script') > -1);
+      check('  and the runtime hooks are still in the page, so it repaints too',
+        html.indexOf('data-cms-title="pages.' + SLUG + '.title"') > -1 &&
+        html.indexOf('data-cms-meta="pages.' + SLUG + '.metaDescription"') > -1);
+    }
+    try { fs.rmSync(work, { recursive: true, force: true }); } catch (e) {}
+  }
+
   /* A page with no data-cms-page must still be left alone -- the legacy
      title hook path, which paintSeo keeps to itself. */
   await p.goto(BASE + '/login.html', { waitUntil: 'load' });

@@ -114,7 +114,11 @@ function planSite(opts) {
        one reader, one siteId guard, one snapshot. */
     const plan = kit.planBrand({ brandsDir: opts.brandsDir, templatesDir: opts.templatesDir,
                                  id: opts.id, env: opts.env, published: opts.published,
-                                 cmsPages: opts.cmsPages });
+                                 cmsPages: opts.cmsPages,
+                                 /* The record itself, so the generator can ask the CMS
+                                    engine for a page's computed SEO over the same
+                                    snapshot the HTML and the sitemap come from. */
+                                 row: opts.row && opts.row.data ? opts.row.data : null });
 
     const shared = [];
     for (const d of SHARED_DIRS) {

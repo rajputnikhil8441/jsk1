@@ -5,24 +5,31 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <!-- SEO head. These are the FALLBACK values a crawler reads before any
-         script runs: the page's own CMS values as they stood when this build
-         ran, HTML-escaped. The data-cms-* hooks are what js/cms.js repaints
-         from the live record, and what the static SEO bake writes into. -->
-    <title data-cms-title="pages.{{page.slug}}.title">{{page.title}}</title>
-    <meta name="description" data-cms-meta="pages.{{page.slug}}.metaDescription" content="{{page.metaDescription}}" />
-    <link rel="canonical" href="https://{{brand.domain}}/{{page.url}}" />
-    <meta name="robots" content="index,follow" />
+    <!-- SEO head. Every value here is BAKED: computed by js/cms.js's own
+         CMS.seo.tags() over this brand's published record, written in at
+         build time and HTML-escaped. A crawler that runs no JavaScript reads
+         the same SEO a visitor gets. The data-cms-* hooks stay because the
+         runtime still repaints from the live record; they are also the
+         anchors the bake writes into. A value the CMS leaves blank keeps the
+         record's own, exactly as setMeta() leaves a tag alone at runtime. -->
+    <title data-cms-title="pages.{{page.slug}}.title">{{seo.title}}</title>
+    <meta name="description" data-cms-meta="pages.{{page.slug}}.metaDescription" content="{{seo.description}}" />
+    <link rel="canonical" href="{{seo.canonical}}" />
+    <meta name="robots" content="{{seo.robots}}" />
 
     <!-- Open Graph / social sharing -->
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="{{brand.name}}" />
-    <meta property="og:title" content="{{page.title}}" />
-    <meta property="og:description" content="{{page.metaDescription}}" />
-    <meta property="og:url" content="https://{{brand.domain}}/{{page.url}}" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="{{page.title}}" />
-    <meta name="twitter:description" content="{{page.metaDescription}}" />
+    <meta property="og:site_name" content="{{seo.ogSiteName}}" />
+    <meta property="og:title" content="{{seo.ogTitle}}" />
+    <meta property="og:description" content="{{seo.ogDescription}}" />
+    <meta property="og:url" content="{{seo.ogUrl}}" />
+    <meta name="twitter:card" content="{{seo.twitterCard}}" />
+    <meta name="twitter:title" content="{{seo.twitterTitle}}" />
+    <meta name="twitter:description" content="{{seo.twitterDescription}}" />
+    <!-- Social images, and only when the CMS has one a crawler can fetch:
+         crawlableImage() refuses a data: or blob: URL, so an inline image
+         leaves no tag rather than an unusable one. -->
+    {{seo.imageTags}}
 
     <link rel="stylesheet" href="css/style.css" />
     <!-- Roboto Condensed — used only by the header dropdown (css/menu.css). -->
@@ -46,18 +53,16 @@
     <!-- WHITE LABEL CMS -->
     <script src="js/cms.js"></script>
 
-    <!-- Structured data. The blocks a committed page ships are written from
-         values the CMS COMPUTES (a title template, a description cascade),
-         and writing a different block here than js/cms.js writes at runtime
-         would put two documents at one URL -- the exact problem baking
-         exists to solve. So these carry the engine's own "nothing yet"
-         value and the ids paintSchema() fills, and the static SEO bake is
-         what replaces them. -->
+    <!-- Structured data, serialised from the SAME CMS.seo.jsonLd() blocks
+         paintSchema() writes at runtime, so the static document and the
+         painted one cannot describe the page differently. A block the
+         engine cannot build completely comes through as {} -- which is
+         exactly what writeLd() writes for it in a browser. -->
     <script type="application/ld+json" id="ldPage">
-    {}
+    {{seo.ldPage}}
     </script>
     <script type="application/ld+json" id="ldBreadcrumb">
-    {}
+    {{seo.ldBreadcrumb}}
     </script>
 </head>
 

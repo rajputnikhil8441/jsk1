@@ -119,6 +119,11 @@ const CMS_PAGE_TEMPLATE = 'cms-page.html';
    point: this list is what protects the names that have no template to
    collide with. */
 const RESERVED_PAGES = ['index', 'admin', '404', 'sitemap', 'robots', 'login', 'register'];
+
+/* The shape CMS.seo.tags() returns, with nothing in it. Used when the
+   engine does not know a slug, so every seo.* token still resolves and the
+   page falls back to exactly what it carried before baking. */
+const EMPTY_TAGS = { title: '', metas: [], links: [], jsonLd: {} };
 const ENV_NAME_RE = /^[a-z][a-z0-9-]{0,20}$/;
 
 /* The environment a build with no --env produces: the brand on its own
@@ -540,6 +545,78 @@ function pageTokenValues(slug, page) {
 
 function str(v) { return v == null ? '' : String(v).trim(); }
 
+/* ------------------------------------------------------------
+   THE PAGE'S SEO, BAKED -- FROM THE ENGINE, NOT FROM HERE
+   ------------------------------------------------------------
+   Every value below comes from CMS.seo.tags(), which is js/cms.js's own
+   computation and the same table paintSeo() applies in a browser. Nothing
+   here decides anything: no title template, no description cascade, no
+   Twitter inheritance, no canonical rule, no JSON-LD shape. This maps that
+   table onto the tokens the generic template carries, and escapes.
+
+   THE BLANK RULE. A computed value that is empty falls back to what the
+   template would have shipped without baking -- the page's own raw field.
+   That is the same promise setMeta() keeps at runtime: an empty value
+   leaves the tag alone rather than emptying it. A tag that has no honest
+   fallback at all (a social image) is not written, which is what
+   crawlableImage() returning '' means.
+   ------------------------------------------------------------ */
+function metaOf(tags, name) {
+    for (let i = 0; i < tags.metas.length; i++) {
+        if (tags.metas[i].name === name) return tags.metas[i].content;
+    }
+    return '';
+}
+
+/* JSON for a <script> context. Serialised by JSON.stringify so the shape is
+   the engine's, then every "<" becomes < -- still the same JSON to any
+   parser, and "</script>" inside a string can no longer end the element. */
+function ldJson(obj, indent) {
+    if (!obj) return '{}';
+    return JSON.stringify(obj, null, 2)
+        .replace(/</g, '\\u003c')
+        .split('\n').join('\n' + indent);
+}
+
+function seoTokenValues(brand, tags, slug, page) {
+    const p = page || {};
+    const pick = (computed, fallback) => htmlEscape(str(computed) || str(fallback));
+    const title = str(tags.title) || str(p.title);
+    const desc = str(metaOf(tags, 'description')) || str(p.metaDescription);
+    /* What the template carried before baking: the brand's own serving host
+       and this page's url. Used only if the engine computed nothing, which
+       means the record has no seo.baseUrl to compute from. */
+    const selfUrl = 'https://' + brand.domain + '/' + str(p.url);
+
+    /* A social image is written only when the engine produced a URL a
+       crawler can actually fetch. crawlableImage() refuses data: and blob:,
+       so an inline image yields '' and no tag -- never a tag pointing at
+       something unusable. */
+    const ogImg = str(metaOf(tags, 'og:image'));
+    const twImg = str(metaOf(tags, 'twitter:image'));
+    let imageTags = '';
+    if (ogImg) imageTags += '<meta property="og:image" content="' + htmlEscape(ogImg) + '" />';
+    if (twImg) imageTags += (imageTags ? '\n    ' : '') +
+        '<meta name="twitter:image" content="' + htmlEscape(twImg) + '" />';
+
+    return {
+        'seo.title': htmlEscape(title),
+        'seo.description': htmlEscape(desc),
+        'seo.canonical': pick(tags.links[0] && tags.links[0].href, selfUrl),
+        'seo.robots': htmlEscape(str(metaOf(tags, 'robots')) || 'index,follow'),
+        'seo.ogsitename': pick(metaOf(tags, 'og:site_name'), brand.name),
+        'seo.ogtitle': pick(metaOf(tags, 'og:title'), title),
+        'seo.ogdescription': pick(metaOf(tags, 'og:description'), desc),
+        'seo.ogurl': pick(metaOf(tags, 'og:url'), selfUrl),
+        'seo.twittercard': pick(metaOf(tags, 'twitter:card'), 'summary_large_image'),
+        'seo.twittertitle': pick(metaOf(tags, 'twitter:title'), title),
+        'seo.twitterdescription': pick(metaOf(tags, 'twitter:description'), desc),
+        'seo.imagetags': imageTags,
+        'seo.ldpage': ldJson(tags.jsonLd.ldPage, '    '),
+        'seo.ldbreadcrumb': ldJson(tags.jsonLd.ldBreadcrumb, '    ')
+    };
+}
+
 /* Substitution, then slots, then a check that nothing is left
    unresolved. That last step matters more than it looks: a
    mistyped token would otherwise ship as literal "{{brand.nmae}}"
@@ -813,6 +890,18 @@ function planBrand(opts) {
     const cmsPages = opts.cmsPages && typeof opts.cmsPages === 'object' ? opts.cmsPages : null;
     const generatedPages = [];
     if (cmsPages) {
+        /* What the CMS engine is handed so its computations see what a
+           visitor's browser would: this brand's committed layer, the
+           published row over it, and the host this build is actually
+           served from. Keyed on the brand directory and environment, so
+           two brands built in one process cannot read each other's. */
+        const seoSource = {
+            key: brand.dir + '\u0000' + brand.env,
+            brand: pbbake.brandRecord(fs.readFileSync(path.join(brand.dir, 'brand.js'), 'utf8')),
+            row: (opts.row && typeof opts.row === 'object') ? opts.row : null,
+            baseUrl: 'https://' + brand.domain,
+            noindex: brand.noindex === true
+        };
         const generic = path.join(templatesDir, CMS_PAGE_TEMPLATE);
         const claimed = new Map();              /* output file -> what emitted it */
         wanted.forEach(p => claimed.set(p, 'templates/pages/' + p));
@@ -865,9 +954,27 @@ function planBrand(opts) {
                     '" which has no committed template, and the generic template is missing from ' +
                     'templates/' + CMS_PAGE_TEMPLATE + '. Refusing to skip a published page silently.');
             }
+            /* THE PAGE'S SEO, COMPUTED BY THE ENGINE AND BAKED.
+               js/cms.js's own CMS.seo.tags() for this slug, over the record
+               a visitor's browser would merge, with this environment's
+               serving host. The template's data-cms-* hooks stay exactly
+               where they are -- the runtime still repaints from the live
+               record -- but a crawler that runs no JavaScript now reads the
+               same values. A page the engine does not know is left to the
+               template's own fallbacks. */
+            const tags = pbbake.seoTags(brand.sharedRoot, seoSource, slug,
+                                        { breadcrumbNav: true }) || EMPTY_TAGS;
+            if (tags === EMPTY_TAGS) {
+                warnings.push('CMS page "' + slug + '" could not be resolved by the CMS engine, so ' +
+                    'nothing was computed for it. The page carries the record\'s own values ' +
+                    'instead, which is what it carried before SEO was baked.');
+            }
+            const seoTokens = seoTokenValues(brand, tags, slug, page);
+
             const tplSource = 'templates/' + CMS_PAGE_TEMPLATE;
             const r = renderPage(fs.readFileSync(generic, 'utf8'), brand, tplSource +
-                                 ' (CMS page "' + slug + '")', pageTokenValues(slug, page));
+                                 ' (CMS page "' + slug + '")',
+                                 Object.assign(pageTokenValues(slug, page), seoTokens));
             r.slotsDeclared.forEach(s => slotsUsed.add(s));
             (r.baked || []).forEach(x => bakedPages.push(x));
             emit(file, r.html, tplSource + ' (CMS page "' + slug + '")');

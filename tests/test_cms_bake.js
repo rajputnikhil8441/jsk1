@@ -110,6 +110,16 @@ function rowFor(brandId, aboutText, extra) {
   return pages;
 }
 
+/* The same, for any brands directory -- the synthetic third brand lives in
+   a temp one. Whatever that brand's committed layer publishes has to be in
+   its row too, or the build rightly refuses to empty those pages. */
+function rowFor2(brandsDir, brandId) {
+  const layer = SHELL.publishedBlocks(brandsDir, brandId);
+  const pages = {};
+  Object.keys(layer).forEach(slug => { pages[slug] = published('kept: ' + slug); });
+  return pages;
+}
+
 /* ====================================================================
    1. THE PUBLISHED RECORD REACHES THE HTML, PER BRAND
    ==================================================================== */
@@ -565,7 +575,7 @@ function writeFullRow(file, brandsDir, id, pages, updatedAt) {
     new RegExp('<html lang="en" data-cms-page="' + GEN.a + '">').test(htmlA));
   check('its heading, title and description are in the HTML source',
     htmlA.indexOf('>' + GTEXT.a + '</h1>') > -1 &&
-    htmlA.indexOf('>' + GTEXT.a + '</title>') > -1 &&
+    /<title\b[^>]*>[^<]*ALPHA GUIDE FOR BRAND A[^<]*<\/title>/.test(htmlA) &&
     htmlA.indexOf('content="' + GTEXT.a + ' description"') > -1);
   check('  with the data-cms hooks pointing at its own record',
     htmlA.indexOf('data-cms-title="pages.' + GEN.a + '.title"') > -1 &&
@@ -757,9 +767,9 @@ console.log('\n===== THE GENERIC PAGE MECHANISM IS BRAND-AGNOSTIC =====');
   check('  and lives outside templates/pages/, so it is never published as a page',
     !fs.existsSync(path.join(ROOT, 'templates', 'pages', 'cms-page.html')) &&
     !walk(path.join(ROOT, 'templates')).includes('pages/cms-page.html'));
-  check('  getting every brand-specific value from a token',
-    /\{\{brand\.name\}\}/.test(tpl) && /\{\{brand\.domain\}\}/.test(tpl) &&
-    /\{\{page\.slug\}\}/.test(tpl));
+  check('  getting every brand-specific value from a token, never a literal',
+    /\{\{brand\.name\}\}/.test(tpl) && /\{\{page\.slug\}\}/.test(tpl) &&
+    /\{\{seo\.canonical\}\}/.test(tpl) && /\{\{seo\.ogUrl\}\}/.test(tpl));
   check('  and carrying the SEO hooks the static bake will write into',
     ['data-cms-title="pages.{{page.slug}}.title"',
      'data-cms-meta="pages.{{page.slug}}.metaDescription"',
@@ -800,6 +810,226 @@ console.log('\n===== THE GENERIC PAGE MECHANISM IS BRAND-AGNOSTIC =====');
   check('the admin no longer tells anyone to add the file to the site by hand',
     !/Download the HTML file and add it to the site/.test(admin) &&
     /the next deploy will generate/.test(admin));
+}
+
+/* ====================================================================
+   15. THE PAGE'S SEO IS IN THE HTML, NOT ONLY IN THE DOM
+   --------------------------------------------------------------------
+   Everything below reads the generated file AS PLAIN TEXT. No browser,
+   no JavaScript: if a value is here, a crawler that executes nothing
+   reads it. The values themselves are computed by js/cms.js's own
+   CMS.seo.tags(), so this asserts they ARRIVED, not how they were
+   worked out -- tests/test_seo_api.js is where the two computations are
+   compared.
+   ==================================================================== */
+console.log('\n===== THE CMS PAGE\'S SEO IS BAKED INTO THE HTML SOURCE =====');
+
+/* Read one tag out of static text, anchored on the attribute that names
+   it rather than on where it sits. */
+const attrOf = (html, sel, attr) => {
+  const m = new RegExp('<[a-z]+[^>]*\\b' + sel + '[^>]*\\b' + attr + '="([^"]*)"', 'i').exec(html) ||
+            new RegExp('<[a-z]+[^>]*\\b' + attr + '="([^"]*)"[^>]*\\b' + sel, 'i').exec(html);
+  return m ? m[1] : null;
+};
+const metaTag = (html, kind, name) => attrOf(html, kind + '="' + name + '"', 'content');
+const titleOf = html => {
+  const m = /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html);
+  return m ? m[1] : null;
+};
+const ldOf = (html, id) => {
+  const m = new RegExp('<script[^>]*id="' + id + '"[^>]*>([\\s\\S]*?)</script>', 'i').exec(html);
+  if (!m) return null;
+  try { return JSON.parse(m[1]); } catch (e) { return 'UNPARSEABLE: ' + m[1].slice(0, 120); }
+};
+
+const SEOSLUG = 'seo-fixture-page';
+/* One fixture, run through every brand. Nothing in it names a brand, so
+   each brand's own record is what differentiates the result. */
+function seoFixture(extra) {
+  return cmsPage(SEOSLUG, 'Fixture Page', Object.assign({
+    metaDescription: 'Fixture page description.',
+    og: { title: 'Fixture OG title', description: 'Fixture OG description', image: 'assets/images/ssl.png' },
+    twitter: { title: '', description: '', image: '' }
+  }, extra || {}));
+}
+
+{
+  const OUT4 = path.join(WORK, 'seo');
+  const brandsDir = path.join(ROOT, 'brands');
+  const row = writeFullRow(path.join(ROWS, 'seo-a.json'), brandsDir, A.id,
+    rowFor(A.id, MARK.a, { [SEOSLUG]: seoFixture() }));
+  const r = build([A.id].concat(A.env, ['--row', rel(row), '--out', OUT4]));
+  check('a brand builds a CMS page with SEO to bake', r.ok, r.out.slice(-500));
+  const html = fs.readFileSync(path.join(OUT4, A.out, SEOSLUG + '.html'), 'utf8');
+
+  /* 1-6. the tags, in the file */
+  check('the title is in the HTML source', !!titleOf(html) && titleOf(html).indexOf('Fixture Page') > -1,
+    titleOf(html));
+  check('  and carries the brand\'s own title template, not the raw field',
+    titleOf(html) !== 'Fixture Page' && titleOf(html).length > 'Fixture Page'.length, titleOf(html));
+  check('the meta description is in the HTML source',
+    metaTag(html, 'name', 'description') === 'Fixture page description.',
+    metaTag(html, 'name', 'description'));
+  check('the canonical is in the HTML source, on this brand\'s domain',
+    attrOf(html, 'rel="canonical"', 'href') === 'https://' + A.out + '/' + SEOSLUG + '.html',
+    attrOf(html, 'rel="canonical"', 'href'));
+  check('  keeping the flat /<slug>.html convention',
+    !/rel="canonical" href="[^"]*\/[^".]*\/"/.test(html));
+  check('the robots directive is in the HTML source',
+    metaTag(html, 'name', 'robots') === 'index,follow', metaTag(html, 'name', 'robots'));
+  check('the Open Graph title and description are in the HTML source',
+    metaTag(html, 'property', 'og:title') === 'Fixture OG title' &&
+    metaTag(html, 'property', 'og:description') === 'Fixture OG description',
+    [metaTag(html, 'property', 'og:title'), metaTag(html, 'property', 'og:description')]);
+  check('  with og:url matching the canonical',
+    metaTag(html, 'property', 'og:url') === attrOf(html, 'rel="canonical"', 'href'));
+  check('the Open Graph image is absolute, from the brand\'s own base',
+    metaTag(html, 'property', 'og:image') === 'https://' + A.out + '/assets/images/ssl.png',
+    metaTag(html, 'property', 'og:image'));
+  check('Twitter inherits Open Graph, by the engine\'s own rule',
+    metaTag(html, 'name', 'twitter:title') === 'Fixture OG title' &&
+    metaTag(html, 'name', 'twitter:description') === 'Fixture OG description' &&
+    metaTag(html, 'name', 'twitter:image') === metaTag(html, 'property', 'og:image'),
+    [metaTag(html, 'name', 'twitter:title'), metaTag(html, 'name', 'twitter:image')]);
+
+  /* 7-8. JSON-LD, parsed back from the script element */
+  const ldPage = ldOf(html, 'ldPage'), ldBc = ldOf(html, 'ldBreadcrumb');
+  check('the WebPage JSON-LD is valid JSON in the HTML source',
+    ldPage && ldPage['@type'] === 'WebPage' && ldPage['@context'] === 'https://schema.org', ldPage);
+  check('  describing this page, at the same URL as the canonical',
+    ldPage.url === attrOf(html, 'rel="canonical"', 'href') &&
+    ldPage.description === metaTag(html, 'name', 'description'), ldPage);
+  check('the Breadcrumb JSON-LD is valid JSON in the HTML source',
+    ldBc && ldBc['@type'] === 'BreadcrumbList' && ldBc.itemListElement.length === 2, ldBc);
+  check('  ending on this page, at the same URL again',
+    ldBc.itemListElement[1].item === ldPage.url, ldBc.itemListElement);
+  check('no block is written twice',
+    (html.match(/id="ldPage"/g) || []).length === 1 &&
+    (html.match(/id="ldBreadcrumb"/g) || []).length === 1);
+
+  /* 12-13. exactly one of each single-valued tag */
+  [['rel="canonical"', 1], ['name="robots"', 1], ['property="og:title"', 1],
+   ['property="og:url"', 1], ['name="twitter:title"', 1], ['property="og:image"', 1],
+   ['name="twitter:image"', 1]].forEach(([needle, n]) =>
+    check('exactly ' + n + ' ' + needle + ' in the page',
+      (html.match(new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length === n,
+      (html.match(new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length));
+  check('and one <title>', (html.match(/<title\b/g) || []).length === 1);
+
+  /* 14-15. escaping */
+  const hostile = 'A "quoted" <tag> & an \u0027apostrophe\u0027';
+  const hrow = writeFullRow(path.join(ROWS, 'seo-esc.json'), brandsDir, A.id,
+    rowFor(A.id, MARK.a, { [SEOSLUG]: seoFixture({ title: hostile, metaDescription: hostile,
+      og: { title: hostile, description: hostile, image: 'assets/x.png?a=1&b=2' },
+      breadcrumb: { label: hostile, show: true } }) }));
+  const he = build([A.id].concat(A.env, ['--row', rel(hrow), '--out', path.join(WORK, 'seo-esc')]));
+  check('a hostile CMS value still builds', he.ok, he.out.slice(-400));
+  const hh = fs.readFileSync(path.join(WORK, 'seo-esc', A.out, SEOSLUG + '.html'), 'utf8');
+  check('it is escaped in attributes, so no tag is broken out of',
+    metaTag(hh, 'property', 'og:title') !== null &&
+    metaTag(hh, 'property', 'og:title').indexOf('&quot;') > -1 &&
+    metaTag(hh, 'property', 'og:title').indexOf('&lt;tag&gt;') > -1,
+    metaTag(hh, 'property', 'og:title'));
+  check('  and in text, so the title element still closes where it should',
+    titleOf(hh).indexOf('&lt;tag&gt;') > -1 && (hh.match(/<title\b/g) || []).length === 1);
+  check('  with no raw angle bracket from CMS content anywhere in the head',
+    !/content="[^"]*<[^"]*"/.test(hh.slice(0, hh.indexOf('</head>'))));
+  check('an & in an image URL is escaped in the attribute',
+    (metaTag(hh, 'property', 'og:image') || '').indexOf('&amp;b=2') > -1,
+    metaTag(hh, 'property', 'og:image'));
+  check('the JSON-LD stays parseable with hostile content in it',
+    ldOf(hh, 'ldPage') && ldOf(hh, 'ldPage')['@type'] === 'WebPage', ldOf(hh, 'ldPage'));
+  check('  and cannot end its own script element',
+    !/<\/script/i.test(/id="ldPage"[^>]*>([\s\S]*?)<\/script>/i.exec(hh)[1]));
+
+  /* 9-11. blank CMS values keep a valid fallback -- never an empty tag */
+  const brow = writeFullRow(path.join(ROWS, 'seo-blank.json'), brandsDir, A.id,
+    rowFor(A.id, MARK.a, { [SEOSLUG]: cmsPage(SEOSLUG, 'Blank Fixture', {
+      title: '', metaDescription: '', heading: '',
+      og: { title: '', description: '', image: '' },
+      twitter: { title: '', description: '', image: '' } }) }));
+  const bb = build([A.id].concat(A.env, ['--row', rel(brow), '--out', path.join(WORK, 'seo-blank')]));
+  check('a page with every SEO field blank still builds', bb.ok, bb.out.slice(-400));
+  const bh = fs.readFileSync(path.join(WORK, 'seo-blank', A.out, SEOSLUG + '.html'), 'utf8');
+  check('a blank title does not produce an empty <title>', !!titleOf(bh).trim(), titleOf(bh));
+  check('a blank description does not produce an empty description tag',
+    !!(metaTag(bh, 'name', 'description') || '').trim(), metaTag(bh, 'name', 'description'));
+  check('blank og/twitter titles fall back rather than emptying',
+    !!(metaTag(bh, 'property', 'og:title') || '').trim() &&
+    !!(metaTag(bh, 'name', 'twitter:title') || '').trim(),
+    [metaTag(bh, 'property', 'og:title'), metaTag(bh, 'name', 'twitter:title')]);
+  check('the canonical and robots are still there and still valid',
+    attrOf(bh, 'rel="canonical"', 'href') === 'https://' + A.out + '/' + SEOSLUG + '.html' &&
+    metaTag(bh, 'name', 'robots') === 'index,follow');
+  check('and no tag in the head was written with an empty value',
+    !/\scontent=""/.test(bh.slice(0, bh.indexOf('</head>'))),
+    (bh.slice(0, bh.indexOf('</head>')).match(/<meta[^>]*content=""[^>]*>/g) || []));
+
+  /* 20. an image a crawler cannot fetch is not advertised as one */
+  const drow = writeFullRow(path.join(ROWS, 'seo-data.json'), brandsDir, A.id,
+    rowFor(A.id, MARK.a, { [SEOSLUG]: seoFixture({
+      og: { title: 'T', description: 'D', image: 'data:image/png;base64,AAAA' },
+      twitter: { title: '', description: '', image: 'blob:https://x/y' } }) }));
+  const dd = build([A.id].concat(A.env, ['--row', rel(drow), '--out', path.join(WORK, 'seo-data')]));
+  const dh = fs.readFileSync(path.join(WORK, 'seo-data', A.out, SEOSLUG + '.html'), 'utf8');
+  check('a data: image builds without a tag rather than an unusable one',
+    dd.ok && metaTag(dh, 'property', 'og:image') === null, metaTag(dh, 'property', 'og:image'));
+  check('  and a blob: image likewise', metaTag(dh, 'name', 'twitter:image') === null);
+  check('  with no data: or blob: URL in any tag the page emits',
+    !/(?:content|href|src)="(?:data:|blob:)/.test(dh),
+    (dh.match(/(?:content|href|src)="(?:data:|blob:)[^"]*/g) || []));
+}
+
+/* ====================================================================
+   16. THE SAME FIXTURE, EVERY BRAND, ITS OWN SEO
+   ==================================================================== */
+console.log('\n===== ONE FIXTURE, THREE BRANDS, THREE SETS OF SEO =====');
+{
+  const brandsDir = path.join(ROOT, 'brands');
+  /* A third brand that exists only as a directory. */
+  const troot = mktmp('seo-third');
+  const tbrands = path.join(troot, 'brands');
+  fs.cpSync(path.join(__dirname, 'fixtures', 'brands'), tbrands, { recursive: true });
+  const tid = fs.readdirSync(tbrands, { withFileTypes: true })
+    .filter(e => e.isDirectory()).map(e => e.name).sort()[0];
+  {
+    const seo = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools', 'seo-config.json'), 'utf8'));
+    seo.seo = seo.seo || {};
+    seo.seo.baseUrl = 'https://' + tid;
+    seo.seo.siteName = 'Third';
+    fs.writeFileSync(path.join(tbrands, tid, 'seo-config.json'), JSON.stringify(seo, null, 2) + '\n');
+  }
+
+  const targets = [
+    { id: A.id, env: A.env, brands: brandsDir, out: A.out },
+    { id: B.id, env: B.env, brands: brandsDir, out: B.out },
+    { id: tid, env: [], brands: tbrands, out: tid }
+  ];
+  const seen = [];
+  for (const t of targets) {
+    const dir = mktmp('seo-brand');
+    const row = writeFullRow(path.join(ROWS, 'seo-wl-' + t.out + '.json'), t.brands, t.id,
+      Object.assign(rowFor2(t.brands, t.id), { [SEOSLUG]: seoFixture() }));
+    const r = build([t.id, '--brands', rel(t.brands)].concat(t.env, ['--row', rel(row), '--out', dir]));
+    check(t.id + ': builds the shared fixture page', r.ok, r.out.slice(-500));
+    const f = path.join(dir, t.out, SEOSLUG + '.html');
+    const h = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '';
+    check(t.id + ':   its canonical is its OWN domain',
+      attrOf(h, 'rel="canonical"', 'href') === 'https://' + t.out + '/' + SEOSLUG + '.html',
+      attrOf(h, 'rel="canonical"', 'href'));
+    check(t.id + ':   its title came from its own record',
+      !!(titleOf(h) || '').trim(), titleOf(h));
+    seen.push({ id: t.id, out: t.out, html: h, title: titleOf(h),
+                canon: attrOf(h, 'rel="canonical"', 'href') });
+  }
+  check('no brand\'s page mentions another brand\'s domain',
+    seen.every(s => seen.filter(o => o.out !== s.out).every(o => s.html.indexOf(o.out) === -1)),
+    seen.map(s => s.out));
+  check('every canonical is distinct', new Set(seen.map(s => s.canon)).size === seen.length,
+    seen.map(s => s.canon));
+  check('and no brand-specific code was needed for the third one',
+    !walk(path.join(tbrands, tid)).some(f => /(cms|seo-files|cms-page|brandkit)\.(js|html)$/.test(f)),
+    walk(path.join(tbrands, tid)));
 }
 
 tmpRoots.forEach(d => { try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) {} });

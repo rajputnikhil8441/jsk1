@@ -124,7 +124,9 @@ function loadEngine(sharedRoot) {
                         'The baker calls the runtime renderer directly; it has no copy of its own.');
     }
 
-    ENGINE = { CMS: CMS, document: document, schema: CMS.sections.schema };
+    /* The sandbox comes back too: CMS_NOINDEX is read off the global by
+       robotsValue(), the way a generated brand.js sets it in a browser. */
+    ENGINE = { CMS: CMS, document: document, schema: CMS.sections.schema, sandbox: sandbox };
     return ENGINE;
 }
 
@@ -199,6 +201,86 @@ function pagesFromRecord(data) {
         out[slug] = p;
     });
     return out;
+}
+
+/* The RECORD a brand's committed layer declares, whole. publishedSections()
+   above reads the same file for one part of it; this hands back all of it,
+   because the SEO computations need seo.* as well as pages.*. */
+function brandRecord(brandJsText) {
+    const sandbox = { window: {}, self: null, console: { log() {}, warn() {}, error() {} } };
+    sandbox.self = sandbox.window;
+    vm.createContext(sandbox);
+    try {
+        vm.runInContext(String(brandJsText), sandbox, { filename: 'brand.js', timeout: 5000 });
+    } catch (e) {
+        throw new Error('pbbake: brand.js could not be read: ' + e.message);
+    }
+    const data = sandbox.window.CMS_BRAND;
+    return data && typeof data === 'object' ? data : {};
+}
+
+/* ------------------------------------------------------------
+   THE SEO VALUES A PAGE SHOULD CARRY, FROM THE ENGINE ITSELF
+   ------------------------------------------------------------
+   js/cms.js computes a page's title, description, canonical, robots,
+   Open Graph, Twitter and JSON-LD and paints them into the document.
+   CMS.seo.tags() is that same set as data -- one table, defined once,
+   applied by paintSeo() in a browser and read here by a build.
+
+   So there is nothing to compute in this file. It installs the record the
+   browser would have and asks the engine. A title template, a description
+   cascade, Twitter inheriting Open Graph, an image a crawler cannot fetch:
+   every one of those decisions stays in the one place that already makes
+   it, and the static HTML cannot therefore disagree with the page a
+   visitor is served.
+
+   THE RECORD. Exactly the browser's layering, through the engine's own
+   merge: DEFAULTS < brands/<id>/brand.js < the published row. `env`
+   carries what an environment build overrides -- the serving host's base
+   URL, and whole-deployment noindex -- so a review host computes its own
+   canonical rather than production's.
+   ------------------------------------------------------------ */
+const SEO_ENGINES = new Map();
+
+function seoEngine(sharedRoot, opts) {
+    opts = opts || {};
+    const key = String(opts.key || '');
+    if (key && SEO_ENGINES.has(key)) return SEO_ENGINES.get(key);
+
+    const eng = loadEngine(sharedRoot);
+    const CMS = eng.CMS;
+    if (!CMS.seo || typeof CMS.seo.tags !== 'function' || typeof CMS.merge !== 'function') {
+        throw new Error('pbbake: js/cms.js loaded but CMS.seo.tags / CMS.merge are missing. ' +
+                        'The build reads the engine\'s own SEO computations; it has no copy.');
+    }
+
+    const record = CMS.merge(opts.brand || {}, opts.row || {});
+    /* An environment build is served from a host that is not the brand's
+       canonical domain. js/cms.js is told so at runtime by the generated
+       brand.js (envPatched); the same thing has to be true here, or a
+       review host would bake production's canonical and og:url. */
+    if (opts.baseUrl) {
+        record.seo = CMS.merge(record.seo || {}, { baseUrl: opts.baseUrl });
+    }
+    CMS.replace(record);
+    /* Read by robotsValue() and by nothing else. Set per engine, so a
+       noindex build computes noindex,nofollow for every page. */
+    eng.sandbox.CMS_NOINDEX = opts.noindex === true ? true : undefined;
+
+    const out = { CMS: CMS, record: CMS.data() };
+    if (key) SEO_ENGINES.set(key, out);
+    return out;
+}
+
+/* The tag set for one page: { title, metas, links, jsonLd }, computed by
+   CMS.seo.tags(). `breadcrumbNav` answers the one question the engine would
+   have asked a document -- does this page show a breadcrumb trail -- which
+   the caller knows from the template it is about to write. */
+function seoTags(sharedRoot, opts, slug, pageOpts) {
+    const eng = seoEngine(sharedRoot, opts);
+    const page = eng.CMS.seo.page(slug);
+    if (!page) return null;
+    return eng.CMS.seo.tags(page, pageOpts || {});
 }
 
 /* One section array -> the markup and the scoped CSS the runtime produces.
@@ -335,6 +417,9 @@ module.exports = {
     publishedSections: publishedSections,
     publishedFromRecord: publishedFromRecord,
     pagesFromRecord: pagesFromRecord,
+    brandRecord: brandRecord,
+    seoEngine: seoEngine,
+    seoTags: seoTags,
     readProvenance: readProvenance,
     fingerprint: fingerprint,
     verifyBuildSource: verifyBuildSource,
