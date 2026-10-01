@@ -5775,11 +5775,16 @@
                                       'somebody would start here.' })
               ]),
               tSec('text', [
+                  /* A heading of its OWN, not the listing's. A page list draws
+                     nothing until the pages it lists exist, and a hub whose
+                     only heading lived inside the listing would have no
+                     heading at all on the day it was created. */
+                  tEl('heading', { text: 'Guides', level: 'h2' }),
                   /* schema: true, so this one page publishes the ItemList that
                      describes what it collects. The renderer emits exactly the
                      rows it drew, so the two cannot disagree. */
-                  tEl('pageList', { source: 'type', contentType: 'guide', title: 'Guides',
-                                    titleLevel: 'h2', limit: 12, excerpt: true, date: true,
+                  tEl('pageList', { source: 'type', contentType: 'guide',
+                                    limit: 12, excerpt: true, date: true,
                                     schema: true })
               ])
           ]; } },
