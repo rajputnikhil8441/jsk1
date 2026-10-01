@@ -19,13 +19,14 @@
    no new permission is requested: the job still only needs
    `contents: read`.
 
-   WHAT REMAINS DEVELOPER-CONTROLLED
-   A deploy has to happen. Saving in /admin does not start one.
-   Someone with repository access runs the workflow (Actions >
-   "Deploy static content to Pages" > Run workflow) or pushes a
-   commit. That is the honest limit of this architecture and the
-   admin says so on screen rather than implying a publish button
-   that does not exist.
+   WHAT STARTS A DEPLOY
+   A build has to run, and publishing can now start one: the
+   deploy workflows carry a repository_dispatch trigger
+   (cms-published) for a server-side publish hook to fire, and a
+   timer so a published change reaches the HTML with nothing
+   configured at all. Pushing a commit and running the workflow by
+   hand still work. See "What starts a deploy" in
+   docs/publishing.md.
 
    USAGE
      node tools/build-seo-files.js            write the files

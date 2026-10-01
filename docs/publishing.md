@@ -451,13 +451,41 @@ the site:
       --url "${{ steps.deployment.outputs.page_url }}"
 ```
 
-`tools/verify-deployed.js` takes every `data-cms-baked` mount in the artifact
-that was just built and requires the mount's **entire markup** to appear
-verbatim in the response body for that page's URL. No JavaScript is executed, so
-whatever it finds is in the initial HTML. It learns the pages and the expected
-bytes from the artifact and the URL it is given, so it names no brand and no
-domain; `--served DIR` reads the response from a directory instead of the
-network, which is how `tests/test_cms_bake.js` covers it offline.
+`tools/verify-deployed.js` compares the ARTIFACT THAT WAS DEPLOYED with the
+RESPONSE THE SITE GIVES, which is what keeps it white-label: the artifact is the
+expectation, so it names no brand, domain, page or SEO value, and it has no
+production URL of its own. `--served DIR` reads the response from a directory
+instead of the network, which is how `tests/test_cms_bake.js` covers it offline.
+
+It checks, for every generated page and without executing any JavaScript:
+
+- the page answers, and is the one that was built;
+- every `data-cms-baked` mount's **entire markup** appears verbatim;
+- `<title>`, description, canonical, robots, `og:*`, `twitter:*` and both
+  JSON-LD blocks match the artifact — only tags the artifact actually has, so a
+  page with no `og:image` is not failed for one;
+- canonical and `og:url` are on the host being verified;
+- `sitemap.xml` is served, byte-identical, and every `<loc>` is a built page
+  that answers;
+- a site whose artifact publishes no sitemap serves none;
+- `robots.txt` is served and byte-identical;
+- a page the artifact marks `noindex` is served `noindex`.
+
+Each finding is tagged, so a red step says which problem this is:
+
+| Kind | Meaning |
+|---|---|
+| `unreachable` / `missing-html` | the site did not answer, or a generated page is not served |
+| `stale` | served, but not this build's version |
+| `missing-seo` | a tag the artifact carries is absent from the response |
+| `cross-host` | a URL in the served page points at another host |
+| `sitemap-mismatch` | the sitemap is missing, differs, or names a page that is not served |
+| `noindex-leak` | a review host is not protected as its artifact says |
+
+`static.yml` passes the URL Pages just deployed to. The other site publishes to
+a repository something else serves, so its address is not the workflow's to
+know: it verifies only when `vars.PLAYZONE9_VERIFY_URL` is set, and the step
+does not run otherwise.
 
 | Exit | Meaning |
 | --- | --- |
@@ -530,12 +558,16 @@ that already existed. Brand A's build reads A's `brand.js`; brand B's reads B's.
 through the one pipeline and asserts each page contains its own content and
 **none** of the other's.
 
-### SEO metadata is untouched
+### Baking sections changes no page's SEO
 
-Title, meta description, canonical, robots, Open Graph, Twitter/X, JSON-LD,
-`sitemap.xml`, `robots.txt`, the H1 and the URL structure are exactly as they
-were. A test builds the same brand with and without published builder content and
-asserts every one of those is identical; the only difference is body content.
+On a page that ships its own template, title, meta description, canonical,
+robots, Open Graph, Twitter/X, JSON-LD, `sitemap.xml`, `robots.txt`, the H1 and
+the URL structure are exactly as they were. A test builds the same brand with
+and without published builder content and asserts every one of those is
+identical; the only difference is body content.
+
+A page the CMS creates is a different matter: it has no committed template, so
+its SEO is baked from the record. See **A page the CMS creates** below.
 
 This puts the published content in the initial HTML response. It does not
 guarantee anything about ranking.
@@ -686,18 +718,109 @@ closes the gap automatically, and the build says so on its own `Source :` line.
 
 ---
 
+## A page the CMS creates
+
+`/admin > SEO > Create a page` writes a page record and nothing else used to
+happen: it handed you an HTML file to commit. It no longer does. The chain is:
+
+```
+a page record in the CMS
+   ↓  status: published
+the build generates <slug>.html from templates/cms-page.html
+   ↓  CMS.seo.tags() for that page
+its SEO is baked into the HTML
+   ↓  the file now exists
+sitemap.xml lists it
+   ↓
+deploy
+   ↓
+the deployed HTTP response is verified
+```
+
+### The template
+
+`templates/cms-page.html`, deliberately NOT in `templates/pages/` — that
+directory *is* the committed page list, so a generic template inside it would be
+published as a page called `cms-page.html` on every brand.
+
+It is the same page as every other: the shared header, nav and footer, the same
+stylesheets, the same `info-article` structure, the same `data-cms-*` hooks, and
+the same Page Builder mount convention, so `tools/lib/pbbake.js` bakes the
+page's published sections into it with the renderer `js/cms.js` itself runs.
+Nothing about it is brand-specific: `{{brand.*}}` and `{{page.*}}` tokens carry
+every value in, and `{{page.*}}` values are HTML-escaped because an admin types
+them while a developer commits `brand.json`.
+
+The URL convention is unchanged: `/<slug>.html` at the site root. No directory
+URLs, and no existing URL moves.
+
+### Draft or published
+
+A page record says whether it is live, in the word the builder blocks already
+use:
+
+| `status` | Meaning |
+|---|---|
+| `published` | published |
+| absent or empty | published — every record written before the lifecycle existed is a live page |
+| anything else | **not** published: `draft`, a typo, or a word a later admin writes that this build has never heard of |
+
+The asymmetry is deliberate. Wrongly hiding a page costs a missing page; wrongly
+showing one publishes something nobody approved. A draft page is generated
+nowhere, listed nowhere, and its content appears in no file. A draft *builder
+block* inside a published page is excluded by the same rule the renderer
+applies.
+
+Marking a **committed** page draft cannot take it off the site — its own
+template still generates it — and the build says so, naming the template.
+
+`/admin` shows one Publication select, and only for pages the CMS created:
+the pages that ship with the site have no lifecycle to switch.
+
+### What gets baked
+
+Computed by `CMS.seo.tags()` — the engine's own function, the same table
+`paintSeo()` applies in a browser, so the static document and the painted one
+cannot describe a page differently:
+
+`<title>` · meta description · canonical · robots · `og:site_name` ·
+`og:title` · `og:description` · `og:url` · `og:image` · `twitter:card` ·
+`twitter:title` · `twitter:description` · `twitter:image` · WebPage JSON-LD ·
+BreadcrumbList JSON-LD
+
+A blank CMS value never empties a tag: it falls back to what the template
+shipped, which is the promise `setMeta()` keeps at runtime. A social image the
+platform cannot fetch — a `data:` or `blob:` URL — writes no tag at all rather
+than an unusable one, because that is what `crawlableImage()` returning `''`
+means.
+
+An environment build bakes the host it is **served** from, so a review copy
+canonicalises to itself and never to the production domain.
+
+### Refusals
+
+| What | What happens |
+|---|---|
+| a record whose url is a committed page's file | the build fails, naming both: a CMS page must not overwrite a committed page |
+| a reserved name (`index`, `admin`, `404`, `sitemap`, `robots`, `login`, `register`) | the build fails, listing them |
+| a url this build could not create | warns, generates nothing, advertises nothing — one bad record must not stop a site deploying |
+
+---
+
 ## Not solved here
 
 - Multi-editor concurrency (above).
 - Media architecture: `CMS_MEDIA_SETTINGS.enabled` is global, so it cannot be
   turned on for one brand alone.
-- Keeping `brands/<id>/brand.js` in step with the published row is a manual step
-  (publish → *Download brand defaults* → commit → deploy). The build makes the
-  gap visible and `tools/check-published.js` measures it; neither closes it. An
-  automated export — publish writing the brand layer, or a deploy that fetches
-  the row once and commits it — is the fix, and is deferred: it would either give
-  the admin write access to the repository or make the build networked, and both
-  are larger decisions than this guard.
+- `brands/<id>/brand.js` is now the FALLBACK layer only: `--from-cms` reads the
+  published row at build time, so an ordinary content change needs no export and
+  no commit. Re-exporting it still matters for one case — the row being
+  unreachable — and the provenance guard still measures how stale it is. What is
+  not solved is keeping that fallback fresh automatically.
+- Committed page templates carry their own static SEO and rely on the runtime for
+  CMS overrides. Only pages the CMS creates have their SEO baked. Baking the
+  committed ones would change existing published HTML and is deliberately a
+  separate decision.
 - Missing provenance warns rather than failing. Once every brand in the
   repository carries a `CMS_BRAND_PROVENANCE` declaration, that can become an
   error; until then it cannot.

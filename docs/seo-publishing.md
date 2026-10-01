@@ -54,30 +54,37 @@ One step, before the artifact is uploaded:
 
 ---
 
-## What still needs a developer
+## What starts a deploy
 
-**A deploy has to happen.** Saving in `/admin` does not start one.
+A build has to run. It no longer has to be started by a person.
 
-Someone with repository access either pushes a commit, or opens
-**Actions → Deploy static content to Pages → Run workflow**. That is one
-click and needs no code change — `workflow_dispatch` is already enabled.
+| Trigger | When |
+|---|---|
+| `schedule` (every 30 minutes) | the safety net — a published change reaches the HTML with nothing configured at all |
+| `repository_dispatch` `cms-published` | immediately, when something server-side says a publish happened |
+| `push` to the default branch | a code or brand-layer change |
+| `workflow_dispatch` | **Actions → Deploy static content to Pages → Run workflow** |
 
-This is the honest limit of the architecture, and the admin says so on screen
-rather than implying a publish button that does not exist.
+The timer alone is enough: publish in `/admin`, and the content is in the HTML
+source within half an hour, unattended.
 
-### Why not go further?
+### Making a publish deploy immediately
 
-The options for true one-click publishing, and why each was rejected:
+`repository_dispatch` is inert until something fires it. The intended firer is a
+**Supabase Database Webhook** on the brand table — server-side, so no credential
+reaches a browser and none is committed. The two steps are in
+[publishing.md](publishing.md) under **What starts a deploy**.
+
+Still rejected, for the same reasons as before:
 
 | Option | Why not |
 |---|---|
 | A GitHub personal access token in the admin's JavaScript | It would be public. Anyone could push to the repository. Not negotiable. |
-| A Supabase Edge Function holding a token | Safer, but it means a new deployment target, a new secret to rotate, and a new thing that can be misconfigured — to save one click on a file that changes a few times a year. |
 | A separate backend | The whole point of this project is that it has no server. |
 
-If one-click publishing ever becomes worth it, the Edge Function is the
-route: the generator is already a dependency-free module that takes a record
-and returns two strings.
+The webhook is the version of the Edge Function idea that survived: it needs no
+new deployment target, because GitHub's own `/dispatches` endpoint is the
+receiver.
 
 ---
 

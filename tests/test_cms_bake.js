@@ -1346,6 +1346,73 @@ console.log('\n===== THE DEPLOYED HTML, SEO AND SITEMAP ARE VERIFIED =====');
   }
 }
 
+/* ====================================================================
+   19. THE DOCUMENTATION AND THE ADMIN SAY WHAT IS TRUE
+   --------------------------------------------------------------------
+   Every statement asserted here was true once and is not any more. A
+   doc that describes a workflow nobody follows is worse than no doc:
+   somebody will follow it.
+   ==================================================================== */
+console.log('\n===== NOTHING STILL DESCRIBES THE OLD WORKFLOW =====');
+{
+  const readIf = f => fs.existsSync(path.join(ROOT, f))
+    ? fs.readFileSync(path.join(ROOT, f), 'utf8') : '';
+  const prose = ['docs/publishing.md', 'docs/seo-publishing.md', 'docs/page-builder.md',
+                 'docs/multi-brand.md', 'admin/index.html'];
+
+  /* The sentence the whole of Step 3 removed. */
+  const deadEnds = [
+    /Download the HTML file and add it to the site/i,
+    /hands you the finished file to add/i,
+    /Saving in \/admin does not start one/i,
+    /A deploy has to happen\./
+  ];
+  prose.concat(['js/admin.js', 'tools/build-seo-files.js']).forEach(f => {
+    const t = readIf(f);
+    deadEnds.forEach((re, i) => check(f + ': no longer says #' + (i + 1) + ' ' + re.source.slice(0, 40),
+      !re.test(t.replace(/No longer "download this and add it to the site"[\s\S]{0,400}?\*\//, ''))));
+  });
+
+  const pub = readIf('docs/publishing.md');
+  check('publishing.md documents the page a CMS creates', /## A page the CMS creates/.test(pub));
+  check('  the chain it goes through, end to end',
+    /templates\/cms-page\.html/.test(pub) && /sitemap\.xml lists it/.test(pub) &&
+    /the deployed HTTP response is verified/.test(pub), 'chain');
+  check('  the draft/published rules, all three of them',
+    /\| `published` \|/.test(pub) && /absent or empty/.test(pub) &&
+    /anything else/.test(pub), 'lifecycle table');
+  check('  which SEO fields are baked',
+    ['<title>', 'canonical', 'og:image', 'twitter:image', 'WebPage JSON-LD',
+     'BreadcrumbList JSON-LD'].every(k => pub.indexOf(k) > -1), 'fields');
+  check('  that a blank value never empties a tag', /never empties a tag/.test(pub));
+  check('  that a review copy canonicalises to itself',
+    /canonicalises to itself/.test(pub));
+  check('  the refusals, by name',
+    /must not overwrite a committed page/.test(pub) && /reserved name/.test(pub), 'refusals');
+  check('  and every failure kind the verifier reports',
+    ['unreachable', 'missing-html', 'stale', 'missing-seo', 'cross-host',
+     'sitemap-mismatch', 'noindex-leak'].every(k => pub.indexOf('`' + k + '`') > -1 ||
+       pub.indexOf(k + '`') > -1), 'kinds');
+  check('  and no longer claims the fallback layer must be exported by hand',
+    !/publish → \*Download brand defaults\* → commit → deploy/.test(pub));
+  check('  while still naming the one gap that is real',
+    /Committed page templates carry their own static SEO/.test(pub));
+
+  const seo = readIf('docs/seo-publishing.md');
+  check('seo-publishing.md documents what starts a deploy',
+    /## What starts a deploy/.test(seo) &&
+    /repository_dispatch/.test(seo) && /schedule/.test(seo), 'triggers');
+
+  const adm = readIf('admin/index.html');
+  check('the admin tells an author what creating a page now does',
+    /the next deploy generates/.test(adm) && /sitemap\.xml/.test(adm) &&
+    /published or still a draft/.test(adm), 'card copy');
+
+  /* And the docs name no brand, because the platform is not one brand's. */
+  check('publishing.md explains the mechanism without naming a brand as the rule',
+    !/only works for JSK1|specific to JSK1|only for Playzone9/i.test(pub));
+}
+
 tmpRoots.forEach(d => { try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) {} });
 
 console.log(`\n==== ${pass} passed, ${fail} failed ====`);
