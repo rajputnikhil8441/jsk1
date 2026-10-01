@@ -947,6 +947,25 @@
              NOT here any more -- the body is authored in Content. -->
         <div id="pageArea-settings" hidden>
             <div id="pageEditor"></div>
+
+            <!-- AUTHORS (Phase 2C). Brand-scoped: these live in this brand's own
+                 CMS record, so there is no collection to read but this one and a
+                 cross-brand author cannot be referenced. Built by js/admin.js. -->
+            <div class="card">
+                <h2>Authors</h2>
+                <p class="hint">
+                    Who wrote a page. A page refers to an author by id, so renaming one
+                    updates every page at once. An author with no name does not resolve, and a
+                    page referring to an author that no longer exists publishes no byline
+                    rather than an empty one.
+                </p>
+                <div id="authorsHost"></div>
+                <div class="pb-bar">
+                    <button type="button" class="adm-btn ghost" id="btnAddAuthor">
+                        <i class="fas fa-user-plus"></i> Add an author
+                    </button>
+                </div>
+            </div>
         </div>
     </section>
 

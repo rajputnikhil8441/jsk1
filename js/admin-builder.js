@@ -1637,11 +1637,24 @@ window.PBAdmin = function (host) {
         ['progress',     'Progress bar'],
         ['tabs',         'Tabs'],
         ['carousel',     'Carousel'],
-        ['video',        'Video']
+        ['video',        'Video'],
+        /* Phase 2C. The one element that lists OTHER pages -- the author's
+           related list, or every published page of one content type. There is
+           deliberately no separate "related", "hub" or "archive" element:
+           they are this one with a different source. */
+        ['pageList',     'Page list']
     ];
 
     /* Choice lists come from the renderer's own allow-lists, so the admin
        can never offer an icon or platform the renderer would drop. */
+    /* The content types the engine recognises, with its own labels. Read from
+       CMS.content.types so the admin can never offer a type the renderer
+       would fall back to 'page' on. */
+    function pbContentTypeOptions() {
+        var types = (CMS.content && CMS.content.types) || {};
+        return Object.keys(types).map(function (k) { return [k, types[k].label || k]; });
+    }
+
     function pbIconNames() { return Object.keys(CMS.sections.icons || {}).sort(); }
     function pbSocialNames() { return Object.keys(CMS.sections.social || {}).sort(); }
     var PB_EL_LABEL = {};
@@ -1725,7 +1738,24 @@ window.PBAdmin = function (host) {
                        ['interval', 'Seconds on each (minimum 2)', 'num']],
         video:        [['url', 'Video address', 'text'],
                        ['title', 'Title (what a screen reader announces)', 'text'],
-                       ['caption', 'Caption', 'text']]
+                       ['caption', 'Caption', 'text']],
+
+        /* Phase 2C. `source` decides which of the two remaining fields
+           matters, and the renderer ignores the other -- a listing of a
+           content type does not read this page's related list, and a related
+           listing does not read a content type. Both are offered because an
+           author switching between them should not lose what they set. */
+        pageList:     [['source', 'What to list', 'select',
+                        [['related', 'The pages chosen for this page'],
+                         ['type', 'Every published page of one kind']]],
+                       ['contentType', 'Which kind', 'contentTypeSelect'],
+                       ['title', 'Heading above the list', 'text'],
+                       ['titleLevel', 'Heading level', 'select', ['h2', 'h3', 'h4', 'h5', 'h6']],
+                       ['limit', 'How many at most', 'num'],
+                       ['excerpt', 'Show each page\u2019s summary', 'bool'],
+                       ['date', 'Show the publication date', 'bool'],
+                       ['author', 'Show the author', 'bool'],
+                       ['schema', 'Describe this list for search engines (ItemList)', 'bool']]
     };
 
     /* Repeating sub-items: which element types have them, what one blank
@@ -3008,6 +3038,8 @@ window.PBAdmin = function (host) {
         if (spec[2] === 'iconSelect')   spec = [spec[0], spec[1], 'select', [''].concat(pbIconNames())];
         if (spec[2] === 'socialSelect') spec = [spec[0], spec[1], 'select', pbSocialNames()];
         if (spec[2] === 'tocDepth')     spec = [spec[0], spec[1], 'select', pbTocDepthOptions()];
+        if (spec[2] === 'contentTypeSelect')
+            spec = [spec[0], spec[1], 'select', pbContentTypeOptions()];
         if (spec[2] === 'layoutName')   spec = [spec[0], spec[1], 'select', pbLayoutOptions(spec[0])];
         if (spec[2] === 'colsSelect') {
             spec = [spec[0], spec[1], 'select', pbColOptions((ctx && ctx.device) || 'base')];
@@ -3479,7 +3511,14 @@ window.PBAdmin = function (host) {
         },
         /* A video has nothing to show until an address is given, like an
            image with no file. The hint on the card says which hosts work. */
-        video: function () { return { url: '' }; }
+        video: function () { return { url: '' }; },
+        /* Opens on the related list: it is the one that works with no further
+           choice, because the pages come from this page's own record. */
+        pageList: function () {
+            return { source: 'related', contentType: 'article', title: 'Related',
+                     titleLevel: 'h2', limit: 6, excerpt: true, date: false,
+                     author: false, schema: false };
+        }
     };
 
     function pbBlankElement(type) {

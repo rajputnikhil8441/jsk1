@@ -1261,3 +1261,97 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
 }
 
 .pb-video .pb-video-cap { font-size: .9em; opacity: .8; color: inherit; }
+
+
+/* ============================================================
+   PAGE LIST (Phase 2C)
+   ------------------------------------------------------------
+   One element lists other pages: the author's own related list, or every
+   published page of one content type. Laid out on the same grid the gallery
+   uses, reading the same --pbe-* tokens, so a listing is styled by the design
+   controls that already exist rather than by a second system.
+
+   The element is a <section> holding a heading and a <ul>, which is what it
+   is: a named list of links. Nothing here depends on JavaScript -- the rows
+   are in the HTML the build writes.
+   ============================================================ */
+.pb-el.pb-pagelist {
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    padding: var(--pbe-padding, 0);
+    background: var(--pbe-bg, transparent);
+    color: var(--pbe-color, inherit);
+    text-align: var(--pbe-align, inherit);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+    font-size: var(--pbe-font-size, inherit);
+    font-weight: var(--pbe-font-weight, inherit);
+    line-height: var(--pbe-line-height, inherit);
+    letter-spacing: var(--pbe-letter-spacing, normal);
+}
+
+.pb-pagelist .pb-pagelist-title {
+    margin: 0 0 12px;
+    font-size: 1.15em;
+    line-height: 1.25;
+    color: inherit;
+}
+
+/* The grid lives on the list, not on the section, so the heading stays a
+   full-width row above it however many columns the author chooses. */
+.pb-pagelist .pb-pagelist-items {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns:
+        var(--pbe-cols, repeat(auto-fill, minmax(var(--pbe-min-width, 240px), 1fr)));
+    gap: var(--pbe-gap, 14px);
+}
+
+.pb-pagelist .pb-pagelist-item {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;          /* a long title must wrap, not widen the track */
+}
+
+.pb-pagelist .pb-pagelist-link {
+    color: inherit;
+    text-decoration: none;
+}
+
+.pb-pagelist .pb-pagelist-link:hover .pb-pagelist-name,
+.pb-pagelist .pb-pagelist-link:focus-visible .pb-pagelist-name {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.pb-pagelist .pb-pagelist-name {
+    display: block;
+    font-weight: 600;
+    overflow-wrap: break-word;
+}
+
+.pb-pagelist .pb-pagelist-date,
+.pb-pagelist .pb-pagelist-by {
+    font-size: .85em;
+    opacity: .75;
+    color: inherit;
+}
+
+.pb-pagelist .pb-pagelist-excerpt {
+    margin: 2px 0 0;
+    font-size: .92em;
+    opacity: .9;
+    color: inherit;
+    overflow-wrap: break-word;
+}
+
+@media (max-width: 768px) {
+    .pb-pagelist .pb-pagelist-items {
+        grid-template-columns: var(--pbe-cols-m, 1fr);
+    }
+}

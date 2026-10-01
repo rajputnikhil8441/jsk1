@@ -290,7 +290,25 @@ const SEO_ENGINES = new Map();
 function seoEngine(sharedRoot, opts) {
     opts = opts || {};
     const key = String(opts.key || '');
-    if (key && SEO_ENGINES.has(key)) return SEO_ENGINES.get(key);
+    /* A CACHE HIT STILL HAS TO RE-ESTABLISH THE RECORD.
+
+       loadEngine() returns ONE engine per process, so every brand built in
+       one process shares a single CMS and a single loaded record. Caching the
+       {CMS, record} pair per brand avoided recomputing it, but the CMS it
+       handed back carried whichever brand's record was replaced LAST -- so
+       asking about brand A, then B, then A again answered with B's canonical,
+       B's title and B's pages.
+
+       Production never saw it: tools/build-site.js builds one brand per
+       process. It mattered the moment anything asked about two brands in one
+       process, which is exactly what a white-label test does. Replacing the
+       record on the way out costs one assignment and makes the cached engine
+       mean what its key says. */
+    if (key && SEO_ENGINES.has(key)) {
+        const hit = SEO_ENGINES.get(key);
+        hit.CMS.replace(hit.record);
+        return hit;
+    }
 
     const eng = loadEngine(sharedRoot);
     const CMS = eng.CMS;
@@ -333,14 +351,28 @@ function seoTags(sharedRoot, opts, slug, pageOpts) {
    Upgraded through the engine's own migration chain first, so a block saved
    under an older schema bakes as the current renderer would draw it -- the
    same call publishedSections() makes at runtime. */
-function render(sharedRoot, block) {
+/* `ctx` is the render context the engine's listing element needs: the brand
+   record whose pages it may list, and the slug being drawn. It is passed
+   rather than discovered because this process shares one engine across every
+   brand it builds -- an element that read ambient state would publish one
+   brand's pages on another's site. With no ctx a listing renders nothing,
+   which is the safe direction. */
+function render(sharedRoot, block, ctx) {
     const eng = loadEngine(sharedRoot);
     const from = (block && typeof block.schemaVersion === 'number') ? block.schemaVersion : 1;
     const sections = eng.CMS.sections.upgrade(
         JSON.parse(JSON.stringify(block.sections || [])), from);
     const host = new Element('div');
-    eng.CMS.sections.renderInto(host, sections);
+    eng.CMS.sections.renderInto(host, sections, ctx || null);
     return { html: host.innerHTML, css: String(eng.CMS.sections.css(sections) || '') };
+}
+
+/* The record a visitor's browser would merge for this brand: its committed
+   layer with the published row over it, on this environment's host. Exposed
+   so a build can hand it to render() as the listing element's page source,
+   instead of each caller merging its own and the two disagreeing. */
+function recordFor(sharedRoot, opts) {
+    return seoEngine(sharedRoot, opts).record;
 }
 
 /* The provenance declaration a brand's committed layer carries, or null.
@@ -468,6 +500,7 @@ module.exports = {
     brandRecord: brandRecord,
     seoEngine: seoEngine,
     seoTags: seoTags,
+    recordFor: recordFor,
     readProvenance: readProvenance,
     fingerprint: fingerprint,
     verifyBuildSource: verifyBuildSource,

@@ -816,6 +816,68 @@ canonicalises to itself and never to the production domain.
 
 ---
 
+## The content model in the HTML we serve
+
+`docs/page-builder.md` has the architecture. What matters here is the one rule
+this document exists for: **everything the content model publishes is in the
+static HTML, before any JavaScript runs.**
+
+```
+pages.<slug> { type, publishedAt, excerpt, author, related }
+   ↓  CMS.seo.tags()        og:type, from the validated content type
+   ↓  seoTokenValues()      baked into templates/cms-page.html
+   ↓  the mount bake        Article, the page list, ItemList -- in the body
+sitemap.xml                 published + indexable, exactly as before
+```
+
+What is baked, and where:
+
+| Output | Where it lands | Emitted by |
+|---|---|---|
+| `og:type` | `<head>`, `{{seo.ogType}}` | `seoTokenValues()` |
+| `Article` JSON-LD | in the body, `data-pb-article` | the section renderer |
+| `CollectionPage` | `<head>`, inside `#ldPage` | `buildWebPage()`, as a subtype |
+| `ItemList` | in the body, `data-pb-list` | the page list element |
+| A related or hub listing | in the body, as `<ul>` of links | the page list element |
+
+The two JSON-LD blocks in the body are there for the same reason `FAQPage` has
+been since Phase 2A: a body block reaches every page type without a template
+needing an anchor, and a page that does not qualify emits **nothing** rather
+than an empty `{}` — which is what keeps the HTML of pages the content model
+does not touch byte-identical.
+
+`og:type` is a token rather than a hardcoded value now, and for every page whose
+type is empty it bakes the same `website` the template used to carry. No existing
+page changed.
+
+### Which pages the build will list
+
+A listing element may only draw from the brand being built. The build computes
+that brand's merged record once, in `tools/lib/brandkit.js`, and passes it into
+every `renderPage()`; the renderer takes it as an argument rather than reading
+ambient state. This matters because `tools/lib/pbbake.js` loads **one engine per
+process** and shares it across brands — an element that read whatever was last
+loaded would have published the wrong brand's pages.
+
+The same sharing had a defect Phase 2C fixed: `seoEngine()` cached its
+`{CMS, record}` pair per brand, but the CMS it handed back carried whichever
+brand's record was replaced last. Asking about brand A, then B, then A again
+answered with B's canonical and B's title. Production never saw it — this tool
+builds one brand per process — but it would have made every in-process
+white-label test lie. A cache hit now re-establishes the record.
+
+### What a draft and a noindex page do
+
+Unchanged, and now asserted from three directions:
+
+- a **draft** page generates no file and has no sitemap entry, and no listing
+  anywhere draws it;
+- a **noindex** page generates a file, has no sitemap entry, and no listing draws
+  it either;
+- a **review host** (`--env staging`) publishes content types normally and
+  indexes nothing: every page carries `noindex,nofollow`, and there is no
+  sitemap at all.
+
 ## Not solved here
 
 - Multi-editor concurrency (above).
@@ -830,6 +892,14 @@ canonicalises to itself and never to the production domain.
   CMS overrides. Only pages the CMS creates have their SEO baked. Baking the
   committed ones would change existing published HTML and is deliberately a
   separate decision.
+- The publish review sheet (`indexAreas()`) reads an explicit list of page
+  fields and does not include the five content-model fields, so a change to only
+  a page's type, date, author or related list is not itemised on the sheet. The
+  values publish; the summary is silent about them.
+- An `Article` block is emitted inside a page's Page Builder mount, so a page
+  whose type says article but which has no published builder content publishes
+  no `Article`.
+- A hub's `lastmod` describes the hub, not the pages it lists.
 - Missing provenance warns rather than failing. Once every brand in the
   repository carries a `CMS_BRAND_PROVENANCE` declaration, that can become an
   error; until then it cannot.
