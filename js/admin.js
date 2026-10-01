@@ -3367,6 +3367,21 @@
         var doc = contentDoc(content.html);
         var body = doc && doc.body;
 
+        /* The renderer emits a JSON-LD block inside the mount for an FAQ,
+           and textContent concatenates EVERY descendant text node -- script
+           contents included. Left in, the schema's own JSON would be counted
+           as page words, and on an otherwise empty page it would answer "is
+           there anything at all" with yes. It is removed from this inert
+           copy before anything is measured: these checks are about what a
+           reader sees, and nobody reads a script. The schema is judged
+           separately, from the section tree, further down. */
+        if (body) {
+            var scripts = body.querySelectorAll('script');
+            for (var s = scripts.length - 1; s >= 0; s--) {
+                if (scripts[s].parentNode) scripts[s].parentNode.removeChild(scripts[s]);
+            }
+        }
+
         if (builder) {
             if (content.draftPending)
                 warn('This page has unpublished Page Builder changes. Everything below describes ' +

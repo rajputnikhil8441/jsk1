@@ -1166,6 +1166,36 @@ const openSec = async (p, i) => {
       has('bad', /DRAFT page/) && /404 until it is published/.test(said.join('|')), said);
     check('nothing about any of it blocks publishing',
       (await a.p.$eval('#pbPublish', n => n.disabled)) !== undefined, true);
+
+    /* The FAQPage block lives INSIDE the mount, and textContent
+       concatenates every descendant text node -- script contents
+       included. Left in, the schema's own JSON would be counted as page
+       words, and on an otherwise empty page it would answer "is there
+       anything at all" with yes. This measures the same thing the check
+       should: the rendered sections with the script removed. */
+    const wc = await a.p.evaluate(() => {
+      const row = document.querySelector('#seoDashboard [data-seorow="about"]');
+      const said = [...row.querySelectorAll('.seochecks li')].map(li => li.textContent.trim());
+      const count = html => {
+        const h = document.createElement('div');
+        h.innerHTML = html;
+        const vis = document.createElement('div');
+        vis.innerHTML = html;
+        [...vis.querySelectorAll('script')].forEach(n => n.remove());
+        const t = s => { const v = String(s.textContent || '').replace(/\s+/g, ' ').trim();
+                         return v ? v.split(/\s+/).length : 0; };
+        return { withScript: t(h), visible: t(vis) };
+      };
+      const host = document.createElement('div');
+      CMS.sections.renderInto(host, CMS.sections.published('about'));
+      return Object.assign({ line: said.find(s => /is about \d+ words/.test(s)) || '' },
+                           count(host.innerHTML));
+    });
+    check('the word count counts what a reader sees, not the FAQ schema JSON',
+      new RegExp('is about ' + wc.visible + ' words').test(wc.line), wc);
+    check('  and that is not vacuous: the schema text would have added words',
+      wc.withScript > wc.visible, wc);
+
     check('no admin console errors', a.errs.length === 0, a.errs);
     await a.ctx.close();
   }
