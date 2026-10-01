@@ -172,6 +172,35 @@ function publishedFromRecord(data) {
     return out;
 }
 
+/* The PAGE RECORDS in a record, for a build that has to turn them into
+   files. A sibling of publishedFromRecord() above and deliberately not the
+   same function: that one answers "what sections are published for this
+   slug", this one answers "what pages does this brand have at all".
+
+   WHAT COUNTS AS A PAGE. An object under `pages` with a usable identity.
+   Nothing is computed and nothing is defaulted: the fields come through as
+   the record holds them, so the caller sees the CMS's own values and not
+   this file's opinion of them. A page whose `status` says 'draft' is left
+   out -- that is the vocabulary the builder blocks above already use, and
+   honouring it costs nothing; the full per-page lifecycle is not here.
+
+   WHAT THIS DOES NOT DO. It does not decide which pages become files. A
+   record names pages that already have committed templates, and reserved
+   and colliding names have to be refused with a message naming the brand.
+   All of that is the generator's job, in tools/lib/brandkit.js, where the
+   template set is known. This is the reader. */
+function pagesFromRecord(data) {
+    const out = {};
+    if (!data || typeof data !== 'object' || !data.pages || typeof data.pages !== 'object') return out;
+    Object.keys(data.pages).forEach(slug => {
+        const p = data.pages[slug];
+        if (!p || typeof p !== 'object') return;
+        if (p.status === 'draft') return;
+        out[slug] = p;
+    });
+    return out;
+}
+
 /* One section array -> the markup and the scoped CSS the runtime produces.
 
    Upgraded through the engine's own migration chain first, so a block saved
@@ -305,6 +334,7 @@ module.exports = {
     loadEngine: loadEngine,
     publishedSections: publishedSections,
     publishedFromRecord: publishedFromRecord,
+    pagesFromRecord: pagesFromRecord,
     readProvenance: readProvenance,
     fingerprint: fingerprint,
     verifyBuildSource: verifyBuildSource,

@@ -3759,7 +3759,14 @@
             buildBuilder();
             $('#btnDownloadPage').hidden = false;
             $('#btnDownloadPage').setAttribute('data-key', slug);
-            toast('Page created in the CMS. Download the HTML file and add it to the site.');
+            /* No longer "download this and add it to the site": the build
+               generates <slug>.html from templates/cms-page.html for any
+               published page with no committed template of its own. The
+               download button stays as the escape hatch for turning a page
+               into a committed template, which is a developer's choice and
+               no longer a requirement. */
+            toast('Page created. Publish, and the next deploy will generate ' +
+                  CMS.data().pages[slug].url + ' and add it to the sitemap.');
             newPageDraft = null;
             buildPages();
             buildSeo();

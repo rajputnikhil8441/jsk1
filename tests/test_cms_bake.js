@@ -484,6 +484,324 @@ console.log('\n===== THE SERVED HTML IS COMPARED WITH WHAT WAS BUILT =====');
       .filter(l => !/^\s*(\*|\/\*|#)/.test(l)).join('\n')));
 }
 
+/* ====================================================================
+   11. A PAGE THE CMS HAS, THAT NO COMMITTED TEMPLATE COVERS
+   --------------------------------------------------------------------
+   /admin can create a page: it writes a complete record under
+   pages.<slug> and used to ask a human to download an HTML file and
+   commit it. The record was real and the page was not.
+
+   The build now has a SECOND SOURCE OF PAGES. Everything below drives
+   the real CLI with a captured row, so it exercises the same path a
+   deploy does, and every claim is made about whichever brand is being
+   built -- no brand's pages, domain or content is written into this
+   suite.
+   ==================================================================== */
+console.log('\n===== A CMS PAGE BECOMES A REAL STATIC FILE =====');
+
+/* One complete page record, the shape /admin's "create page" writes. */
+function cmsPage(slug, text, extra) {
+  return Object.assign({
+    label: text, slug: slug, url: slug + '.html', canonical: '',
+    robots: { index: true, follow: true }, inSitemap: true,
+    og: { title: '', description: '', image: '' },
+    twitter: { title: '', description: '', image: '' },
+    breadcrumb: { label: text, show: true },
+    schema: { webPage: true, breadcrumb: true, contactPage: false },
+    updatedAt: '2026-10-01', title: text, metaDescription: text + ' description',
+    heading: text, lead: '', body: '', builderMount: true
+  }, extra || {});
+}
+
+const GEN = { a: 'alpha-guide', b: 'beta-guide' };
+const GTEXT = { a: 'ALPHA GUIDE FOR BRAND A', b: 'BETA GUIDE FOR BRAND B' };
+
+/* A row carrying the brand's OWN seo block as well as its pages. Without a
+   seo.baseUrl in the record, tools/build-seo-files.js correctly falls back
+   to the committed seo-config.json -- which cannot know about a page the
+   CMS added -- so a row that is meant to drive the sitemap has to look like
+   a real one. Read from the brand's own file, so no domain is written here. */
+function seoOf(brandsDir, id) {
+  const f = path.join(brandsDir, id, 'seo-config.json');
+  return fs.existsSync(f) ? (JSON.parse(fs.readFileSync(f, 'utf8')).seo || {}) : {};
+}
+function writeFullRow(file, brandsDir, id, pages, updatedAt) {
+  fs.writeFileSync(file, JSON.stringify({ data: { seo: seoOf(brandsDir, id), pages: pages },
+    updated_at: updatedAt || '2026-10-01T00:00:00+00:00' }, null, 2));
+  return file;
+}
+{
+  const OUT2 = path.join(WORK, 'gen');
+  const rows = {};
+  rows.a = writeFullRow(path.join(ROWS, 'gen-a.json'), path.join(ROOT, 'brands'), A.id,
+    rowFor(A.id, MARK.a, { [GEN.a]: cmsPage(GEN.a, GTEXT.a,
+      { builder: { status: 'published', schemaVersion: 2, updatedAt: '2026-10-01',
+                   sections: sections('SECTIONS BAKED INSIDE A GENERATED PAGE') } }) }));
+  rows.b = writeFullRow(path.join(ROWS, 'gen-b.json'), path.join(ROOT, 'brands'), B.id,
+    rowFor(B.id, MARK.b, { [GEN.b]: cmsPage(GEN.b, GTEXT.b) }));
+
+  const ra = build([A.id].concat(A.env, ['--row', rel(rows.a), '--out', OUT2]));
+  const rb = build([B.id].concat(B.env, ['--row', rel(rows.b), '--out', OUT2]));
+  check('brand A builds with a CMS page of its own', ra.ok, ra.out.slice(-500));
+  check('brand B builds with a CMS page of its own', rb.ok, rb.out.slice(-500));
+
+  const fileA = path.join(OUT2, A.out, GEN.a + '.html');
+  const fileB = path.join(OUT2, B.out, GEN.b + '.html');
+
+  /* 2. the flat URL convention, unchanged */
+  check('the CMS page became /<slug>.html', fs.existsSync(fileA) && fs.existsSync(fileB),
+    [fs.existsSync(fileA), fs.existsSync(fileB)]);
+  check('  and no directory URL was invented',
+    !fs.existsSync(path.join(OUT2, A.out, GEN.a, 'index.html')));
+  check('  the build says which pages it generated and from what',
+    /CMS pages:\s*alpha-guide\.html \("alpha-guide"\)\s+from templates\/cms-page\.html/.test(ra.out),
+    (ra.out.match(/CMS pages:.*/) || [''])[0]);
+
+  const htmlA = fs.readFileSync(fileA, 'utf8');
+  const htmlB = fs.readFileSync(fileB, 'utf8');
+
+  /* 3. the record's content is in the file, before any script runs */
+  check('the page identifies itself to the CMS engine',
+    new RegExp('<html lang="en" data-cms-page="' + GEN.a + '">').test(htmlA));
+  check('its heading, title and description are in the HTML source',
+    htmlA.indexOf('>' + GTEXT.a + '</h1>') > -1 &&
+    htmlA.indexOf('>' + GTEXT.a + '</title>') > -1 &&
+    htmlA.indexOf('content="' + GTEXT.a + ' description"') > -1);
+  check('  with the data-cms hooks pointing at its own record',
+    htmlA.indexOf('data-cms-title="pages.' + GEN.a + '.title"') > -1 &&
+    htmlA.indexOf('data-cms-text="pages.' + GEN.a + '.heading"') > -1 &&
+    htmlA.indexOf('data-cms-html="pages.' + GEN.a + '.body"') > -1);
+  check('  and a canonical on its own brand\'s domain',
+    htmlA.indexOf('<link rel="canonical" href="https://' + A.out + '/' + GEN.a + '.html" />') > -1);
+
+  /* It belongs to the existing design system rather than a new one. */
+  check('it carries the shared shell, not a layout of its own',
+    ['SHELL:HEADER', 'SHELL:NAV', 'SHELL:FOOTER'].every(m =>
+      htmlA.indexOf('<!-- ' + m + ' -->') > -1) &&
+    /class="site-header"/.test(htmlA) && /class="site-footer"/.test(htmlA) &&
+    /class="info-main"/.test(htmlA) && /class="info-article"/.test(htmlA));
+  check('  and the same stylesheets every page loads',
+    ['css/style.css', 'css/menu.css', 'css/responsive.css', 'css/content.css', 'css/sections.css']
+      .every(c => htmlA.indexOf('href="' + c + '"') > -1));
+  check('  with no nav item wrongly marked as the current page',
+    !/class="nav-link active"/.test(htmlA) && !/class="mob-cat-item active"/.test(htmlA));
+
+  /* 4. the EXISTING Page Builder bake, inside a generated page */
+  check('published sections are baked into the generated page',
+    new RegExp('data-cms-sections="' + GEN.a + '" data-cms-baked="1">').test(htmlA) &&
+    htmlA.indexOf('SECTIONS BAKED INSIDE A GENERATED PAGE') > -1);
+  check('  by the same renderer, with the same markers as any other page',
+    /class="pb-section pb-text"/.test(htmlA) && /<style id="cmsBuilder">/.test(htmlA));
+  check('  and the build counts it with the rest',
+    new RegExp('Builder\\s*:[^\\n]*' + GEN.a + ' \\(1 section\\)').test(ra.out),
+    (ra.out.match(/Builder.*/) || [''])[0]);
+  check('a generated page with nothing published keeps an inert mount',
+    new RegExp('<div data-cms-sections="' + GEN.b + '"></div>').test(htmlB));
+
+  /* 5 + 6. the generated-file set, and Step 2's sitemap integrity */
+  const smapA = fs.readFileSync(path.join(OUT2, A.out, 'sitemap.xml'), 'utf8');
+  check('the generated page is advertised, because its file exists',
+    smapA.indexOf('https://' + A.out + '/' + GEN.a + '.html') > -1,
+    (smapA.match(/<loc>[^<]*/g) || []));
+  check('  and the build says it checked the sitemap against the generated set',
+    /checked against \d+ generated page\(s\)/.test(ra.out));
+  check('  with nothing excluded, because nothing is missing',
+    !/Excluded:/.test(ra.out), (ra.out.match(/Excluded:.*/) || [''])[0]);
+
+  /* 11. brand isolation, both directions */
+  const allA = walk(path.join(OUT2, A.out)), allB = walk(path.join(OUT2, B.out));
+  check('brand A has its page and NOT brand B\'s',
+    allA.indexOf(GEN.a + '.html') > -1 && allA.indexOf(GEN.b + '.html') === -1, allA);
+  check('brand B has its page and NOT brand A\'s',
+    allB.indexOf(GEN.b + '.html') > -1 && allB.indexOf(GEN.a + '.html') === -1, allB);
+  check('no file in brand A\'s site mentions brand B\'s page content',
+    !allA.filter(f => /\.(html|xml|txt)$/.test(f))
+      .some(f => fs.readFileSync(path.join(OUT2, A.out, f), 'utf8').indexOf(GTEXT.b) > -1));
+  check('no file in brand B\'s site mentions brand A\'s page content',
+    !allB.filter(f => /\.(html|xml|txt)$/.test(f))
+      .some(f => fs.readFileSync(path.join(OUT2, B.out, f), 'utf8').indexOf(GTEXT.a) > -1));
+  check('  and that scan is not vacuous', htmlA.indexOf(GTEXT.a) > -1 && htmlB.indexOf(GTEXT.b) > -1);
+
+  /* 1. EXISTING PAGES ARE UNTOUCHED. The same brand built with and
+     without the extra record: every page that existed before must be
+     byte-identical, and the only new file is the generated one. */
+  const BASE = path.join(WORK, 'gen-base');
+  const rowBase = writeFullRow(path.join(ROWS, 'gen-base.json'), path.join(ROOT, 'brands'), A.id,
+    rowFor(A.id, MARK.a));
+  const rbase = build([A.id].concat(A.env, ['--row', rel(rowBase), '--out', BASE]));
+  check('the same brand builds without the extra record', rbase.ok, rbase.out.slice(-400));
+  const before = walk(path.join(BASE, A.out)), after = walk(path.join(OUT2, A.out));
+  const added = after.filter(f => before.indexOf(f) === -1);
+  const removed = before.filter(f => after.indexOf(f) === -1);
+  check('adding a CMS page adds exactly one file and removes none',
+    added.length === 1 && added[0] === GEN.a + '.html' && removed.length === 0, [added, removed]);
+  const differ = before.filter(f => !/^sitemap\.xml$/.test(f) &&
+    sha(path.join(BASE, A.out, f)) !== sha(path.join(OUT2, A.out, f)));
+  check('every pre-existing file is byte-identical', differ.length === 0, differ);
+  check('  and the sitemap changed only by gaining that one URL',
+    (fs.readFileSync(path.join(OUT2, A.out, 'sitemap.xml'), 'utf8')
+      .match(/<loc>[^<]*/g) || []).length ===
+    (fs.readFileSync(path.join(BASE, A.out, 'sitemap.xml'), 'utf8')
+      .match(/<loc>[^<]*/g) || []).length + 1);
+}
+
+/* ====================================================================
+   12. WHAT A GENERIC PAGE IS NOT ALLOWED TO DO
+   ==================================================================== */
+console.log('\n===== A CMS PAGE CANNOT TAKE A NAME THAT IS NOT ITS OWN =====');
+{
+  const OUT3 = path.join(WORK, 'refuse');
+  const attempt = (tag, page) => {
+    const row = writeRow(path.join(ROWS, 'refuse-' + tag + '.json'),
+      rowFor(A.id, MARK.a, { 'some-guide': page }));
+    return build([A.id].concat(A.env, ['--row', rel(row), '--out', path.join(OUT3, tag)]));
+  };
+
+  /* 8. a committed page must never be overwritten by CMS content */
+  const committed = fs.readdirSync(path.join(ROOT, 'templates', 'pages'))
+    .filter(f => /^[a-z0-9][a-z0-9-]*\.html$/.test(f)).sort();
+  check('there is a committed template to collide with', committed.length > 0, committed);
+  const clash = attempt('clash', cmsPage('some-guide', 'CLASH', { url: committed[0] }));
+  check('a CMS page pointing at a committed page FAILS the build', !clash.ok, clash.out.slice(-200));
+  check('  saying which page already publishes that file',
+    clash.out.indexOf('already published by templates/pages/' + committed[0]) > -1 &&
+    /must not overwrite a committed page/.test(clash.out), clash.out.slice(-400));
+
+  /* 9. reserved names */
+  const reserved = ['admin', 'sitemap', 'robots'];
+  reserved.forEach(name => {
+    const r = attempt('res-' + name, cmsPage('some-guide', 'RES', { url: name + '.html' }));
+    check('a CMS page cannot be called ' + name + '.html', !r.ok, r.out.slice(-200));
+    check('  and the refusal lists the reserved names',
+      /is a reserved name \(/.test(r.out), r.out.slice(-300));
+  });
+
+  /* 10. a url this build could never create */
+  const bad = attempt('bad', cmsPage('some-guide', 'BAD', { url: '../../etc/passwd' }));
+  check('an unusable url does not stop the whole site deploying', bad.ok, bad.out.slice(-300));
+  check('  but it is said out loud, naming the page',
+    /::warning::CMS page "some-guide" has url "\.\.\/\.\.\/etc\/passwd"/.test(bad.out),
+    (bad.out.match(/::warning::CMS page.*/) || [''])[0]);
+  check('  no page is generated for it', !fs.existsSync(path.join(OUT3, 'bad', A.out, 'passwd')) &&
+    walk(path.join(OUT3, 'bad', A.out)).every(f => !/passwd/.test(f)));
+  check('  and nothing advertises it',
+    !fs.readFileSync(path.join(OUT3, 'bad', A.out, 'sitemap.xml'), 'utf8').includes('passwd'));
+
+  /* 7. a page the record does not publish is not production output.
+     The page-record lifecycle is a later step; what exists today is the
+     same 'draft' vocabulary the builder blocks use, and a draft builder
+     block whose sections must never ship. */
+  const draft = attempt('draft', cmsPage('some-guide', 'DRAFTED', { status: 'draft' }));
+  check('a page the record marks draft builds, but is not generated', draft.ok &&
+    !fs.existsSync(path.join(OUT3, 'draft', A.out, 'some-guide.html')), draft.out.slice(-300));
+  check('  and is not advertised either',
+    !fs.readFileSync(path.join(OUT3, 'draft', A.out, 'sitemap.xml'), 'utf8').includes('some-guide'));
+
+  const dsec = attempt('dsec', cmsPage('some-guide', 'PUBLISHED SHELL', {
+    builder: { status: 'draft', schemaVersion: 2, updatedAt: '2026-10-01',
+               sections: sections(MARK.draft) } }));
+  check('a generated page with a DRAFT builder block still generates', dsec.ok &&
+    fs.existsSync(path.join(OUT3, 'dsec', A.out, 'some-guide.html')), dsec.out.slice(-300));
+  check('  but none of the draft content reaches it',
+    !walk(path.join(OUT3, 'dsec', A.out)).filter(f => /\.html$/.test(f))
+      .some(f => fs.readFileSync(path.join(OUT3, 'dsec', A.out, f), 'utf8').indexOf(MARK.draft) > -1));
+}
+
+/* ====================================================================
+   13. A THIRD BRAND, WITH NO SHARED-CODE CHANGE
+   ==================================================================== */
+console.log('\n===== A BRAND THAT IS ONLY A DIRECTORY GETS THE SAME CAPABILITY =====');
+{
+  const synth = path.join(__dirname, 'fixtures', 'brands');
+  const root = mktmp('third');
+  const brandsDir = path.join(root, 'brands');
+  fs.cpSync(synth, brandsDir, { recursive: true });
+  const id = fs.readdirSync(brandsDir, { withFileTypes: true })
+    .filter(e => e.isDirectory()).map(e => e.name).sort()[0];
+  const seo = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools', 'seo-config.json'), 'utf8'));
+  seo.seo = seo.seo || {};
+  seo.seo.baseUrl = 'https://' + id;
+  fs.writeFileSync(path.join(brandsDir, id, 'seo-config.json'), JSON.stringify(seo, null, 2) + '\n');
+
+  const slug = 'third-brand-guide', text = 'CONTENT FOR A THIRD BRAND';
+  const row = writeRow(path.join(ROWS, 'third.json'),
+    { [slug]: cmsPage(slug, text, { builder: { status: 'published', schemaVersion: 2,
+      updatedAt: '2026-10-01', sections: sections(text + ' SECTION') } }) });
+  const out = mktmp('third-out');
+  const r = build([id, '--brands', rel(brandsDir), '--row', rel(row), '--out', out]);
+  check('a third brand builds its own CMS page', r.ok, r.out.slice(-500));
+  const dir = fs.readdirSync(out).sort()[0];
+  const html = fs.existsSync(path.join(out, dir, slug + '.html'))
+    ? fs.readFileSync(path.join(out, dir, slug + '.html'), 'utf8') : '';
+  check('  the page exists and carries its content', html.indexOf(text) > -1, html.length);
+  check('  with its sections baked by the same renderer',
+    html.indexOf(text + ' SECTION') > -1 && /data-cms-baked="1"/.test(html));
+  check('  on its own domain and no other brand\'s',
+    html.indexOf('https://' + id + '/' + slug + '.html') > -1 &&
+    !fs.readdirSync(path.join(ROOT, 'brands')).some(o => html.indexOf(o) > -1));
+  check('  owning no CMS, generator or template file of its own',
+    !walk(path.join(brandsDir, id)).some(f => /(cms|seo-files|cms-page)\.(js|html)$/.test(f)),
+    walk(path.join(brandsDir, id)));
+}
+
+/* ====================================================================
+   14. THE GENERIC TEMPLATE AND ITS GENERATOR NAME NO BRAND
+   ==================================================================== */
+console.log('\n===== THE GENERIC PAGE MECHANISM IS BRAND-AGNOSTIC =====');
+{
+  const BRANDISH = /jsk-?1|playzone|[a-z0-9-]+\.(?:com|app)\b/i;
+  const ALLOWED = /^(googleapis|cloudflare|schema|sitemaps|w3)\./;
+  const tpl = fs.readFileSync(path.join(ROOT, 'templates', 'cms-page.html'), 'utf8');
+  const hits = (tpl.match(new RegExp(BRANDISH.source, 'gi')) || []).filter(h => !ALLOWED.test(h));
+  check('templates/cms-page.html names no brand, domain or site id', hits.length === 0, hits);
+  check('  and lives outside templates/pages/, so it is never published as a page',
+    !fs.existsSync(path.join(ROOT, 'templates', 'pages', 'cms-page.html')) &&
+    !walk(path.join(ROOT, 'templates')).includes('pages/cms-page.html'));
+  check('  getting every brand-specific value from a token',
+    /\{\{brand\.name\}\}/.test(tpl) && /\{\{brand\.domain\}\}/.test(tpl) &&
+    /\{\{page\.slug\}\}/.test(tpl));
+  check('  and carrying the SEO hooks the static bake will write into',
+    ['data-cms-title="pages.{{page.slug}}.title"',
+     'data-cms-meta="pages.{{page.slug}}.metaDescription"',
+     'rel="canonical"', 'name="robots"', 'property="og:title"', 'name="twitter:title"',
+     'id="ldPage"', 'id="ldBreadcrumb"'].every(h => tpl.indexOf(h) > -1));
+  check('  with a Page Builder mount using the established convention',
+    tpl.indexOf('<div data-cms-sections="{{page.slug}}"></div>') > -1);
+
+  /* The shell must not drift from the page it was taken from. */
+  const about = fs.readFileSync(path.join(ROOT, 'templates', 'pages', 'about.html'), 'utf8');
+  const region = (src, name) => {
+    const o = '<!-- SHELL:' + name + ' -->', c = '<!-- /SHELL:' + name + ' -->';
+    const a = src.indexOf(o), b = src.indexOf(c);
+    return a === -1 || b === -1 ? null : src.slice(a + o.length, b);
+  };
+  ['HEADER', 'FOOTER'].forEach(n => {
+    check('its ' + n.toLowerCase() + ' is the same shell every page ships',
+      region(tpl, n) !== null && region(tpl, n) === region(about, n));
+  });
+  check('its nav is that shell with no page marked current',
+    region(tpl, 'NAV') === region(about, 'NAV')
+      .replace(/ class="(nav-link|mob-cat-item) active"/g, ' class="$1"')
+      .replace(/ aria-current="page"/g, ''));
+
+  /* The code that runs, in the files that gained the capability. */
+  const codeOf = f => fs.readFileSync(path.join(ROOT, f), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+  ['tools/lib/pbbake.js'].forEach(f => {
+    check(f + ': no brand, domain or site id in the code that runs',
+      !BRANDISH.test(codeOf(f)), (codeOf(f).match(BRANDISH) || [])[0]);
+  });
+  check('the reader and the generator are separate, as the rest of the build is',
+    /function pagesFromRecord\(data\)/.test(fs.readFileSync(path.join(ROOT, 'tools', 'lib', 'pbbake.js'), 'utf8')) &&
+    /opts\.cmsPages/.test(fs.readFileSync(path.join(ROOT, 'tools', 'lib', 'brandkit.js'), 'utf8')));
+
+  /* The admin no longer ends at a manual commit. */
+  const admin = fs.readFileSync(path.join(ROOT, 'js', 'admin.js'), 'utf8');
+  check('the admin no longer tells anyone to add the file to the site by hand',
+    !/Download the HTML file and add it to the site/.test(admin) &&
+    /the next deploy will generate/.test(admin));
+}
+
 tmpRoots.forEach(d => { try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) {} });
 
 console.log(`\n==== ${pass} passed, ${fail} failed ====`);

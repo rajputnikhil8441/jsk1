@@ -125,6 +125,10 @@ async function publishedForBrand(brand, rowFile, allowUnpublish) {
        reads at two instants can disagree, and then the HTML and the sitemap
        describe different content. */
     return { published: published, data: row.data, updatedAt: row.updatedAt || '',
+             /* The page records themselves, for the ones no committed
+                template covers. Read from the same row, behind the same
+                siteId guard, so a brand cannot be handed another's pages. */
+             pages: pbbake.pagesFromRecord(row.data),
              source: rowFile ? rel(path.resolve(ROOT, rowFile)) : 'the published CMS row',
              emptied: emptied };
 }
@@ -179,6 +183,7 @@ async function main() {
 
     const s = site.planSite({ brandsDir: BRANDS, templatesDir: TEMPLATES, sharedRoot: ROOT,
                               id: id, env: env, published: live ? live.published : null,
+                              cmsPages: live ? live.pages : null,
                               row: live ? { data: live.data, updatedAt: live.updatedAt } : null });
     console.log('Brand    : ' + s.plan.brand.id + '  (name=' + s.plan.brand.name + ')');
     console.log('Env      : ' + s.plan.brand.env +
@@ -193,6 +198,17 @@ async function main() {
         ? s.overlay.length + ' file(s) from ' + s.overlayDirs.map(rel).join('/, ') + '/'
         : '(none)'));
     console.log('Generated: ' + s.generated.length + ' file(s)');
+    /* Pages the CMS has that no committed template covers, rendered through
+       the generic template. Printed because a page appearing or vanishing
+       from a deploy without a code change is exactly what an operator
+       needs told. */
+    const cms = s.plan.cmsPages || [];
+    console.log('CMS pages: ' + (cms.length
+        ? cms.map(x => x.file + ' ("' + x.slug + '")').join(', ') +
+          '   from templates/cms-page.html'
+        : s.plan.brand.contentSource === 'cms'
+            ? '(none needed generating)'
+            : '(not read: pass --from-cms to generate pages the CMS has)'));
     console.log('Slots    : ' + (s.plan.slotsDeclared.length ? s.plan.slotsDeclared.join(', ') : '(none)') +
                 '   filled: ' + (Object.keys(s.plan.brand.slots).length
                     ? Object.keys(s.plan.brand.slots).sort().join(', ') : '(none)'));

@@ -108,8 +108,13 @@ function planSite(opts) {
     const sharedRoot = opts.sharedRoot;
     /* opts.published, when the caller has read the brand's published CMS
        record, is handed straight through: one bake, two possible sources. */
+    /* opts.cmsPages, when the caller read the brand's CMS record, is the
+       page records the generator turns into files of their own -- the ones
+       no committed template covers. Handed through rather than read here:
+       one reader, one siteId guard, one snapshot. */
     const plan = kit.planBrand({ brandsDir: opts.brandsDir, templatesDir: opts.templatesDir,
-                                 id: opts.id, env: opts.env, published: opts.published });
+                                 id: opts.id, env: opts.env, published: opts.published,
+                                 cmsPages: opts.cmsPages });
 
     const shared = [];
     for (const d of SHARED_DIRS) {
