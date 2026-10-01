@@ -1638,6 +1638,9 @@
                       'border', 'radius', 'shadow'],
         table:       ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
                       'align', 'bg', 'padding', 'margin', 'maxWidth',
+                      'border', 'radius', 'shadow'],
+        toc:         ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+                      'align', 'bg', 'padding', 'margin', 'maxWidth', 'gap',
                       'border', 'radius', 'shadow']
     };
 
@@ -1711,7 +1714,8 @@
            and in PB_EL_TOKENS, and one name for two things is how a value
            ends up read by the wrong reader. */
         list:        ['ordered', 'rich'],
-        table:       ['caption', 'cols', 'header']
+        table:       ['caption', 'cols', 'header'],
+        toc:         ['title', 'titleLevel', 'depth', 'ordered']
     };
 
     /* Which content keys hold a URL, and which hold a repeating list. */
@@ -1729,7 +1733,8 @@
         titleLevel: function () { return PB_HEADING_LEVELS; },
         platform:   function () { return PB_SOCIAL; },
         level:      function () { return PB_ALL_LEVELS; },
-        tag:        function () { return PB_TEXT_TAGS; }
+        tag:        function () { return PB_TEXT_TAGS; },
+        depth:      function () { return PB_TOC_DEPTHS; }
     };
 
     var PB_ALL_LEVELS = { h1: 1, h2: 1, h3: 1, h4: 1, h5: 1, h6: 1 };
@@ -2231,6 +2236,10 @@
     /* The block tags a text element may be. Both are ordinary prose
        containers; neither can hold anything the renderer does not build. */
     var PB_TEXT_TAGS = { p: 1, blockquote: 1 };
+    /* How deep a table of contents goes, as the deepest level it lists.
+       The value is the number the renderer compares against, so the
+       allow-list and the limit are one thing rather than two. */
+    var PB_TOC_DEPTHS = { h2: 2, h3: 3, h4: 4 };
     var PB_HEADING_LEVELS = { h2: 1, h3: 1, h4: 1, h5: 1, h6: 1 };
 
     /* Unique, valid HTML ids for the FAQ's aria wiring, even when an
@@ -2240,6 +2249,17 @@
         var base = pbCssId(el && el.id);
         if (!base) { pbAutoId += 1; base = 'a' + pbAutoId; }
         return 'pb-' + base + '-' + suffix;
+    }
+
+    /* A heading's anchor id, or '' when its element id is not one an
+       attribute selector could hold. Deliberately NOT pbDomId(): that
+       invents an id when it has to, and an invented one is no use here --
+       the table of contents has to work out the SAME id from the section
+       tree, without having rendered anything. One rule, read twice, so a
+       link can never point at an id the heading did not get. */
+    function pbAnchorId(elId) {
+        var base = pbCssId(elId);
+        return base ? 'pb-' + base + '-h' : '';
     }
 
     /* An element's own box alignment, for the types that are laid out as a
@@ -2592,6 +2612,12 @@
             var lvl = String(c.level || 'h2').toLowerCase();
             if (['h1','h2','h3','h4','h5','h6'].indexOf(lvl) === -1) lvl = 'h2';
             var n = pbEl(lvl, 'pb-el pb-heading');
+            /* Deep-linkable, and what a table of contents points at. An
+               element whose id could not be put in a selector gets none,
+               which is the same condition pbAnchorId() reports to the
+               table of contents, so the two never disagree. */
+            var anchor = pbAnchorId(el && el.id);
+            if (anchor) n.setAttribute('id', anchor);
             n.textContent = str(c.text);
             return pbId(n, el);
         },
@@ -2970,6 +2996,67 @@
             t.appendChild(tb);
             wrap.appendChild(t);
             return pbId(wrap, el);
+        },
+
+        /* A table of contents: a <nav> of links to the headings this page's
+           sections draw.
+
+           It reads pbOutline(), the heading reader the admin already uses
+           for its H1 warning, so the list is resolved exactly as the page
+           resolves it -- including a heading element with no level falling
+           back to h2. There is no second heading reader to drift.
+
+           H1 is never listed. A page's H1 is its title, written above the
+           sections from pages.<slug>.heading, so a contents entry for one
+           would point at a second H1 that should not be there anyway.
+
+           Nothing is drawn when there is nothing to point at: fewer than
+           two entries is a list of one link, which is noise rather than
+           navigation. */
+        toc: function (el) {
+            var c = el.content || {};
+            var deepest = pbPick(PB_TOC_DEPTHS, str(c.depth)) ? str(c.depth) : 'h3';
+            var limit = PB_TOC_DEPTHS[deepest];
+            var items = pbOutline(pbRenderTree || []).items;
+            var rows = [];
+            for (var i = 0; i < items.length; i++) {
+                var lv = parseInt(items[i].level.slice(1), 10);
+                if (lv < 2 || lv > limit) continue;       /* never the H1 */
+                var text = str(items[i].text);
+                var href = pbAnchorId(items[i].id);
+                if (!text || !href) continue;
+                rows.push({ text: text, href: href, level: lv });
+            }
+            if (rows.length < 2) return null;
+
+            var nav = pbEl('nav', 'pb-el pb-toc');
+            var label = str(c.title);
+            nav.setAttribute('aria-label', label || 'On this page');
+            if (label) {
+                var lvl = pbPick(PB_HEADING_LEVELS, str(c.titleLevel).toLowerCase())
+                    ? str(c.titleLevel).toLowerCase() : 'h2';
+                var h = pbEl(lvl, 'pb-toc-title');
+                h.textContent = label;
+                /* The heading names the nav, so the nav does not need a
+                   second name of its own. */
+                var hid = pbDomId(el, 't');
+                h.setAttribute('id', hid);
+                nav.setAttribute('aria-labelledby', hid);
+                nav.removeAttribute('aria-label');
+                nav.appendChild(h);
+            }
+            var listTag = c.ordered === true ? 'ol' : 'ul';
+            var list = pbEl(listTag, 'pb-toc-list');
+            for (i = 0; i < rows.length; i++) {
+                var li = pbEl('li', 'pb-toc-item pb-toc-l' + rows[i].level);
+                var a = pbEl('a', 'pb-toc-link');
+                a.setAttribute('href', '#' + rows[i].href);
+                a.textContent = rows[i].text;
+                li.appendChild(a);
+                list.appendChild(li);
+            }
+            nav.appendChild(list);
+            return pbId(nav, el);
         }
 
     };
@@ -3261,7 +3348,29 @@
         return pbUpgrade(b.sections, pbSchemaOf(b));
     }
 
+    /* The section tree the current render is drawing.
+
+       Every element renderer is handed its own element and nothing else,
+       which is right: an element that could read the rest of the page is
+       an element that can be surprised by it. The table of contents is the
+       one exception -- it exists to describe the headings around it -- so
+       instead of widening every renderer's signature, the top-level call
+       leaves the tree here for the length of its own synchronous run and
+       clears it afterwards. Read through pbOutline(), which is the same
+       heading reader the admin uses, so there is no second idea of what a
+       heading is. */
+    var pbRenderTree = null;
+
     function renderSectionsInto(host, sections) {
+        pbRenderTree = isArr(sections) ? sections : null;
+        try {
+            renderSectionsBody(host, sections);
+        } finally {
+            pbRenderTree = null;
+        }
+    }
+
+    function renderSectionsBody(host, sections) {
         var frag = document.createDocumentFragment();
         for (var i = 0; i < sections.length; i++) {
             var sec = sections[i];
@@ -5297,6 +5406,13 @@
             sectionStyleKeys: PB_SEC_STYLE_KEYS,
             icons: PB_ICONS,
             social: PB_SOCIAL,
+            /* Phase 2A allow-lists, exported for the same reason icons and
+               social are: the admin builds its controls from the
+               renderer's own lists, so it can never offer a value the
+               renderer would refuse, and there is no second copy to drift. */
+            textTags: PB_TEXT_TAGS,
+            tocDepths: PB_TOC_DEPTHS,
+            tableMaxCols: PB_TABLE_MAX_COLS,
             colLayouts: PB_COL_LAYOUTS,
             /* Global design (stage 6). `roleColor`/`roleTypo` resolve a role
                the way the stylesheet does, which is what lets the admin show

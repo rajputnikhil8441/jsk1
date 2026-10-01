@@ -648,3 +648,56 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
     border-inline-start: 3px solid currentColor;
     font-style: italic;
 }
+
+
+/* ---------- table of contents ---------- */
+
+.pb-el.pb-toc {
+    background: var(--pbe-bg, transparent);
+    color: var(--pbe-color, inherit);
+    font-size: var(--pbe-font-size, 15px);
+    font-weight: var(--pbe-font-weight, 400);
+    line-height: var(--pbe-line-height, 1.5);
+    letter-spacing: var(--pbe-letter-spacing, inherit);
+    text-align: var(--pbe-align, inherit);
+    padding: var(--pbe-padding, 0);
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+}
+
+.pb-toc .pb-toc-title {
+    margin: 0 0 8px;
+    font-size: inherit;
+    font-weight: 600;
+    color: inherit;
+}
+
+.pb-toc .pb-toc-list {
+    list-style-position: outside;
+    margin: 0;
+    padding-inline-start: 1.2em;
+}
+
+.pb-toc .pb-toc-item + .pb-toc-item { margin-top: var(--pbe-gap, 4px); }
+
+/* The indent says how deep a heading is, so the list reads as an outline
+   rather than a flat set of links. */
+.pb-toc .pb-toc-l3 { padding-inline-start: 1em; }
+.pb-toc .pb-toc-l4 { padding-inline-start: 2em; }
+
+.pb-toc .pb-toc-link {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.pb-toc .pb-toc-link:hover { filter: brightness(1.2); }
+.pb-toc .pb-toc-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* A heading jumped to from the contents should not land flush against the
+   top of the viewport. Browser-level, and costs nothing on a page with no
+   contents list on it. */
+.pb-heading { scroll-margin-top: 16px; }

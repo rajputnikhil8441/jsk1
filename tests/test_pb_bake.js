@@ -135,6 +135,18 @@ const FIXTURE = [
       { id: 'el_badmark', type: 'text', content: { rich: true,
           text: 'Try [this](vbscript:x) and [that](data:text/html,x) ' +
                 'and [other](javascript:alert(1)).' },
+        style: {}, responsive: {} },
+      /* Phase 2A table of contents. It points at the headings this very
+         fixture draws, which is what makes the anchor-integrity check
+         below meaningful: every href it bakes has to match an id that is
+         also in the baked HTML. */
+      { id: 'el_toc', type: 'toc', content: { title: 'On this page', depth: 'h3' },
+        style: {}, responsive: {} },
+      { id: 'el_h2a', type: 'heading', content: { text: 'Deposits & limits', level: 'h2' },
+        style: {}, responsive: {} },
+      { id: 'el_h3a', type: 'heading', content: { text: 'A sub point', level: 'h3' },
+        style: {}, responsive: {} },
+      { id: 'el_h4a', type: 'heading', content: { text: 'Too deep to list', level: 'h4' },
         style: {}, responsive: {} }
     ] },
   { id: 'sec_off', type: 'text', enabled: false,
@@ -318,6 +330,31 @@ function buildBrand(brandsDir, id, outDir) {
       node.html.slice(node.html.indexOf('el_badmark'), node.html.indexOf('el_badmark') + 180));
     check('  and no inline node is an anchor to anywhere unsafe',
       !/<a [^>]*href="\s*(javascript|data|vbscript):/i.test(node.html), true);
+
+    /* ---- Phase 2A: the contents list, and that its links go somewhere ---- */
+    check('a table of contents bakes as a <nav> with a real list',
+      /<nav class="pb-el pb-toc" aria-labelledby="pb-el_toc-t" data-el="el_toc">/.test(node.html) &&
+      node.html.includes('<ul class="pb-toc-list">'), true);
+    check('  headings carry the anchor id the list points at',
+      node.html.includes('<h2 class="pb-el pb-heading" id="pb-el_h2a-h"') &&
+      node.html.includes('<a class="pb-toc-link" href="#pb-el_h2a-h">Deposits &amp; limits</a>'),
+      true);
+    check('  it lists down to the depth asked for and no deeper',
+      node.html.includes('href="#pb-el_h3a-h"') && !node.html.includes('href="#pb-el_h4a-h"'),
+      true);
+    check('  the H1 a page already has is never listed',
+      !/pb-toc-link"[^>]*>Section Heading</.test(node.html), true);
+    /* The claim that matters: every anchor the contents list baked resolves
+       to an id that is ALSO in the baked HTML. A link to a heading that was
+       never given an id is a dead link in the served page, and this is what
+       would catch it. */
+    {
+      const targets = (node.html.match(/href="#(pb-[A-Za-z0-9_-]+-h)"/g) || [])
+        .map(m => m.replace(/.*#/, '').replace(/"$/, ''));
+      const dead = targets.filter(id => !node.html.includes('id="' + id + '"'));
+      check('  every contents link resolves to an id in the same HTML',
+        targets.length > 0 && dead.length === 0, { targets, dead });
+    }
 
     check('no page errors', errs.length === 0, errs);
     await ctx.close();

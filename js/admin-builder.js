@@ -1627,7 +1627,8 @@ window.PBAdmin = function (host) {
         ['socialLinks', 'Social links'],
         /* Phase 2A */
         ['list',        'List'],
-        ['table',       'Table']
+        ['table',       'Table'],
+        ['toc',         'Table of contents']
     ];
 
     /* Choice lists come from the renderer's own allow-lists, so the admin
@@ -1687,7 +1688,11 @@ window.PBAdmin = function (host) {
                   ['cols', 'Columns', 'select',
                       [['', 'As wide as the widest row'], ['1', '1'], ['2', '2'], ['3', '3'],
                        ['4', '4'], ['5', '5'], ['6', '6'], ['7', '7'], ['8', '8']]],
-                  ['header', 'First row is a header row', 'bool']]
+                  ['header', 'First row is a header row', 'bool']],
+        toc:     [['title', 'Heading above it (optional)', 'text'],
+                  ['titleLevel', 'Heading level', 'select', ['h2', 'h3', 'h4', 'h5', 'h6']],
+                  ['depth', 'Include down to', 'tocDepth'],
+                  ['ordered', 'Numbered', 'bool']]
     };
 
     /* Repeating sub-items: which element types have them, what one blank
@@ -1747,6 +1752,24 @@ window.PBAdmin = function (host) {
        made one; otherwise the widest row, which is what the renderer falls
        back to as well, so the editor and the page never disagree about how
        many columns there are. */
+    /* The renderer's own h-name -> deepest-level map, read rather than
+       copied: the same rule icons and platforms follow, so the admin can
+       never count to a depth the renderer does not honour. */
+    function pbTocDepths() { return CMS.sections.tocDepths || { h2: 2, h3: 3, h4: 4 }; }
+
+    /* The depth control's options, in level order, labelled. */
+    function pbTocDepthOptions() {
+        var d = pbTocDepths();
+        return Object.keys(d)
+            .sort(function (a, b) { return d[a] - d[b]; })
+            .map(function (k) {
+                var names = [];
+                for (var lv = 2; lv <= d[k]; lv++) names.push('H' + lv);
+                return [k, names.length === 1 ? 'H2 only'
+                    : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1]];
+            });
+    }
+
     function pbTableCols(el) {
         var c = (el && el.content) || {};
         var n = parseInt(c.cols, 10);
@@ -1906,7 +1929,8 @@ window.PBAdmin = function (host) {
         icon:        { fontSize: 'Icon size (px)' },
         socialLinks: { fontSize: 'Icon size (px)', gap: 'Space between icons (px)' },
         list:        { gap: 'Space between items (px)' },
-        table:       { padding: 'Space inside cells (px)' }
+        table:       { padding: 'Space inside cells (px)' },
+        toc:         { gap: 'Space between entries (px)' }
     };
 
     var PB_DEVICES = [['base', 'Desktop'], ['tablet', 'Tablet'], ['mobile', 'Mobile']];
@@ -2727,6 +2751,7 @@ window.PBAdmin = function (host) {
            is optional on a notice and a feature box. */
         if (spec[2] === 'iconSelect')   spec = [spec[0], spec[1], 'select', [''].concat(pbIconNames())];
         if (spec[2] === 'socialSelect') spec = [spec[0], spec[1], 'select', pbSocialNames()];
+        if (spec[2] === 'tocDepth')     spec = [spec[0], spec[1], 'select', pbTocDepthOptions()];
         if (spec[2] === 'colsSelect') {
             spec = [spec[0], spec[1], 'select', pbColOptions((ctx && ctx.device) || 'base')];
         }
@@ -3131,7 +3156,13 @@ window.PBAdmin = function (host) {
             return { cols: '2', header: true,
                      items: [{ c1: 'Column one', c2: 'Column two' },
                              { c1: 'Value', c2: 'Value' }] };
-        }
+        },
+        /* The one type that cannot be made to render by its own defaults:
+           a table of contents lists the headings AROUND it, so on a page
+           with none there is nothing to list and it draws nothing. The
+           hint below says that, rather than leaving an author staring at
+           an element that appears to be broken. */
+        toc:   function () { return { title: 'On this page', depth: 'h3' }; }
     };
 
     function pbBlankElement(type) {
@@ -3394,6 +3425,29 @@ window.PBAdmin = function (host) {
                     'Nothing else is markup — typed HTML stays visible as text, ' +
                     'and a link address that is not allowed leaves the words behind.';
                 body.appendChild(rh);
+            }
+
+            /* A table of contents is the one element whose content is the
+               rest of the page, so the card has to say what it found. The
+               count comes from the renderer's own heading reader, which is
+               what decides whether anything is drawn. */
+            if (el.type === 'toc') {
+                var th = document.createElement('p');
+                th.className = 'hint';
+                th.setAttribute('data-hint', 'toc');
+                var deepest = pbTocDepths()[String((el.content || {}).depth || 'h3')] || 3;
+                var found = CMS.sections.outline(pbDraft).items.filter(function (it) {
+                    var lv = parseInt(it.level.slice(1), 10);
+                    return lv >= 2 && lv <= deepest && String(it.text || '').trim();
+                }).length;
+                th.textContent = found < 2
+                    ? 'This page\u2019s sections have ' + found + ' heading(s) in range, so nothing ' +
+                      'is drawn yet. Add headings below it \u2014 a contents list of one link is ' +
+                      'noise rather than navigation. The page H1 is never listed.'
+                    : 'Lists ' + found + ' heading(s) from this page\u2019s sections. The page H1 is ' +
+                      'never listed, and the list is rebuilt from the headings every time the ' +
+                      'page renders.';
+                body.appendChild(th);
             }
 
             /* Images without alt text cost the page in search and in

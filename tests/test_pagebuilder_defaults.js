@@ -48,9 +48,17 @@ const sec = (id, type, extra) => Object.assign({ id, type, enabled: true, elemen
 
 const TYPES = ['heading', 'text', 'image', 'button', 'card', 'columns', 'divider',
                'spacer', 'icon', 'notice', 'featureBox', 'faq', 'socialLinks',
-               'list', 'table'];
+               'list', 'table', 'toc'];
 /* An image with no source is the one type that is meant to start empty:
-   there is nothing to show until a file is named. */
+   there is nothing to show until a file is named.
+
+   A table of contents is a different case worth naming, because it looks
+   like it belongs here and does not. It lists the headings AROUND it, so
+   its defaults alone cannot make it draw -- but this page adds every type
+   in turn, so by the time the contents list is added there are headings
+   for it to point at, and it renders like everything else. On a page with
+   none it draws nothing, which is the honest answer rather than a list of
+   one link; the admin card says so while editing. */
 const INVISIBLE_BY_DESIGN = ['image'];
 
 /* Icon glyphs come from Font Awesome, which this sandbox's egress proxy

@@ -70,7 +70,19 @@ const CONTENT = {
   table:       { cols: 2, header: true,
                  items: [{ c1: 'Column A', c2: 'Column B' },
                          { c1: 'Row one', c2: 'Value one' },
-                         { c1: 'Row two', c2: 'Value two' }] }
+                         { c1: 'Row two', c2: 'Value two' }] },
+  toc:         { title: 'On this page', depth: 'h3' }
+};
+
+/* A table of contents is the one type whose content is the rest of the
+   page, so unlike every other type it cannot render alone. These siblings
+   give it something to point at. They are identical for every probe on the
+   page, so they can never be what a style comparison sees change. */
+const SIBLINGS = {
+  toc: [{ id: 'sib_a', type: 'heading', content: { text: 'Sibling one', level: 'h2' },
+          style: {}, responsive: {} },
+        { id: 'sib_b', type: 'heading', content: { text: 'Sibling two', level: 'h2' },
+          style: {}, responsive: {} }]
 };
 
 /* A value for each key that is guaranteed to differ from every default. */
@@ -135,7 +147,8 @@ const fingerprint = (p, sel) => p.$eval(sel, (root, props) => {
        so every comparison is against the same type with the same content. */
     for (const type of Object.keys(keysByType)) {
       const keys = keysByType[type];
-      const elements = [el('base_' + type, type, CONTENT[type])]
+      const elements = (SIBLINGS[type] || [])
+        .concat([el('base_' + type, type, CONTENT[type])])
         .concat(keys.map(k => el('k_' + k, type, CONTENT[type], { [k]: PROBE[k] })));
       const S = [sec('s1', 'text', { elements })];
       const { ctx, p, errs } = await publishedPage(b, S, 1280);
@@ -381,7 +394,7 @@ const fingerprint = (p, sel) => p.$eval(sel, (root, props) => {
     await p.click(`${SEC} .pb-subtab[data-view="content"]`); await p.waitForTimeout(350);
     const TYPES = ['heading', 'text', 'image', 'button', 'card', 'columns', 'divider',
                    'spacer', 'icon', 'notice', 'featureBox', 'faq', 'socialLinks',
-                   'list', 'table'];
+                   'list', 'table', 'toc'];
     const ids = {};
     for (const t of TYPES) {
       await p.click(`${TOP} > .pb-add-el > .pb-addbtn[data-el-type="${t}"]`);

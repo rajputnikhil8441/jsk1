@@ -363,7 +363,7 @@ const shot = p => p.evaluate(() => {
   {
     const TYPES = ['heading', 'text', 'image', 'button', 'card', 'columns', 'divider',
                    'spacer', 'icon', 'notice', 'featureBox', 'faq', 'socialLinks',
-                   'list', 'table'];
+                   'list', 'table', 'toc'];
     const HOSTILE = {
       text: '<img src=x onerror=window.__pwned=1>', level: 'javascript:',
       src: 'javascript:alert(1)', alt: '"><script>window.__pwned=2</script>',
@@ -377,7 +377,8 @@ const shot = p => p.evaluate(() => {
          number, a caption carrying markup, and rows whose cells hold a
          script payload and a nested object. */
       cols: 'constructor', caption: '<script>window.__pwned=9</script>', ordered: 'yes',
-      header: 'maybe',
+      header: 'maybe', depth: '__proto__', tag: 'script', rich: 'yes',
+      titleLevel: 'toString',
       items: [{ question: '<script>q</script>', answer: 'a' },
               { platform: 'constructor', url: 'javascript:x' },
               { text: '<img src=x onerror=window.__pwned=5>' },
