@@ -3904,7 +3904,19 @@
                 updatedAt: todayIso(),
                 /* the generated stub carries a <div data-cms-sections>, so the
                    Page Builder can offer this page too */
-                builderMount: true
+                builderMount: true,
+                /* The Phase 2C-A content-model fields, written empty for the
+                   same reason `status` is written explicitly above: a record
+                   this panel creates carries its whole shape rather than
+                   relying on a default somewhere else to fill it in. Nothing
+                   reads them yet and no control below edits them, so a page
+                   created now behaves exactly as one created before they
+                   existed. js/cms.js DEFAULTS explains what each one is for. */
+                type: '',
+                publishedAt: '',
+                excerpt: '',
+                author: '',
+                related: []
             };
             markDirty();
             buildBuilder();
