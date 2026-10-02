@@ -40,6 +40,17 @@ async function page(b, sections, extra, width) {
     raw.pages = raw.pages || {};
     raw.pages.about = Object.assign({}, raw.pages.about,
       { builder: { schemaVersion: 2, status: 'published', sections: arg.sections } });
+    /* Phase 2F. Same reason as the pageList entry below: the taxonomy element
+       draws the CURRENT page's category and tags out of the page record, so a
+       probe with no taxonomy in the record renders nothing and a role that
+       reaches nothing reads as a role that does not work. */
+    raw.categories = raw.categories ||
+      { probecat: { name: 'Probe category', slug: 'probe-category' } };
+    raw.tags = raw.tags || { probetag: { name: 'Probe tag', slug: 'probe-tag' } };
+    raw.pages.about.type = raw.pages.about.type || 'article';
+    raw.pages.about.category = raw.pages.about.category || 'probecat';
+    if (!raw.pages.about.tags || !raw.pages.about.tags.length)
+      raw.pages.about.tags = ['probetag'];
     localStorage.setItem('whiteLabelCMS', JSON.stringify(raw));
   }, { sections, extra: extra || {} });
   await p.goto(`${BASE}/about.html`, { waitUntil: 'networkidle' });
@@ -384,6 +395,8 @@ const cs = (p, sel, prop) => p.$eval(sel, (n, k) => getComputedStyle(n)[k], prop
          shipped page record already carries. */
       pageList: { source: 'type', contentType: 'page', title: 'Other pages',
                   titleLevel: 'h2', excerpt: true, limit: 4 },
+      taxonomy: { categoryLabel: 'Category', tagsLabel: 'Tags',
+                  showCategory: true, showTags: true },
       tabs: { items: [{ label: 'One', text: 'First' }, { label: 'Two', text: 'Second' }] },
       carousel: { items: [{ title: 'A', text: 'one' }, { title: 'B', text: 'two' }] },
       video: { url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', title: 'A video' }

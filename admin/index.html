@@ -966,6 +966,47 @@
                     </button>
                 </div>
             </div>
+
+            <!-- CATEGORIES AND TAGS (Phase 2F). Brand-scoped like authors:
+                 they live in this brand's own CMS record, so there is no
+                 collection to read but this one. Built by js/admin.js.
+
+                 They are NOT a URL space: no category or tag page is
+                 generated and nothing is added to sitemap.xml. They organise
+                 content, and they are what automatic related content reads. -->
+            <div class="card">
+                <h2>Categories</h2>
+                <p class="hint">
+                    The one main topic a piece of content is about &mdash; Cricket, Casino,
+                    Payments. A page refers to a category by id, so renaming one updates every
+                    page at once. <strong>No category page is generated</strong> and nothing is
+                    added to <code>sitemap.xml</code>: categories organise content and feed
+                    related-content matching.
+                </p>
+                <div id="categoriesHost"></div>
+                <div class="pb-bar">
+                    <button type="button" class="adm-btn ghost" id="btnAddCategory">
+                        <i class="fas fa-folder-plus"></i> Add a category
+                    </button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Tags</h2>
+                <p class="hint">
+                    Reusable keywords &mdash; IPL, 2026, Final. A page can carry several.
+                    Like categories, <strong>no tag page is generated</strong> and nothing is
+                    added to the sitemap. Two pages sharing two or more tags count as related;
+                    one shared tag deliberately does not, because a year says nothing about
+                    what a page is about.
+                </p>
+                <div id="tagsHost"></div>
+                <div class="pb-bar">
+                    <button type="button" class="adm-btn ghost" id="btnAddTag">
+                        <i class="fas fa-tag"></i> Add a tag
+                    </button>
+                </div>
+            </div>
         </div>
     </section>
 

@@ -433,6 +433,8 @@
                 excerpt: '',
                 author: '',
                 related: [],
+                category: '',
+                tags: [],
                 title: '',
                 metaDescription: '',
                 heading: '',
@@ -457,6 +459,8 @@
                 excerpt: '',
                 author: '',
                 related: [],
+                category: '',
+                tags: [],
                 title: '',
                 metaDescription: '',
                 heading: '',
@@ -481,6 +485,8 @@
                 excerpt: '',
                 author: '',
                 related: [],
+                category: '',
+                tags: [],
                 title: '',
                 metaDescription: '',
                 heading: '',
@@ -505,6 +511,8 @@
                 excerpt: '',
                 author: '',
                 related: [],
+                category: '',
+                tags: [],
                 title: '',
                 metaDescription: '',
                 heading: '',
@@ -529,6 +537,8 @@
                 excerpt: '',
                 author: '',
                 related: [],
+                category: '',
+                tags: [],
                 title: '',
                 metaDescription: '',
                 heading: '',
@@ -553,6 +563,8 @@
                 excerpt: '',
                 author: '',
                 related: [],
+                category: '',
+                tags: [],
                 title: '',
                 metaDescription: '',
                 heading: '',
@@ -578,6 +590,8 @@
                 excerpt: '',
                 author: '',
                 related: [],
+                category: '',
+                tags: [],
                 title: '',
                 metaDescription: '',
                 heading: '',
@@ -603,6 +617,37 @@
            be guessing.
         ---------------------------------------------------------- */
         authors: {},
+
+
+        /* ----------------------------------------------------------
+           CATEGORIES AND TAGS (Phase 2F)
+
+           Two collections shaped exactly like `authors` above, for the same
+           reasons: a page stores an ID, the collection holds the record, and
+           renaming one updates every page at once because no page stores a
+           name. A map rather than an array, because a page's lookup is by id
+           and that should not be a scan.
+
+             categories   the ONE main topic a piece of content is about.
+                          `pages.<slug>.category` names an entry.
+             tags         reusable keywords. `pages.<slug>.tags` names several.
+
+           WHAT THEY ARE FOR: organisation, editorial management, and the
+           automatic related-content signal. They are NOT a URL space. No
+           category or tag page is generated, nothing is added to the sitemap,
+           and a tag renders as text rather than a link -- a few hundred thin
+           pages would cost this site more than they could ever return.
+
+           WHICH CONTENT TYPES: article, guide, help and hub. A plain `page`
+           is site furniture -- About, Contact, Privacy -- and classifying it
+           would add nothing while inviting exactly the sprawl above.
+
+           Empty on every brand, like `authors`. A record that has never used
+           them reads as having none, which is why adding them changes
+           nothing about what any site publishes.
+        ---------------------------------------------------------- */
+        categories: {},
+        tags: {},
 
 
         /* Saved white labels. Seeded on first run by the admin panel;
@@ -1490,6 +1535,85 @@
     }
 
     /* ========================================================
+       CATEGORIES AND TAGS (Phase 2F)
+       --------------------------------------------------------
+       One resolver for both collections, built on the same refusals
+       authorFrom() above applies: no id, no collection, no such id, not an
+       object, no name => null. A reference that does not resolve publishes
+       NOTHING -- no stray label, no empty chip. A taxonomy nobody can name
+       is not a taxonomy.
+
+       Brand isolation is structural rather than checked, exactly as it is for
+       authors: `categories` and `tags` live in the brand's own record, so
+       there is no collection to read but this brand's and an id belonging to
+       another brand simply does not resolve.
+
+       `slug` is resolved but is deliberately NOT a URL. Nothing generates a
+       page for it. It exists so an editor has a stable, readable handle and
+       so a later phase could use one without re-slugging every name.
+    ======================================================== */
+    var TAXON_MAX = 120;            /* a topic name, not a sentence */
+    var TAXON_SLUG_RE = /^[a-z0-9][a-z0-9-]{0,80}$/;
+    var PAGE_TAGS_MAX = 12;         /* a dozen keywords is already generous */
+
+    /* Which content types carry taxonomy. A plain page is site furniture. */
+    var TAXON_TYPES = { article: 1, guide: 1, help: 1, hub: 1 };
+
+    function taxonTypeOk(page) { return !!pbPick(TAXON_TYPES, pageType(page)); }
+
+    function taxonFrom(all, id) {
+        /* An id is a STRING. Without this, String(['cricket']) is 'cricket'
+           and a stored array resolves to a category -- the same defect
+           pageType() had, found the same way: by handing it one. */
+        if (typeof id !== 'string') return null;
+        var key = str(id);
+        if (!key || unsafeKey(key)) return null;
+        if (!all || typeof all !== 'object') return null;
+        if (!Object.prototype.hasOwnProperty.call(all, key)) return null;
+        var t = all[key];
+        if (!t || typeof t !== 'object') return null;
+        var name = str(t.name).slice(0, TAXON_MAX);
+        if (!name) return null;
+        var out = { id: key, name: name };
+        /* A slug that is not a slug is dropped rather than corrected: the
+           admin derives one, and a hand-edited bad value should be visible
+           as missing rather than silently rewritten. */
+        var slug = str(t.slug).toLowerCase();
+        out.slug = TAXON_SLUG_RE.test(slug) ? slug : '';
+        var desc = str(t.description).slice(0, 400);
+        if (desc) out.description = desc;
+        return out;
+    }
+
+    /* The ONE category a page is in, or null. */
+    function pageCategory(page, record) {
+        if (!page || !taxonTypeOk(page)) return null;
+        var rec = record || load();
+        return taxonFrom(rec && rec.categories, page.category);
+    }
+
+    /* The tags a page carries, in the author's order, deduplicated, capped.
+       Every one resolves or it is not here. */
+    function pageTags(page, record) {
+        if (!page || !taxonTypeOk(page) || !isArr(page.tags)) return [];
+        var rec = record || load();
+        var all = rec && rec.tags;
+        var out = [], seen = {}, i;
+        for (i = 0; i < page.tags.length && out.length < PAGE_TAGS_MAX; i++) {
+            /* Same rule as above, applied before str() can launder an array
+               into a plausible id. */
+            if (typeof page.tags[i] !== 'string') continue;
+            var id = str(page.tags[i]);
+            if (!id || Object.prototype.hasOwnProperty.call(seen, id)) continue;
+            var t = taxonFrom(all, id);
+            if (!t) continue;
+            seen[id] = 1;
+            out.push(t);
+        }
+        return out;
+    }
+
+    /* ========================================================
        ONE PUBLISHED-PAGE READER
        --------------------------------------------------------
        Everything in Phase 2C that needs to know what pages exist -- related
@@ -1580,6 +1704,10 @@
             publishedAt: pagePublished(page),
             updatedAt: pageModified(page),
             author: author,
+            /* Phase 2F. Resolved, so a listing and the related-content scorer
+               read one shape and cannot disagree about what a page is about. */
+            category: pageCategory(page, record),
+            tags: pageTags(page, record),
             indexable: pageIsIndexable(page),
             inSitemap: page.inSitemap !== false
         };
@@ -1634,6 +1762,134 @@
             if (!Object.prototype.hasOwnProperty.call(by, k)) continue;
             seen[k] = 1;
             out.push(by[k]);
+        }
+        return out;
+    }
+
+    /* ========================================================
+       AUTOMATIC RELATED CONTENT (Phase 2F)
+       --------------------------------------------------------
+       Not a recommender. There is no model, no embedding, no external call
+       and nothing an editor cannot read off the page: three visible signals,
+       added up, with a total order so two builds of one record produce the
+       same bytes.
+
+         same category        +3    an editor chose ONE topic for each; that
+                                    is the strongest statement in the record
+         each shared tag      +1    agreement on a keyword
+         same content type    +1    a guide sits better beside a guide
+
+       WHAT QUALIFIES A PAGE AT ALL, and the two rules here were both earned
+       by a case that came out wrong without them:
+
+         1. the SAME CATEGORY, or at least TWO shared tags.
+
+            One shared tag is deliberately not enough. Take a Cricket article
+            tagged IPL/2026/Final and a Football article tagged FIFA/2026:
+            they share "2026", a year that says nothing about what either is
+            about, and a single-tag rule related them. Two tags is where
+            agreement starts meaning something; one editor-chosen category
+            means it immediately.
+
+         2. SAME TYPE IS NEVER SUFFICIENT -- it only breaks ties.
+
+            Otherwise every article relates to every other article merely by
+            being one.
+
+       ORDER: score descending, then newest first, then by key. Total, so
+       there is no tie left for insertion order to settle.
+
+       The candidate pool is publishedPages() -- the one authoritative reader.
+       Drafts, noindex pages, addresses the build will not create, the page
+       itself and anything belonging to another brand are gone before the
+       scoring starts, because that reader already removed them.
+    ======================================================== */
+    var AUTO_RELATED_MAX = 6;       /* conservative on purpose */
+    var SCORE_CATEGORY = 3;
+    var SCORE_TAG = 1;
+    var SCORE_TYPE = 1;
+
+    var TAGS_WITHOUT_CATEGORY = 2;   /* how many shared tags stand alone */
+
+    /* A page summary always carries resolved `category`, `tags` and `type`,
+       so every caller inside this file hands over a complete shape. This is
+       also a PUBLIC helper (CMS.content.score), and a caller that hands it
+       something else should get 0 rather than a TypeError: a scorer that
+       throws on a malformed record could take down a whole page render over
+       one bad row. Nothing here changes the score of a real summary --
+       a present tags array is used exactly as before. */
+    function taxonScore(self, other) {
+        if (!self || typeof self !== 'object' || !other || typeof other !== 'object') return 0;
+        var sameCat = !!(self.category && other.category &&
+                         self.category.id === other.category.id);
+        var mineTags = isArr(self.tags) ? self.tags : [];
+        var theirTags = isArr(other.tags) ? other.tags : [];
+        var mine = {}, shared = 0, i;
+        for (i = 0; i < mineTags.length; i++) {
+            if (mineTags[i] && mineTags[i].id) mine[mineTags[i].id] = 1;
+        }
+        for (i = 0; i < theirTags.length; i++) {
+            if (!theirTags[i] || !theirTags[i].id) continue;
+            if (Object.prototype.hasOwnProperty.call(mine, theirTags[i].id)) shared += 1;
+        }
+        /* The gate, before any arithmetic: a shared year is not a topic. */
+        if (!sameCat && shared < TAGS_WITHOUT_CATEGORY) return 0;
+        var score = (sameCat ? SCORE_CATEGORY : 0) + (shared * SCORE_TAG);
+        if (self.type === other.type) score += SCORE_TYPE;
+        return score;
+    }
+
+    function autoRelatedPages(page, record, selfKey, limit) {
+        if (!page || !taxonTypeOk(page)) return [];
+        var self = pageSummary(selfKey, page, record);
+        if (!self.category && !self.tags.length) return [];   /* nothing to match on */
+        var pool = publishedPages({ record: record, indexableOnly: true, exclude: selfKey });
+        var scored = [], i;
+        for (i = 0; i < pool.length; i++) {
+            var sc = taxonScore(self, pool[i]);
+            if (sc > 0) scored.push({ row: pool[i], score: sc });
+        }
+        scored.sort(function (a, b) {
+            if (a.score !== b.score) return b.score - a.score;
+            if (a.row.publishedAt !== b.row.publishedAt) {
+                if (!a.row.publishedAt) return 1;
+                if (!b.row.publishedAt) return -1;
+                return a.row.publishedAt < b.row.publishedAt ? 1 : -1;
+            }
+            return a.row.key < b.row.key ? -1 : a.row.key > b.row.key ? 1 : 0;
+        });
+        var cap = (typeof limit === 'number' && isFinite(limit)) ? Math.floor(limit) : AUTO_RELATED_MAX;
+        if (cap < 1) cap = 1;
+        if (cap > AUTO_RELATED_MAX) cap = AUTO_RELATED_MAX;
+        var out = [];
+        for (i = 0; i < scored.length && out.length < cap; i++) out.push(scored[i].row);
+        return out;
+    }
+
+    /* MANUAL FIRST, ALWAYS. The author's chosen pages in the author's order,
+       then automatic ones filling whatever room is left. A page that is both
+       appears once, in its manual position -- an editor's choice is not
+       demoted by the machine agreeing with it.
+
+       relatedPages() is untouched and still means "exactly what was chosen";
+       this is a second reader over it, not a replacement. */
+    function relatedCombined(page, record, selfKey, limit) {
+        var cap = (typeof limit === 'number' && isFinite(limit)) ? Math.floor(limit) : AUTO_RELATED_MAX;
+        if (cap < 1) cap = 1;
+        if (cap > PB_LIST_MAX) cap = PB_LIST_MAX;
+        var manual = relatedPages(page, record, selfKey);
+        var out = [], seen = {}, i;
+        for (i = 0; i < manual.length && out.length < cap; i++) {
+            if (Object.prototype.hasOwnProperty.call(seen, manual[i].key)) continue;
+            seen[manual[i].key] = 1;
+            out.push(manual[i]);
+        }
+        if (out.length >= cap) return out;
+        var auto = autoRelatedPages(page, record, selfKey, AUTO_RELATED_MAX);
+        for (i = 0; i < auto.length && out.length < cap; i++) {
+            if (Object.prototype.hasOwnProperty.call(seen, auto[i].key)) continue;
+            seen[auto[i].key] = 1;
+            out.push(auto[i]);
         }
         return out;
     }
@@ -1753,6 +2009,16 @@
 
         var img = crawlableImage(computeOg(page, 'image'));
         if (img) out.image = img;
+
+        /* Phase 2F. The two properties schema.org already has for exactly
+           this, and only when the taxonomy RESOLVES -- a dangling id adds
+           nothing here, as it adds nothing to the page. Not invented
+           vocabulary: articleSection is the section a piece belongs to, and
+           keywords is its keyword list. */
+        var cat = pageCategory(page, record);
+        if (cat) out.articleSection = cat.name;
+        var tg = pageTags(page, record);
+        if (tg.length) out.keywords = tg.map(function (t) { return t.name; }).join(', ');
 
         /* The brand's Organization, when the record has one worth stating.
            Reused rather than rebuilt: one definition of who publishes this. */
@@ -2162,7 +2428,13 @@
            types have. Nothing new in the token system. */
         pageList:     ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight',
                        'letterSpacing', 'align', 'bg', 'padding', 'margin', 'maxWidth',
-                       'gap', 'columns', 'minWidth', 'border', 'radius', 'shadow']
+                       'gap', 'columns', 'minWidth', 'border', 'radius', 'shadow'],
+
+        /* Phase 2F. A line of metadata: the typography roles and the box, no
+           grid -- it is not a list of cards. */
+        taxonomy:     ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight',
+                       'letterSpacing', 'align', 'bg', 'padding', 'margin', 'maxWidth',
+                       'gap', 'border', 'radius', 'shadow']
     };
 
     /* The keys a SECTION reacts to. Derived from the section token map, so
@@ -2269,7 +2541,16 @@
            element's own kind everywhere else in this file, and one name for
            two things is how a value ends up read by the wrong reader. */
         pageList:     ['source', 'contentType', 'limit', 'title', 'titleLevel',
-                       'excerpt', 'date', 'author', 'schema']
+                       'excerpt', 'date', 'author', 'schema',
+                       /* Phase 2F. With source 'related', fills whatever room
+                          the author's own choices leave with automatically
+                          matched pages. Absent or false on everything already
+                          published, which is why nothing already published
+                          renders differently. */
+                       'autoFill'],
+        /* Phase 2F. This page's own category and tags, as text. No links:
+           there are no taxonomy pages to link to, by design. */
+        taxonomy:     ['categoryLabel', 'tagsLabel', 'showCategory', 'showTags']
     };
 
     /* Which content keys hold a URL, and which hold a repeating list. */
@@ -4402,6 +4683,62 @@
                 n.setAttribute('aria-labelledby', hid);
             }
             return pbId(n, el);
+        },
+
+        /* ========================================================
+           THIS PAGE'S CATEGORY AND TAGS (Phase 2F)
+           --------------------------------------------------------
+           A line of metadata about the page it sits on, read out of the
+           render context like the listing above -- so it is this brand's
+           record and this page's record, never ambient state.
+
+           TAGS ARE TEXT, NOT LINKS. There is no category page and no tag
+           page: a few hundred thin archives would cost this site more than
+           they could return, so there is nothing to link to and nothing
+           pretends otherwise.
+
+           Renders nothing at all when the page has no resolvable taxonomy,
+           when its type does not carry any, or when there is no context --
+           an empty label is worse than silence.
+        ======================================================== */
+        taxonomy: function (el) {
+            var c = el.content || {};
+            var rec = pbCtxRecord();
+            var slug = pbCtxSlug();
+            if (!rec || !slug) return null;
+            var page = (rec.pages || {})[slug];
+            if (!page) return null;
+
+            var cat = c.showCategory === false ? null : pageCategory(page, rec);
+            var tags = c.showTags === false ? [] : pageTags(page, rec);
+            if (!cat && !tags.length) return null;
+
+            var n = pbEl('aside', 'pb-el pb-taxonomy');
+            if (cat) {
+                var cw = pbEl('p', 'pb-taxonomy-cat');
+                var cl = pbEl('span', 'pb-taxonomy-label');
+                cl.textContent = str(c.categoryLabel) || 'Category';
+                cw.appendChild(cl);
+                var cv = pbEl('span', 'pb-taxonomy-value');
+                cv.textContent = cat.name;
+                cw.appendChild(cv);
+                n.appendChild(cw);
+            }
+            if (tags.length) {
+                var tw = pbEl('p', 'pb-taxonomy-tags');
+                var tl = pbEl('span', 'pb-taxonomy-label');
+                tl.textContent = str(c.tagsLabel) || 'Tags';
+                tw.appendChild(tl);
+                var list = pbEl('span', 'pb-taxonomy-values');
+                for (var i = 0; i < tags.length; i++) {
+                    var one = pbEl('span', 'pb-taxonomy-tag');
+                    one.textContent = tags[i].name;
+                    list.appendChild(one);
+                }
+                tw.appendChild(list);
+                n.appendChild(tw);
+            }
+            return pbId(n, el);
         }
 
     };
@@ -4428,7 +4765,11 @@
         var rows;
         if (source === 'related') {
             var page = (rec.pages || {})[slug];
-            rows = relatedPages(page, rec, slug);
+            /* autoFill is opt-in, so a listing saved before Phase 2F existed
+               still shows exactly the pages its author chose. */
+            rows = c.autoFill === true
+                ? relatedCombined(page, rec, slug, PB_LIST_MAX)
+                : relatedPages(page, rec, slug);
         } else {
             var want = str(c.contentType).toLowerCase();
             if (!pbPick(PB_CONTENT_TYPES, want)) return [];
@@ -5731,6 +6072,12 @@
           description: 'An introduction, a contents list, two sections and a related list.',
           sections: function () { return [
               tSec('text', [
+                  /* Phase 2F. The category and tags of THIS page, drawn from the
+                     page's own settings -- so the element is in the template but
+                     draws nothing until an author sets one, and a page that
+                     never gets a category looks exactly as it did before. */
+                  tEl('taxonomy', { categoryLabel: 'Category', tagsLabel: 'Tags',
+                                    showCategory: true, showTags: true }),
                   tEl('text', { text: 'One paragraph saying what this article is about and who ' +
                                       'it is for.' }),
                   tEl('toc', { title: 'On this page', depth: 'h3' })
@@ -5745,8 +6092,11 @@
                   tEl('text', { text: 'And this with the second.', rich: true })
               ]),
               tSec('text', [
+                  /* autoFill: the author's own choices first, in their order,
+                     then pages that share this one's category or tags, until
+                     the limit. Nothing set by hand is displaced. */
                   tEl('pageList', { source: 'related', title: 'Related reading', titleLevel: 'h2',
-                                    limit: 4, excerpt: true })
+                                    limit: 4, excerpt: true, autoFill: true })
               ])
           ]; } },
 
@@ -5754,6 +6104,8 @@
           description: 'An introduction, a contents list, numbered steps, questions and a related list.',
           sections: function () { return [
               tSec('text', [
+                  tEl('taxonomy', { categoryLabel: 'Category', tagsLabel: 'Tags',
+                                    showCategory: true, showTags: true }),
                   tEl('text', { text: 'What this guide covers, and what a reader will be able to ' +
                                       'do by the end of it.' }),
                   tEl('toc', { title: 'On this page', depth: 'h3' })
@@ -5785,7 +6137,7 @@
               ]),
               tSec('text', [
                   tEl('pageList', { source: 'related', title: 'Related guides', titleLevel: 'h2',
-                                    limit: 4, excerpt: true })
+                                    limit: 4, excerpt: true, autoFill: true })
               ])
           ]; } },
 
@@ -5793,6 +6145,8 @@
           description: 'An introduction and a list of every published page of one kind.',
           sections: function () { return [
               tSec('text', [
+                  tEl('taxonomy', { categoryLabel: 'Category', tagsLabel: 'Tags',
+                                    showCategory: true, showTags: true }),
                   tEl('text', { text: 'One paragraph saying what this hub collects and why ' +
                                       'somebody would start here.' })
               ]),
@@ -5816,7 +6170,9 @@
           sections: function () { return [
               tSec('text', [
                   tEl('notice', { variant: 'info', icon: 'question',
-                                  text: 'The short answer, for a reader who only needs that.' })
+                                  text: 'The short answer, for a reader who only needs that.' }),
+                  tEl('taxonomy', { categoryLabel: 'Category', tagsLabel: 'Tags',
+                                    showCategory: true, showTags: true })
               ]),
               tSec('text', [
                   tEl('heading', { text: 'In more detail', level: 'h2' }),
@@ -5830,7 +6186,7 @@
               ]),
               tSec('text', [
                   tEl('pageList', { source: 'related', title: 'Related help', titleLevel: 'h2',
-                                    limit: 4 })
+                                    limit: 4, autoFill: true })
               ])
           ]; } }
     ];
@@ -7272,7 +7628,22 @@
             pages: publishedPages,
             related: relatedPages,
             article: buildArticle,
-            itemList: pbListSchema
+            itemList: pbListSchema,
+
+            /* Phase 2F. One place to ask about taxonomy and about what a page
+               relates to, so nothing grows a second answer. */
+            taxonTypes: TAXON_TYPES,
+            taxonFrom: taxonFrom,
+            /* The cap pageTags() enforces. Exported so the admin can say what
+               a cap did instead of keeping its own copy of the number --
+               the same reason taxonTypes is exported rather than listed
+               twice. */
+            tagsMax: PAGE_TAGS_MAX,
+            category: pageCategory,
+            tags: pageTags,
+            autoRelated: autoRelatedPages,
+            relatedCombined: relatedCombined,
+            score: taxonScore
         },
 
         seoUrlFor: pageUrl,

@@ -292,6 +292,651 @@ const check=(n,c,e)=>{c?(pass++,console.log('  PASS  '+n)):(fail++,fails.push(n)
       !/not one this site knows/.test(dash3));
   }
 
+  /* ================================================================
+     PHASE 2F: CATEGORIES AND TAGS IN THE PANEL
+     The engine is tested in tests/test_taxonomy.js. This is the half an
+     editor touches: creating one, naming it, assigning it, being told what
+     removing it costs, and being told when a reference stopped resolving.
+     ================================================================ */
+  console.log('\n===== CATEGORIES AND TAGS: THE EDITOR\'S HALF =====');
+  {
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(350);
+    check('the Categories card is in the Pages panel', await p.isVisible('#categoriesHost'));
+    check('the Tags card is too', await p.isVisible('#tagsHost'));
+    check('an empty collection says so rather than showing nothing',
+      /No categories yet/.test(await p.$eval('#categoriesHost', e => e.textContent)),
+      await p.$eval('#categoriesHost', e => e.textContent));
+    check('  and says content without one publishes exactly as it does now',
+      /publishes exactly as it does now/.test(await p.$eval('#tagsHost', e => e.textContent)));
+    check('the card states that NO category page is generated',
+      /No category page is generated/i.test(await p.$eval('#panel-pages', e => e.innerHTML)));
+    check('  and that nothing is added to the sitemap',
+      /added to.*sitemap/is.test(await p.$eval('#panel-pages', e => e.innerHTML)));
+
+    /* Creating one, through the real button and the real prompt. */
+    const answer = v => p.once('dialog', d => v === null ? d.dismiss() : d.accept(v));
+    answer('Cricket News');
+    await p.click('#btnAddCategory'); await p.waitForTimeout(300);
+    const made = await p.evaluate(() => JSON.parse(JSON.stringify(window.CMS.data().categories)));
+    const catIds = Object.keys(made);
+    check('the category was created', catIds.length === 1, made);
+    check('  with a slugified id derived from the name',
+      catIds[0] === 'cricket-news', catIds[0]);
+    check('  the name exactly as typed', made[catIds[0]].name === 'Cricket News');
+    check('  and a slug, which is a handle and not a URL',
+      made[catIds[0]].slug === 'cricket-news');
+    check('the card now shows the id an editor must refer to',
+      (await p.$eval('#categoriesHost', e => e.textContent)).indexOf('cricket-news') > -1);
+    check('  and that no page uses it yet',
+      /no page uses it/.test(await p.$eval('#categoriesHost', e => e.textContent)));
+
+    /* The same name twice is a mistake, not a second topic. */
+    answer('cricket news');
+    await p.click('#btnAddCategory'); await p.waitForTimeout(300);
+    check('a duplicate name is refused, case-insensitively',
+      Object.keys(await p.evaluate(() => window.CMS.data().categories)).length === 1);
+    /* A different name that slugifies the same way is a different topic and
+       gets its own id rather than overwriting one. */
+    answer('Cricket  News!');
+    await p.click('#btnAddCategory'); await p.waitForTimeout(300);
+    const two = await p.evaluate(() => JSON.parse(JSON.stringify(window.CMS.data().categories)));
+    check('a different name whose slug collides gets a distinct id',
+      Object.keys(two).length === 2 && Object.keys(two).indexOf('cricket-news-2') > -1,
+      Object.keys(two));
+
+    /* An empty name, and a cancelled prompt, add nothing. */
+    answer('   ');
+    await p.click('#btnAddCategory'); await p.waitForTimeout(250);
+    answer(null);
+    await p.click('#btnAddCategory'); await p.waitForTimeout(250);
+    check('neither a blank name nor a cancelled prompt creates anything',
+      Object.keys(await p.evaluate(() => window.CMS.data().categories)).length === 2);
+
+    answer('IPL');
+    await p.click('#btnAddTag'); await p.waitForTimeout(300);
+    answer('2026');
+    await p.click('#btnAddTag'); await p.waitForTimeout(300);
+    const tags = await p.evaluate(() => JSON.parse(JSON.stringify(window.CMS.data().tags)));
+    check('two tags were created with their own ids',
+      Object.keys(tags).sort().join() === '2026,ipl', Object.keys(tags));
+    check('  and a numeric name still produces a usable slug',
+      tags['2026'].slug === '2026', tags['2026']);
+  }
+
+  console.log('\n===== A CATEGORY IS OFFERED ONLY WHERE IT IS PUBLISHED =====');
+  {
+    /* A page the CMS created, which is the only kind that gets a content
+       type at all -- so it is the only kind that can carry a topic. */
+    await p.evaluate(() => {
+      const d = window.CMS.data();
+      d.pages['tax-demo'] = JSON.parse(JSON.stringify(d.pages.about));
+      const t = d.pages['tax-demo'];
+      t.label = 'Tax demo'; t.url = 'tax-demo.html'; t.slug = 'tax-demo';
+      t.title = 'Tax demo'; t.heading = 'Tax demo'; t.type = 'article';
+      delete t.category; delete t.tags;
+    });
+    await p.click('.adm-nav-item[data-panel="seo"]'); await p.waitForTimeout(200);
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(450);
+
+    /* The same way the content-model section above opens a page: the
+       Settings sub-tab, then the page's own tab by its label. */
+    const open = async () => {
+      await p.click('#pageSubtabSettings'); await p.waitForTimeout(250);
+      for (const t of await p.$$('#pageTabs .pagetab')) {
+        if ((await t.textContent()).trim() === 'Tax demo') {
+          await t.click(); await p.waitForTimeout(450); return true;
+        }
+      }
+      return false;
+    };
+    check('the CMS-created page opens in the editor', await open());
+    const ed = await p.$eval('#pageEditor', e => e.textContent);
+    check('an article IS offered a category', ed.indexOf('Category') > -1);
+    check('  and tags', ed.indexOf('Tags') > -1);
+    check('  and is told no category page is generated',
+      /No category page is generated/i.test(ed));
+
+    /* Assigning: the select carries every category, by name, with the id as
+       the value -- so renaming one later changes every page at once. */
+    const catSel = await p.$('#pageEditor select:below(:text("Category"))') ||
+      (await p.$$('#pageEditor select')).slice(-1)[0];
+    const optionSets = await p.$$eval('#pageEditor select', els =>
+      els.map(e => Array.from(e.options).map(o => o.value + '|' + o.textContent)));
+    const catOpts = optionSets.filter(o => o.some(x => /\|Cricket News$/.test(x)))[0];
+    check('the category select offers every category by NAME, valued by id',
+      !!catOpts && catOpts.indexOf('cricket-news|Cricket News') > -1, optionSets);
+    check('  with a (none) option, because a category is optional',
+      !!catOpts && catOpts.some(x => /\|\(none\)$/.test(x)), catOpts);
+
+    await p.evaluate(() => {
+      const sels = Array.from(document.querySelectorAll('#pageEditor select'));
+      const sel = sels.filter(s => Array.from(s.options)
+        .some(o => o.value === 'cricket-news'))[0];
+      sel.value = 'cricket-news';
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await p.waitForTimeout(250);
+    check('choosing a category stores its ID, not its name',
+      (await p.evaluate(() => window.CMS.data().pages['tax-demo'].category)) === 'cricket-news');
+
+    /* Tags are checkboxes for the same reason related pages are: a typed id
+       that does not resolve publishes nothing and explains nothing. */
+    const ticked = await p.evaluate(() => {
+      const boxes = Array.from(document.querySelectorAll('#pageEditor .cb'));
+      const want = boxes.filter(l => /^(IPL|2026)$/.test(l.textContent.trim()));
+      want.forEach(l => {
+        const cb = l.querySelector('input[type=checkbox]');
+        cb.checked = true;
+        cb.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      return want.length;
+    });
+    check('both tags are offered as checkboxes', ticked === 2, ticked);
+    const storedTags = await p.evaluate(() => window.CMS.data().pages['tax-demo'].tags);
+    check('ticking them stores their ids', (storedTags || []).slice().sort().join() === '2026,ipl',
+      storedTags);
+
+    /* Unticking removes the id, and the last one removes the key entirely so
+       the record goes back to the shape it shipped with. */
+    await p.evaluate(() => {
+      Array.from(document.querySelectorAll('#pageEditor .cb'))
+        .filter(l => /^2026$/.test(l.textContent.trim()))
+        .forEach(l => {
+          const cb = l.querySelector('input[type=checkbox]');
+          cb.checked = false;
+          cb.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+    });
+    await p.waitForTimeout(200);
+    check('unticking a tag removes just that id',
+      JSON.stringify(await p.evaluate(() => window.CMS.data().pages['tax-demo'].tags)) ===
+      JSON.stringify(['ipl']));
+
+    /* A page that ships with the site has no content type, so it has no
+       topic either -- and the control says why rather than being absent. */
+    await p.evaluate(() => {
+      const d = window.CMS.data();
+      d.pages['tax-demo'].type = 'page';
+    });
+    await p.click('.adm-nav-item[data-panel="seo"]'); await p.waitForTimeout(200);
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(400);
+    check('the plain page reopens', await open());
+    const plainEd = await p.$eval('#pageEditor', e => e.textContent);
+    check('a plain page is told only an Article, Guide, Help page or Hub carries a category',
+      /Only an Article, Guide, Help page or Hub carries a category/.test(plainEd), plainEd.slice(0, 200));
+    const disabled = await p.$$eval('#pageEditor select', els =>
+      els.filter(e => e.disabled).length);
+    check('  and the select is disabled rather than removed', disabled >= 1, disabled);
+  }
+
+  console.log('\n===== THE CHECKS SAY WHAT STOPPED RESOLVING =====');
+  {
+    const dashFor = async mutate => {
+      await p.evaluate(mutate);
+      await p.click('.adm-nav-item[data-panel="seo"]'); await p.waitForTimeout(200);
+      await p.click('#seoTabs .pagetab >> nth=1'); await p.waitForTimeout(150);
+      await p.click('#seoTabs .pagetab >> nth=0'); await p.waitForTimeout(450);
+      return p.$eval('#seoDashboard', e => e.textContent);
+    };
+
+    const resolved = await dashFor(() => {
+      const t = window.CMS.data().pages['tax-demo'];
+      t.type = 'article'; t.category = 'cricket-news'; t.tags = ['ipl', '2026'];
+    });
+    check('a resolving category is reported by name',
+      /Category resolves to Cricket News/.test(resolved), resolved.slice(0, 400));
+    check('  and the tags are counted', /2 tag\(s\) published/.test(resolved));
+
+    const dangling = await dashFor(() => {
+      const t = window.CMS.data().pages['tax-demo'];
+      t.category = 'no-such-thing'; t.tags = ['ipl', 'also-missing'];
+    });
+    check('a category id that resolves to nothing is reported as publishing nothing',
+      /does not resolve to a category with a name/.test(dangling), dangling.slice(0, 500));
+    check('  and names the id that failed', /no-such-thing/.test(dangling));
+    check('a tag that resolves to nothing is reported too',
+      /do not resolve to a tag with a name/.test(dangling) && /also-missing/.test(dangling));
+    check('  and the tag that DID resolve is still counted',
+      /1 tag\(s\) published/.test(dangling));
+
+    const wrongType = await dashFor(() => {
+      const t = window.CMS.data().pages['tax-demo'];
+      t.type = 'page'; t.category = 'cricket-news'; t.tags = ['ipl'];
+    });
+    check('taxonomy on a kind of page that does not publish it is reported as ignored',
+      /does not publish them/.test(wrongType), wrongType.slice(0, 500));
+
+    const thin = await dashFor(() => {
+      const t = window.CMS.data().pages['tax-demo'];
+      t.type = 'article'; delete t.category; t.tags = ['ipl'];
+    });
+    check('one tag and no category is reported as nothing for automatic matching to use',
+      /nothing to match on/.test(thin), thin.slice(0, 500));
+    check('  and says what would fix it', /two tags in common/.test(thin));
+
+    /* An article nobody has categorised yet says NOTHING. An absent field
+       produces no message anywhere else in this panel, and a warning on
+       every newly created article would be noise. */
+    const untouched = await dashFor(() => {
+      const t = window.CMS.data().pages['tax-demo'];
+      t.type = 'article'; delete t.category; delete t.tags;
+    });
+    check('an article with no taxonomy at all is not nagged about it',
+      !/nothing to match on/.test(untouched), untouched.slice(0, 400));
+
+    const clean = await dashFor(() => {
+      const t = window.CMS.data().pages['tax-demo'];
+      delete t.category; delete t.tags;
+    });
+    check('with no taxonomy set, none of those messages appears',
+      !/does not resolve to a category/.test(clean) &&
+      !/do not resolve to a tag/.test(clean) &&
+      !/does not publish them/.test(clean) &&
+      !/nothing to match on/.test(clean), clean.slice(0, 300));
+  }
+
+  console.log('\n===== REMOVING A CATEGORY STATES WHAT IT COSTS =====');
+  {
+    await p.evaluate(() => { window.CMS.data().pages['tax-demo'].category = 'cricket-news'; });
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(450);
+    const used = await p.$eval('#categoriesHost', e => e.textContent);
+    check('the card counts the pages that use it', /1 page uses it/.test(used), used.slice(0, 300));
+
+    let asked = '';
+    p.once('dialog', d => { asked = d.message(); d.dismiss(); });
+    await p.click('#categoriesHost .card[data-taxon="categories:cricket-news"] button');
+    await p.waitForTimeout(300);
+    check('removing a category in use asks first',
+      /1 page\(s\) refer to it/.test(asked), asked);
+    check('  and says references stop resolving rather than breaking',
+      /stop resolving/.test(asked) && /nothing shown/.test(asked), asked);
+    check('  and dismissing it removes nothing',
+      !!(await p.evaluate(() => window.CMS.data().categories['cricket-news'])));
+
+    p.once('dialog', d => d.accept());
+    await p.click('#categoriesHost .card[data-taxon="categories:cricket-news"] button');
+    await p.waitForTimeout(400);
+    check('confirming removes it',
+      !(await p.evaluate(() => !!window.CMS.data().categories['cricket-news'])));
+    check('  and the page keeps its now-dangling id rather than being silently edited',
+      (await p.evaluate(() => window.CMS.data().pages['tax-demo'].category)) === 'cricket-news');
+
+    /* A dangling id must still be visible in the editor, not vanish. */
+    await p.click('#pageSubtabSettings'); await p.waitForTimeout(250);
+    for (const t of await p.$$('#pageTabs .pagetab')) {
+      if ((await t.textContent()).trim() === 'Tax demo') {
+        await t.click(); await p.waitForTimeout(450); break;
+      }
+    }
+    const ghost = await p.$$eval('#pageEditor select', els =>
+      els.map(e => Array.from(e.options).map(o => o.textContent)).flat());
+    check('the editor shows the dangling id as "(no such category)" rather than dropping it',
+      ghost.some(t => /cricket-news \(no such category\)/.test(t)), ghost);
+
+    /* A dangling TAG needs the same: a reference the panel does not show is
+       one an editor cannot clear. */
+    await p.evaluate(() => {
+      const d = window.CMS.data();
+      d.pages['tax-demo'].tags = ['ipl', 'deleted-tag'];
+    });
+    await p.click('.adm-nav-item[data-panel="seo"]'); await p.waitForTimeout(200);
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(400);
+    await p.click('#pageSubtabSettings'); await p.waitForTimeout(250);
+    for (const t of await p.$$('#pageTabs .pagetab')) {
+      if ((await t.textContent()).trim() === 'Tax demo') {
+        await t.click(); await p.waitForTimeout(450); break;
+      }
+    }
+    const cbText = await p.$$eval('#pageEditor .cb', els => els.map(e => e.textContent.trim()));
+    check('a dangling tag id is shown as "(no such tag)" and stays ticked',
+      cbText.some(t => /^deleted-tag \(no such tag\)$/.test(t)), cbText);
+    await p.evaluate(() => {
+      Array.from(document.querySelectorAll('#pageEditor .cb'))
+        .filter(l => /no such tag/.test(l.textContent))
+        .forEach(l => {
+          const cb = l.querySelector('input[type=checkbox]');
+          cb.checked = false;
+          cb.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+    });
+    await p.waitForTimeout(250);
+    check('  and unticking it is how an editor clears it',
+      JSON.stringify(await p.evaluate(() => window.CMS.data().pages['tax-demo'].tags)) ===
+      JSON.stringify(['ipl']),
+      await p.evaluate(() => window.CMS.data().pages['tax-demo'].tags));
+  }
+
+  console.log('\n===== TWO CATEGORIES FOR ONE TOPIC IS WORTH SAYING =====');
+  {
+    await p.evaluate(() => {
+      const d = window.CMS.data();
+      d.categories = { one: { name: 'One', slug: 'same' }, two: { name: 'Two', slug: 'same' } };
+    });
+    await p.click('.adm-nav-item[data-panel="seo"]'); await p.waitForTimeout(200);
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(450);
+    const dup = await p.$eval('#categoriesHost', e => e.textContent);
+    check('two categories sharing a slug are flagged', /Shares its slug/.test(dup), dup.slice(0, 400));
+    check('  and it is stated as a split topic, not a broken build',
+      /Nothing breaks/.test(dup) && /split it/.test(dup));
+  }
+
+  console.log('\n===== THE TAG CAP IS DISCLOSED, AND NOT MISREPORTED =====');
+  {
+    const seed = n => p.evaluate((count) => {
+      const d = window.CMS.data();
+      d.tags = {};
+      for (let i = 1; i <= 20; i++) d.tags['t' + i] = { name: 'Tag ' + i, slug: 't' + i };
+      d.categories = {};
+      const t = d.pages['tax-demo'];
+      t.type = 'article';
+      delete t.category;
+      t.tags = Array.from({ length: count }, (_, i) => 't' + (i + 1));
+    }, n);
+    const dash = async n => {
+      await seed(n);
+      await p.click('.adm-nav-item[data-panel="seo"]'); await p.waitForTimeout(200);
+      await p.click('#seoTabs .pagetab >> nth=1'); await p.waitForTimeout(150);
+      await p.click('#seoTabs .pagetab >> nth=0'); await p.waitForTimeout(450);
+      return p.$eval('#seoDashboard', e => e.textContent);
+    };
+
+    const d12 = await dash(12);
+    check('exactly 12 tags publishes 12 and says nothing about a cap',
+      /12 tag\(s\) published/.test(d12) && !/only the first/.test(d12), d12.slice(0, 400));
+
+    const d13 = await dash(13);
+    check('13 tags warns that only the first 12 are published',
+      /only the first 12 are published/.test(d13), d13.slice(0, 600));
+    check('  and says how many resolve', /13 of this page.s tags resolve/.test(d13));
+    check('  and names the one that was dropped',
+      /One was dropped: ?Tag 13/.test(d13.replace(/\s+/g, ' ')), d13.slice(0, 600));
+    check('  and says how to choose which 12', /Untick 1 to choose which 12/.test(d13));
+    check('  it still reports 12 published', /12 tag\(s\) published/.test(d13));
+    /* The defect this fix exists for: the 13th tag is REAL, and the old
+       message called it a tag that does not resolve. */
+    check('  and does NOT claim the dropped tag fails to resolve',
+      !/do not resolve to a tag with a name/.test(d13), d13.slice(0, 600));
+
+    const d20 = await dash(20);
+    check('20 tags names all 8 dropped tags', /8 were dropped/.test(d20), d20.slice(0, 700));
+    check('  and lists them by name',
+      ['Tag 13', 'Tag 20'].every(n => d20.indexOf(n) > -1), d20.slice(0, 700));
+    check('  and still does not call any of them unresolvable',
+      !/do not resolve to a tag with a name/.test(d20));
+
+    /* Both causes at once must produce BOTH messages, each about the right
+       tags -- the two are no longer one. */
+    await p.evaluate(() => {
+      const t = window.CMS.data().pages['tax-demo'];
+      t.tags = Array.from({ length: 13 }, (_, i) => 't' + (i + 1)).concat(['ghost-tag']);
+    });
+    await p.click('.adm-nav-item[data-panel="seo"]'); await p.waitForTimeout(200);
+    await p.click('#seoTabs .pagetab >> nth=1'); await p.waitForTimeout(150);
+    await p.click('#seoTabs .pagetab >> nth=0'); await p.waitForTimeout(450);
+    const both = await p.$eval('#seoDashboard', e => e.textContent);
+    check('a dangling tag AND an over-cap tag produce two different messages',
+      /do not resolve to a tag with a name/.test(both) &&
+      /only the first 12 are published/.test(both), both.slice(0, 700));
+    check('  the dangling one is named as dangling', /ghost-tag/.test(both));
+    check('  and the capped count ignores the dangling one',
+      /13 of this page.s tags resolve/.test(both), both.slice(0, 700));
+
+    const d1 = await dash(1);
+    check('back at one tag, the cap message is gone', !/only the first/.test(d1));
+  }
+
+  console.log('\n===== A NAME WHOSE ID COULD NEVER RESOLVE IS STILL USABLE =====');
+  {
+    await p.evaluate(() => {
+      const d = window.CMS.data();
+      d.categories = {}; d.tags = {};
+      const t = d.pages['tax-demo'];
+      t.type = 'article'; delete t.category; delete t.tags;
+    });
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(450);
+
+    const answer = v => p.once('dialog', d => v === null ? d.dismiss() : d.accept(v));
+    answer('Prototype');
+    await p.click('#btnAddCategory'); await p.waitForTimeout(350);
+    answer('Constructor');
+    await p.click('#btnAddCategory'); await p.waitForTimeout(350);
+    answer('Cricket');
+    await p.click('#btnAddCategory'); await p.waitForTimeout(350);
+    const cats = await p.evaluate(() => JSON.parse(JSON.stringify(window.CMS.data().categories)));
+    const catIds = Object.keys(cats).sort();
+    check('all three categories were created', catIds.length === 3, cats);
+    check('  "Prototype" did NOT take the id `prototype`', catIds.indexOf('prototype') === -1, catIds);
+    check('  it took `prototype-2` instead', catIds.indexOf('prototype-2') > -1, catIds);
+    check('  "Constructor" took `constructor-2`', catIds.indexOf('constructor-2') > -1, catIds);
+    check('  and neither reserved key is an own property of the collection',
+      !Object.prototype.hasOwnProperty.call(cats, 'constructor') &&
+      !Object.prototype.hasOwnProperty.call(cats, 'prototype'), catIds);
+    check('  the NAMES the author typed are kept exactly',
+      (cats['prototype-2'] || {}).name === 'Prototype' &&
+      (cats['constructor-2'] || {}).name === 'Constructor', cats);
+    check('  an ordinary name is unaffected', catIds.indexOf('cricket') > -1, catIds);
+
+    /* The point of the fix: these ids now RESOLVE, so a page can publish them. */
+    const resolves = await p.evaluate(() => {
+      const d = window.CMS.data();
+      return ['prototype-2', 'constructor-2', 'cricket'].map(id => {
+        const r = window.CMS.content.taxonFrom(d.categories, id);
+        return r ? r.name : null;
+      });
+    });
+    check('every created category id resolves through the engine',
+      JSON.stringify(resolves) === JSON.stringify(['Prototype', 'Constructor', 'Cricket']), resolves);
+
+    /* And end to end: assign it to a page and see the checks accept it. */
+    await p.evaluate(() => { window.CMS.data().pages['tax-demo'].category = 'prototype-2'; });
+    await p.click('.adm-nav-item[data-panel="seo"]'); await p.waitForTimeout(200);
+    await p.click('#seoTabs .pagetab >> nth=1'); await p.waitForTimeout(150);
+    await p.click('#seoTabs .pagetab >> nth=0'); await p.waitForTimeout(450);
+    const dash = await p.$eval('#seoDashboard', e => e.textContent);
+    check('a page using it is reported as resolving, not dangling',
+      /Category resolves to Prototype/.test(dash), dash.slice(0, 400));
+
+    /* A tag goes down the same path. */
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(400);
+    answer('Prototype');
+    await p.click('#btnAddTag'); await p.waitForTimeout(350);
+    const tagIds = Object.keys(await p.evaluate(() => window.CMS.data().tags));
+    check('a TAG named "Prototype" gets the same treatment',
+      tagIds.indexOf('prototype-2') > -1 && tagIds.indexOf('prototype') === -1, tagIds);
+
+    /* A SLUG is still slugify(name), so "Constructor" yields the slug
+       `constructor` even though the id is `constructor-2`. The card list
+       indexes entries BY SLUG to spot duplicates, and in a plain object that
+       key read back as Object.prototype.constructor -- a function -- so
+       .push threw and the whole list stopped rendering. */
+    const cardIds = await p.$$eval('#categoriesHost .card', els =>
+      els.map(e => e.getAttribute('data-taxon')));
+    check('a category whose SLUG is a reserved word still renders its card',
+      cardIds.length === 3, cardIds);
+    check('  including the one slugged "constructor"',
+      cardIds.indexOf('categories:constructor-2') > -1, cardIds);
+    const counts = await p.$$eval('#categoriesHost .card .hint', els =>
+      els.map(e => e.textContent.trim()));
+    check('  and its use count is a real count, not a stringified function',
+      counts.every(t => /^(no page uses it|\d+ pages? uses? it|\d+ page uses it)$/.test(t)),
+      counts);
+    check('  the page using prototype-2 is counted as exactly one',
+      counts.indexOf('1 page uses it') > -1, counts);
+
+    /* Nothing was polluted by minting any of those ids. */
+    const clean = await p.evaluate(() => ({
+      protoName: ({}).name === undefined,
+      protoHasName: 'name' in Object.prototype,
+      objIsClean: JSON.stringify({}) === '{}'
+    }));
+    check('Object.prototype was not polluted by the probe',
+      clean.protoName && !clean.protoHasName && clean.objIsClean, clean);
+  }
+
+  console.log('\n===== AUTHORS: A NAME THE ENGINE REFUSES IS STILL USABLE =====');
+  {
+    await p.evaluate(() => {
+      const d = window.CMS.data();
+      d.authors = {};
+      d.categories = {}; d.tags = {};
+      const t = d.pages['tax-demo'];
+      t.type = 'article'; delete t.category; delete t.tags; delete t.author;
+    });
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(450);
+    check('the Authors card is present', await p.isVisible('#authorsHost'));
+
+    const answer = v => p.once('dialog', d => v === null ? d.dismiss() : d.accept(v));
+    for (const name of ['Ada Lovelace', 'Constructor', 'Prototype']) {
+      answer(name);
+      await p.click('#btnAddAuthor'); await p.waitForTimeout(350);
+    }
+    const authors = await p.evaluate(() => JSON.parse(JSON.stringify(window.CMS.data().authors)));
+    const aIds = Object.keys(authors).sort();
+    check('all three authors were created', aIds.length === 3, aIds);
+    check('  a normal name still gets its plain id', aIds.indexOf('ada-lovelace') > -1, aIds);
+    check('  "Constructor" did NOT take the id `constructor`',
+      aIds.indexOf('constructor') === -1, aIds);
+    check('  it took `constructor-2` instead', aIds.indexOf('constructor-2') > -1, aIds);
+    check('  "Prototype" took `prototype-2`', aIds.indexOf('prototype-2') > -1, aIds);
+    check('  neither reserved key is an own property of the collection',
+      !Object.prototype.hasOwnProperty.call(authors, 'constructor') &&
+      !Object.prototype.hasOwnProperty.call(authors, 'prototype'), aIds);
+    check('  the NAMES the author typed are kept exactly',
+      (authors['constructor-2'] || {}).name === 'Constructor' &&
+      (authors['prototype-2'] || {}).name === 'Prototype', authors);
+
+    /* The point of the fix: the engine resolves every id the panel minted. */
+    const resolved = await p.evaluate(() => {
+      const d = window.CMS.data();
+      return ['ada-lovelace', 'constructor-2', 'prototype-2']
+        .map(id => { const r = window.CMS.content.authorFrom(d.authors, id); return r ? r.name : null; });
+    });
+    check('every created author id resolves through the engine',
+      JSON.stringify(resolved) === JSON.stringify(['Ada Lovelace', 'Constructor', 'Prototype']),
+      resolved);
+
+    /* End to end: name one on a page and see the checks accept the byline. */
+    await p.evaluate(() => { window.CMS.data().pages['tax-demo'].author = 'constructor-2'; });
+    await p.click('.adm-nav-item[data-panel="seo"]'); await p.waitForTimeout(200);
+    await p.click('#seoTabs .pagetab >> nth=1'); await p.waitForTimeout(150);
+    await p.click('#seoTabs .pagetab >> nth=0'); await p.waitForTimeout(450);
+    const dash = await p.$eval('#seoDashboard', e => e.textContent);
+    check('a page naming it is reported as resolving, not dangling',
+      /Author resolves to Constructor/.test(dash), dash.slice(0, 400));
+  }
+
+  console.log('\n===== AUTHORS: THE USE COUNT IS A NUMBER, AND IT IS RIGHT =====');
+  {
+    /* Three pages naming `constructor-2`, one naming ada, none naming
+       prototype-2 -- so all three card states appear at once. */
+    await p.evaluate(() => {
+      const d = window.CMS.data();
+      ['ref-a', 'ref-b'].forEach(k => {
+        d.pages[k] = JSON.parse(JSON.stringify(d.pages['tax-demo']));
+        d.pages[k].label = k; d.pages[k].url = k + '.html'; d.pages[k].slug = k;
+        d.pages[k].author = 'constructor-2';
+      });
+      d.pages['tax-demo'].author = 'constructor-2';
+      d.pages.about.author = 'ada-lovelace';
+    });
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(500);
+
+    const cards = await p.$$eval('#authorsHost .card', els => els.map(e => ({
+      id: e.getAttribute('data-author'),
+      hint: (e.querySelector('.hint') || {}).textContent || ''
+    })));
+    check('every author still renders a card', cards.length === 3, cards);
+    const byId = {};
+    cards.forEach(c => { byId[c.id] = c.hint.trim(); });
+    check('three pages naming an author reads "3 pages name them"',
+      byId['constructor-2'] === '3 pages name them', byId);
+    check('  and it is a count, not a stringified function',
+      !/function|native code/.test(byId['constructor-2'] || ''), byId['constructor-2']);
+    check('one page reads the SINGULAR "1 page names them"',
+      byId['ada-lovelace'] === '1 page names them', byId);
+    check('nobody naming an author reads "no page names them"',
+      byId['prototype-2'] === 'no page names them', byId);
+    check('no card hint contains a concatenated number like "11"',
+      cards.every(c => /^(no page names them|\d+ pages? names? them|\d+ page names them)$/
+        .test(c.hint.trim())), cards.map(c => c.hint.trim()));
+
+    /* Removing one states the real cost, with the real number. */
+    let asked = '';
+    p.once('dialog', d => { asked = d.message(); d.dismiss(); });
+    const delBtn = await p.$('#authorsHost .card[data-author="constructor-2"] button');
+    if (delBtn) { await delBtn.click(); await p.waitForTimeout(300); }
+    check('the author card offers a Remove button', !!delBtn);
+    check('removing an author in use names the real number of pages',
+      /3 page\(s\) refer to them/.test(asked), asked);
+    check('  and not a stringified function', !/function|native code/.test(asked), asked);
+    check('  dismissing removes nothing',
+      !!(await p.evaluate(() => window.CMS.data().authors['constructor-2'])));
+
+    /* Incrementing: add one more reference and the count moves by exactly 1. */
+    await p.evaluate(() => {
+      const d = window.CMS.data();
+      d.pages['ref-c'] = JSON.parse(JSON.stringify(d.pages['ref-a']));
+      d.pages['ref-c'].label = 'ref-c'; d.pages['ref-c'].url = 'ref-c.html';
+      d.pages['ref-c'].slug = 'ref-c';
+    });
+    await p.click('.adm-nav-item[data-panel="seo"]'); await p.waitForTimeout(200);
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(500);
+    const after = await p.$eval('#authorsHost .card[data-author="constructor-2"] .hint',
+      e => e.textContent.trim());
+    check('a fourth reference increments the count to exactly 4',
+      after === '4 pages name them', after);
+
+    /* THE ONLY WAY THE COUNT BUG IS STILL REACHABLE. The id fix means the
+       panel never mints `constructor` again, so the tally can only meet that
+       key in a record written before the fix or edited by hand. That is
+       exactly the record this seeds: an OWN `constructor` key in authors,
+       named by two pages. Without the prototype-free map the card read
+       "function Object() { [native code] }11 pages name them". */
+    await p.evaluate(() => {
+      const d = window.CMS.data();
+      d.authors['constructor'] = { name: 'Legacy Constructor' };
+      d.authors['prototype'] = { name: 'Legacy Prototype' };
+      ['legacy-a', 'legacy-b'].forEach(k => {
+        d.pages[k] = JSON.parse(JSON.stringify(d.pages['ref-a']));
+        d.pages[k].label = k; d.pages[k].url = k + '.html'; d.pages[k].slug = k;
+        d.pages[k].author = 'constructor';
+      });
+    });
+    await p.click('.adm-nav-item[data-panel="seo"]'); await p.waitForTimeout(200);
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(500);
+    const legacy = await p.$$eval('#authorsHost .card', els => els.map(e => ({
+      id: e.getAttribute('data-author'),
+      hint: ((e.querySelector('.hint') || {}).textContent || '').trim()
+    })));
+    const legacyBy = {};
+    legacy.forEach(c => { legacyBy[c.id] = c.hint; });
+    check('a legacy `constructor` author id still renders a card',
+      legacyBy['constructor'] !== undefined, legacy);
+    check('  and its count is the NUMBER 2, not a stringified function',
+      legacyBy['constructor'] === '2 pages name them', legacyBy['constructor']);
+    check('  with no "native code" anywhere in it',
+      !/function|native code/.test(legacyBy['constructor'] || ''), legacyBy['constructor']);
+    check('a legacy `prototype` id nobody names reads "no page names them"',
+      legacyBy['prototype'] === 'no page names them', legacyBy['prototype']);
+    check('  and every hint on the card list is a clean count',
+      legacy.every(c => /^(no page names them|\d+ pages name them|\d+ page names them)$/
+        .test(c.hint)), legacy.map(c => c.id + ': ' + c.hint));
+    /* The engine still refuses to resolve it -- the fix is the COUNT, not a
+       change to what authorFrom() accepts. */
+    const legacyResolves = await p.evaluate(() =>
+      window.CMS.content.authorFrom(window.CMS.data().authors, 'constructor'));
+    check('  the engine still refuses that legacy id, as it should',
+      legacyResolves === null, legacyResolves);
+
+    /* And the whole time, nothing polluted the prototype. */
+    const clean = await p.evaluate(() => ({
+      noName: ({}).name === undefined,
+      noInherited: !('ada-lovelace' in Object.prototype),
+      clean: JSON.stringify({}) === '{}'
+    }));
+    check('Object.prototype was not polluted', clean.noName && clean.noInherited && clean.clean, clean);
+  }
+
   check('no admin console errors after the content-model checks', errs.length === 0, errs);
 
   console.log(`\n==== ${pass} passed, ${fail} failed ====`);

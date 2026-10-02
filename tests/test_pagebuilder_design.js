@@ -41,6 +41,18 @@ async function pageWith(b, block, width) {
     const raw = JSON.parse(localStorage.getItem('whiteLabelCMS') || '{}');
     raw.pages = raw.pages || {};
     raw.pages.about = Object.assign({}, raw.pages.about, { builder: bl });
+    /* Phase 2F. The taxonomy element draws the CURRENT page's own category
+       and tags, so unlike every other element its content is not in the
+       element at all -- it is in the page record. Without these three lines
+       the element renders nothing and every style control on it would read
+       as a control that does not work. 'article' is one of the four types
+       that carry taxonomy; the probe page is about.html. */
+    raw.categories = { probecat: { name: 'Probe category', slug: 'probe-category' } };
+    raw.tags = { probetag: { name: 'Probe tag', slug: 'probe-tag' },
+                 probetag2: { name: 'Second probe tag', slug: 'probe-tag-2' } };
+    raw.pages.about.type = 'article';
+    raw.pages.about.category = 'probecat';
+    raw.pages.about.tags = ['probetag', 'probetag2'];
     localStorage.setItem('whiteLabelCMS', JSON.stringify(raw));
   }, block);
   await p.goto(`${BASE}/about.html`, { waitUntil: 'networkidle' });
@@ -92,6 +104,10 @@ const CONTENT = {
      and every control on it would read as dead. */
   pageList:    { source: 'type', contentType: 'page', title: 'Other pages',
                  titleLevel: 'h2', excerpt: true, date: true, author: true, limit: 6 },
+  /* Phase 2F. Labels only -- what it draws comes from the page record that
+     pageWith() seeds above, not from here. */
+  taxonomy:    { categoryLabel: 'Category', tagsLabel: 'Tags',
+                 showCategory: true, showTags: true },
   tabs:        { items: [{ label: 'One', text: 'First' }, { label: 'Two', text: 'Second' }] },
   carousel:    { items: [{ title: 'A', text: 'one' }, { title: 'B', text: 'two' }] },
   video:       { url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', title: 'A video' }
