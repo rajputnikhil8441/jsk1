@@ -1355,3 +1355,72 @@ h6.pb-el.pb-heading { font-size: var(--pbe-font-size, 15px); }
         grid-template-columns: var(--pbe-cols-m, 1fr);
     }
 }
+
+
+/* ============================================================
+   CATEGORY AND TAGS (Phase 2F)
+   ------------------------------------------------------------
+   A line of metadata about the page it sits on. An <aside>, because that is
+   what it is: related to the content without being part of it.
+
+   The tags are TEXT, not links. There is no category page and no tag page to
+   link to -- that is a deliberate architectural decision, not an omission --
+   so nothing here styles or behaves like a link.
+
+   Reads the same --pbe-* tokens every other element does, so the design
+   controls that already exist style it. No grid: it is a line, not cards.
+   ============================================================ */
+.pb-el.pb-taxonomy {
+    margin: var(--pbe-margin, 0);
+    max-width: var(--pbe-max-width, none);
+    padding: var(--pbe-padding, 0);
+    background: var(--pbe-bg, transparent);
+    color: var(--pbe-color, inherit);
+    text-align: var(--pbe-align, inherit);
+    border: var(--pbe-border, 0);
+    border-radius: var(--pbe-radius, 0);
+    box-shadow: var(--pbe-shadow, none);
+    font-size: var(--pbe-font-size, .92em);
+    font-weight: var(--pbe-font-weight, inherit);
+    line-height: var(--pbe-line-height, 1.5);
+    letter-spacing: var(--pbe-letter-spacing, normal);
+}
+
+.pb-taxonomy .pb-taxonomy-cat,
+.pb-taxonomy .pb-taxonomy-tags {
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--pbe-gap, 6px);
+}
+
+.pb-taxonomy .pb-taxonomy-tags { margin-top: 4px; }
+
+.pb-taxonomy .pb-taxonomy-label {
+    font-weight: 600;
+    opacity: .7;
+}
+
+/* The label reads "Category" / "Tags"; the colon is presentational, so it
+   lives here rather than in the text a screen reader announces. */
+.pb-taxonomy .pb-taxonomy-label::after { content: ':'; }
+
+.pb-taxonomy .pb-taxonomy-value { overflow-wrap: break-word; }
+
+.pb-taxonomy .pb-taxonomy-values {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--pbe-gap, 6px);
+    min-width: 0;
+}
+
+.pb-taxonomy .pb-taxonomy-tag { overflow-wrap: break-word; }
+
+/* A middle dot between tags, drawn rather than written, so the separator is
+   never read out as a word and never ends up in a copied selection. */
+.pb-taxonomy .pb-taxonomy-tag + .pb-taxonomy-tag::before {
+    content: '\00b7';
+    opacity: .5;
+    margin-right: var(--pbe-gap, 6px);
+}
