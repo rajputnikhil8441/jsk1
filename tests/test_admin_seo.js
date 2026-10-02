@@ -773,6 +773,170 @@ const check=(n,c,e)=>{c?(pass++,console.log('  PASS  '+n)):(fail++,fails.push(n)
       clean.protoName && !clean.protoHasName && clean.objIsClean, clean);
   }
 
+  console.log('\n===== AUTHORS: A NAME THE ENGINE REFUSES IS STILL USABLE =====');
+  {
+    await p.evaluate(() => {
+      const d = window.CMS.data();
+      d.authors = {};
+      d.categories = {}; d.tags = {};
+      const t = d.pages['tax-demo'];
+      t.type = 'article'; delete t.category; delete t.tags; delete t.author;
+    });
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(450);
+    check('the Authors card is present', await p.isVisible('#authorsHost'));
+
+    const answer = v => p.once('dialog', d => v === null ? d.dismiss() : d.accept(v));
+    for (const name of ['Ada Lovelace', 'Constructor', 'Prototype']) {
+      answer(name);
+      await p.click('#btnAddAuthor'); await p.waitForTimeout(350);
+    }
+    const authors = await p.evaluate(() => JSON.parse(JSON.stringify(window.CMS.data().authors)));
+    const aIds = Object.keys(authors).sort();
+    check('all three authors were created', aIds.length === 3, aIds);
+    check('  a normal name still gets its plain id', aIds.indexOf('ada-lovelace') > -1, aIds);
+    check('  "Constructor" did NOT take the id `constructor`',
+      aIds.indexOf('constructor') === -1, aIds);
+    check('  it took `constructor-2` instead', aIds.indexOf('constructor-2') > -1, aIds);
+    check('  "Prototype" took `prototype-2`', aIds.indexOf('prototype-2') > -1, aIds);
+    check('  neither reserved key is an own property of the collection',
+      !Object.prototype.hasOwnProperty.call(authors, 'constructor') &&
+      !Object.prototype.hasOwnProperty.call(authors, 'prototype'), aIds);
+    check('  the NAMES the author typed are kept exactly',
+      (authors['constructor-2'] || {}).name === 'Constructor' &&
+      (authors['prototype-2'] || {}).name === 'Prototype', authors);
+
+    /* The point of the fix: the engine resolves every id the panel minted. */
+    const resolved = await p.evaluate(() => {
+      const d = window.CMS.data();
+      return ['ada-lovelace', 'constructor-2', 'prototype-2']
+        .map(id => { const r = window.CMS.content.authorFrom(d.authors, id); return r ? r.name : null; });
+    });
+    check('every created author id resolves through the engine',
+      JSON.stringify(resolved) === JSON.stringify(['Ada Lovelace', 'Constructor', 'Prototype']),
+      resolved);
+
+    /* End to end: name one on a page and see the checks accept the byline. */
+    await p.evaluate(() => { window.CMS.data().pages['tax-demo'].author = 'constructor-2'; });
+    await p.click('.adm-nav-item[data-panel="seo"]'); await p.waitForTimeout(200);
+    await p.click('#seoTabs .pagetab >> nth=1'); await p.waitForTimeout(150);
+    await p.click('#seoTabs .pagetab >> nth=0'); await p.waitForTimeout(450);
+    const dash = await p.$eval('#seoDashboard', e => e.textContent);
+    check('a page naming it is reported as resolving, not dangling',
+      /Author resolves to Constructor/.test(dash), dash.slice(0, 400));
+  }
+
+  console.log('\n===== AUTHORS: THE USE COUNT IS A NUMBER, AND IT IS RIGHT =====');
+  {
+    /* Three pages naming `constructor-2`, one naming ada, none naming
+       prototype-2 -- so all three card states appear at once. */
+    await p.evaluate(() => {
+      const d = window.CMS.data();
+      ['ref-a', 'ref-b'].forEach(k => {
+        d.pages[k] = JSON.parse(JSON.stringify(d.pages['tax-demo']));
+        d.pages[k].label = k; d.pages[k].url = k + '.html'; d.pages[k].slug = k;
+        d.pages[k].author = 'constructor-2';
+      });
+      d.pages['tax-demo'].author = 'constructor-2';
+      d.pages.about.author = 'ada-lovelace';
+    });
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(500);
+
+    const cards = await p.$$eval('#authorsHost .card', els => els.map(e => ({
+      id: e.getAttribute('data-author'),
+      hint: (e.querySelector('.hint') || {}).textContent || ''
+    })));
+    check('every author still renders a card', cards.length === 3, cards);
+    const byId = {};
+    cards.forEach(c => { byId[c.id] = c.hint.trim(); });
+    check('three pages naming an author reads "3 pages name them"',
+      byId['constructor-2'] === '3 pages name them', byId);
+    check('  and it is a count, not a stringified function',
+      !/function|native code/.test(byId['constructor-2'] || ''), byId['constructor-2']);
+    check('one page reads the SINGULAR "1 page names them"',
+      byId['ada-lovelace'] === '1 page names them', byId);
+    check('nobody naming an author reads "no page names them"',
+      byId['prototype-2'] === 'no page names them', byId);
+    check('no card hint contains a concatenated number like "11"',
+      cards.every(c => /^(no page names them|\d+ pages? names? them|\d+ page names them)$/
+        .test(c.hint.trim())), cards.map(c => c.hint.trim()));
+
+    /* Removing one states the real cost, with the real number. */
+    let asked = '';
+    p.once('dialog', d => { asked = d.message(); d.dismiss(); });
+    const delBtn = await p.$('#authorsHost .card[data-author="constructor-2"] button');
+    if (delBtn) { await delBtn.click(); await p.waitForTimeout(300); }
+    check('the author card offers a Remove button', !!delBtn);
+    check('removing an author in use names the real number of pages',
+      /3 page\(s\) refer to them/.test(asked), asked);
+    check('  and not a stringified function', !/function|native code/.test(asked), asked);
+    check('  dismissing removes nothing',
+      !!(await p.evaluate(() => window.CMS.data().authors['constructor-2'])));
+
+    /* Incrementing: add one more reference and the count moves by exactly 1. */
+    await p.evaluate(() => {
+      const d = window.CMS.data();
+      d.pages['ref-c'] = JSON.parse(JSON.stringify(d.pages['ref-a']));
+      d.pages['ref-c'].label = 'ref-c'; d.pages['ref-c'].url = 'ref-c.html';
+      d.pages['ref-c'].slug = 'ref-c';
+    });
+    await p.click('.adm-nav-item[data-panel="seo"]'); await p.waitForTimeout(200);
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(500);
+    const after = await p.$eval('#authorsHost .card[data-author="constructor-2"] .hint',
+      e => e.textContent.trim());
+    check('a fourth reference increments the count to exactly 4',
+      after === '4 pages name them', after);
+
+    /* THE ONLY WAY THE COUNT BUG IS STILL REACHABLE. The id fix means the
+       panel never mints `constructor` again, so the tally can only meet that
+       key in a record written before the fix or edited by hand. That is
+       exactly the record this seeds: an OWN `constructor` key in authors,
+       named by two pages. Without the prototype-free map the card read
+       "function Object() { [native code] }11 pages name them". */
+    await p.evaluate(() => {
+      const d = window.CMS.data();
+      d.authors['constructor'] = { name: 'Legacy Constructor' };
+      d.authors['prototype'] = { name: 'Legacy Prototype' };
+      ['legacy-a', 'legacy-b'].forEach(k => {
+        d.pages[k] = JSON.parse(JSON.stringify(d.pages['ref-a']));
+        d.pages[k].label = k; d.pages[k].url = k + '.html'; d.pages[k].slug = k;
+        d.pages[k].author = 'constructor';
+      });
+    });
+    await p.click('.adm-nav-item[data-panel="seo"]'); await p.waitForTimeout(200);
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(500);
+    const legacy = await p.$$eval('#authorsHost .card', els => els.map(e => ({
+      id: e.getAttribute('data-author'),
+      hint: ((e.querySelector('.hint') || {}).textContent || '').trim()
+    })));
+    const legacyBy = {};
+    legacy.forEach(c => { legacyBy[c.id] = c.hint; });
+    check('a legacy `constructor` author id still renders a card',
+      legacyBy['constructor'] !== undefined, legacy);
+    check('  and its count is the NUMBER 2, not a stringified function',
+      legacyBy['constructor'] === '2 pages name them', legacyBy['constructor']);
+    check('  with no "native code" anywhere in it',
+      !/function|native code/.test(legacyBy['constructor'] || ''), legacyBy['constructor']);
+    check('a legacy `prototype` id nobody names reads "no page names them"',
+      legacyBy['prototype'] === 'no page names them', legacyBy['prototype']);
+    check('  and every hint on the card list is a clean count',
+      legacy.every(c => /^(no page names them|\d+ pages name them|\d+ page names them)$/
+        .test(c.hint)), legacy.map(c => c.id + ': ' + c.hint));
+    /* The engine still refuses to resolve it -- the fix is the COUNT, not a
+       change to what authorFrom() accepts. */
+    const legacyResolves = await p.evaluate(() =>
+      window.CMS.content.authorFrom(window.CMS.data().authors, 'constructor'));
+    check('  the engine still refuses that legacy id, as it should',
+      legacyResolves === null, legacyResolves);
+
+    /* And the whole time, nothing polluted the prototype. */
+    const clean = await p.evaluate(() => ({
+      noName: ({}).name === undefined,
+      noInherited: !('ada-lovelace' in Object.prototype),
+      clean: JSON.stringify({}) === '{}'
+    }));
+    check('Object.prototype was not polluted', clean.noName && clean.noInherited && clean.clean, clean);
+  }
+
   check('no admin console errors after the content-model checks', errs.length === 0, errs);
 
   console.log(`\n==== ${pass} passed, ${fail} failed ====`);

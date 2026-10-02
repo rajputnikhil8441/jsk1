@@ -671,10 +671,30 @@ console.log('\n===== THE ADMIN CANNOT CREATE A TOPIC NO PAGE COULD USE =====');
     return id;
   };
 
+  /* The probe now lives in ONE helper, idUsable(resolve, id), shared with the
+     authors editor -- the question "can the engine resolve this id?" must not
+     have two answers. What is asserted is the property, not where the lines
+     sit: the admin hands the ENGINE'S resolver a probe and never restates
+     unsafeKey's list of keys for itself. */
   check('the admin asks the engine\u2019s own resolver rather than restating its rules',
-    /taxonIdResolvable/.test(adminSrc) && /CMS\.content\.taxonFrom\(probe, id\)/.test(adminSrc));
+    /function idUsable\(resolve, id\)/.test(adminSrc) &&
+    /return !!resolve\(probe, id\);/.test(adminSrc) &&
+    /idUsable\(CMS\.content && CMS\.content\.taxonFrom, id\)/.test(adminSrc));
   check('  and the id loop consults it',
-    /!taxonIdResolvable\(id\)/.test(adminSrc));
+    /!taxonIdResolvable\(id\)/.test(adminSrc) && /function taxonIdResolvable/.test(adminSrc));
+  check('  there is exactly ONE probe helper, not one per collection',
+    (adminSrc.match(/function idUsable\(/g) || []).length === 1,
+    (adminSrc.match(/function idUsable\(/g) || []).length);
+  /* "Restating the rules" would look like a hardcoded comparison against the
+     reserved keys. Comments may NAME unsafeKey -- that is documentation, not
+     a second copy -- so the source is stripped of comments before asking. */
+  check('  and the admin still does not keep its own list of unsafe keys',
+    (function () {
+      const code = adminSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      return !/['"]__proto__['"]/.test(code) &&
+             !/===\s*['"](constructor|prototype)['"]/.test(code) &&
+             !/unsafeKey\s*\(/.test(code);
+    })());
 
   const hostile = ['Constructor', 'constructor', 'CONSTRUCTOR', 'Prototype', 'prototype',
                    '__proto__', 'toString', 'valueOf', 'hasOwnProperty', 'isPrototypeOf'];

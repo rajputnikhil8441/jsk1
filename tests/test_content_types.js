@@ -193,6 +193,152 @@ console.log('\n===== AN AUTHOR WHO CANNOT BE NAMED IS NOT AN AUTHOR =====');
 }
 
 /* ====================================================================
+   3b. AN AUTHOR THE PANEL CREATES MUST BE ONE THE ENGINE RESOLVES
+   ==================================================================== */
+console.log('\n===== THE PANEL CANNOT MINT AN AUTHOR NO PAGE COULD NAME =====');
+{
+  /* authorFrom() refuses `constructor` and `prototype` through unsafeKey(),
+     and slugify() keeps letters -- so an author called "Constructor" used to
+     be created with the id `constructor`, shown on a card, offered in the
+     select, and could never publish a byline. The admin's own two functions
+     are reproduced here and pinned against the engine's real resolver; the
+     browser suite drives the same thing through the actual button. */
+  const adminSrc = fs.readFileSync(path.join(ROOT, 'js', 'admin.js'), 'utf8');
+  const slugify = v => String(v || '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const idUsable = (resolve, id) => {
+    const probe = {}; probe[id] = { name: 'probe' };
+    return !!resolve(probe, id);
+  };
+  const authorSlugId = (name, taken) => {
+    const base = slugify(name) || 'author';
+    let id = base, n = 2;
+    while (Object.prototype.hasOwnProperty.call(taken, id) ||
+           !idUsable(C.authorFrom, id)) { id = base + '-' + n; n += 1; }
+    return id;
+  };
+
+  check('the admin asks the engine\u2019s own resolver rather than restating unsafeKey',
+    /function idUsable\(resolve, id\)/.test(adminSrc) &&
+    /!idUsable\(CMS\.content && CMS\.content\.authorFrom, id\)/.test(adminSrc));
+  check('  and there is ONE such helper, shared with the taxonomy editor',
+    (adminSrc.match(/function idUsable\(/g) || []).length === 1 &&
+    /idUsable\(CMS\.content && CMS\.content\.taxonFrom, id\)/.test(adminSrc));
+
+  /* Normal creation is untouched. */
+  const ordinary = { 'Ada Lovelace': 'ada-lovelace', 'Ada': 'ada', 'J. Smith': 'j-smith',
+                     'Grace Hopper': 'grace-hopper', '2026 Desk': '2026-desk' };
+  for (const name of Object.keys(ordinary))
+    check('a normal author ' + JSON.stringify(name) + ' still gets the id ' +
+      JSON.stringify(ordinary[name]), authorSlugId(name, {}) === ordinary[name],
+      authorSlugId(name, {}));
+  check('a collision still appends a suffix', authorSlugId('Ada', { ada: 1 }) === 'ada-2');
+  check('  and keeps counting', authorSlugId('Ada', { ada: 1, 'ada-2': 1 }) === 'ada-3');
+  check('an unslugifiable name still falls back to "author"', authorSlugId('!!!', {}) === 'author');
+
+  /* The two that were broken, and the rest of the hostile set. */
+  check('"Constructor" no longer takes the id `constructor`',
+    authorSlugId('Constructor', {}) === 'constructor-2', authorSlugId('Constructor', {}));
+  check('"Prototype" no longer takes the id `prototype`',
+    authorSlugId('Prototype', {}) === 'prototype-2', authorSlugId('Prototype', {}));
+  check('"__proto__" still slugifies to the harmless "proto" it always did',
+    authorSlugId('__proto__', {}) === 'proto');
+  for (const name of ['Constructor', 'constructor', 'CONSTRUCTOR', 'Prototype', 'prototype',
+                      '__proto__', 'toString', 'valueOf', 'hasOwnProperty', 'Ada Lovelace']) {
+    const id = authorSlugId(name, {});
+    const coll = {}; coll[id] = { name: name };
+    const got = C.authorFrom(coll, id);
+    check('an author named ' + JSON.stringify(name) + ' gets a usable id (' + id + ')',
+      !!got && got.name === name, id);
+    check('  and that id is not a reserved key',
+      id !== '__proto__' && id !== 'constructor' && id !== 'prototype', id);
+  }
+
+  /* authorFrom() ITSELF is unchanged -- it still refuses those keys. The fix
+     is in what the panel creates, not in what the engine accepts. */
+  check('authorFrom still refuses a `constructor` reference outright',
+    C.authorFrom({ constructor: { name: 'X' } }, 'constructor') === null);
+  check('  and a `prototype` one', C.authorFrom({ prototype: { name: 'X' } }, 'prototype') === null);
+  check('  and `__proto__`', C.authorFrom({}, '__proto__') === null);
+
+  /* Nothing was polluted by asking. */
+  check('Object.prototype gained no name property', !('name' in Object.prototype));
+  check('  a fresh object is still clean', JSON.stringify({}) === '{}' && ({}).name === undefined);
+  check('  and a real author still resolves afterwards',
+    (C.authorFrom({ ada: { name: 'Ada Writer' } }, 'ada') || {}).name === 'Ada Writer');
+}
+
+/* ====================================================================
+   3c. AN AUTHOR USE COUNT IS A NUMBER
+   ==================================================================== */
+console.log('\n===== A COUNT THAT IS A STRING IS NOT A COUNT =====');
+{
+  /* The Authors card said how many pages name each author. The count lived in
+     a plain object, so `uses['constructor']` read back
+     Object.prototype.constructor -- a function -- and `(fn || 0) + 1` was
+     string concatenation. The card read
+     "function Object() { [native code] }11 pages name them".
+     This is the tally, prototype-free, as the admin now builds it. */
+  const adminSrc = fs.readFileSync(path.join(ROOT, 'js', 'admin.js'), 'utf8');
+  check('the authors tally is built in a prototype-free map',
+    /var uses = Object\.create\(null\);[\s\S]{0,400}?\.author\)/.test(adminSrc));
+
+  const tally = pages => {
+    const uses = Object.create(null);
+    Object.keys(pages).forEach(k => {
+      const a = String((pages[k] || {}).author || '').trim();
+      if (a) uses[a] = (uses[a] || 0) + 1;
+    });
+    return uses;
+  };
+  const broken = pages => {
+    const uses = {};
+    Object.keys(pages).forEach(k => {
+      const a = String((pages[k] || {}).author || '').trim();
+      if (a) uses[a] = (uses[a] || 0) + 1;
+    });
+    return uses;
+  };
+
+  const pages = { a: { author: 'ada' }, b: { author: 'ada' }, c: { author: 'grace' },
+                  d: {}, e: { author: '' }, f: { author: 'constructor' },
+                  g: { author: 'constructor' }, h: { author: 'toString' } };
+  const u = tally(pages);
+  check('an ordinary author counts 2', u.ada === 2 && typeof u.ada === 'number', u.ada);
+  check('  and a single reference counts 1', u.grace === 1 && typeof u.grace === 'number');
+  check('a page with no author is not counted', u[''] === undefined && !('undefined' in u));
+  check('a reserved-word id counts 2, as a NUMBER',
+    u.constructor === 2 && typeof u.constructor === 'number', u.constructor);
+  check('  and "toString" counts 1 as a number',
+    u.toString === 1 && typeof u.toString === 'number', typeof u.toString);
+  check('every value in the tally is a finite number',
+    Object.keys(u).every(k => typeof u[k] === 'number' && isFinite(u[k])),
+    Object.keys(u).map(k => k + '=' + typeof u[k]));
+
+  /* The old shape, kept to prove the test is testing something: the same
+     input through a plain object produces a string. */
+  const b = broken(pages);
+  check('the OLD plain-object tally produced a string for that key -- which is the bug',
+    typeof b.constructor === 'string', typeof b.constructor);
+  check('  and the fixed tally does not', typeof u.constructor !== 'string');
+
+  /* Incrementing is linear and exact at every step. */
+  let acc = Object.create(null), seen = 0;
+  for (let i = 0; i < 5; i++) {
+    acc.constructor = (acc.constructor || 0) + 1;
+    seen += 1;
+    check('reference ' + seen + ' increments the reserved-word count to ' + seen,
+      acc.constructor === seen, acc.constructor);
+  }
+  check('  the label a card would render is a real count',
+    acc.constructor + (acc.constructor === 1 ? ' page names them' : ' pages name them') ===
+    '5 pages name them', acc.constructor + ' pages name them');
+
+  check('Object.prototype was not polluted by any of this',
+    !('ada' in Object.prototype) && ({}).ada === undefined);
+}
+
+/* ====================================================================
    4. THE ONE PUBLISHED-PAGE READER
    ==================================================================== */
 console.log('\n===== ONE READER, AND EVERY RULE THE BUILD ALREADY APPLIES =====');

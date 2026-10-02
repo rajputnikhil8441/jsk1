@@ -2722,10 +2722,40 @@
         ['url',   'Link', 'Optional. A page on this site, or a full https:// address.']
     ];
 
+    /* CAN THE ENGINE EVER RESOLVE THIS ID? Asked by handing the engine's own
+       resolver a one-entry collection, rather than by restating its rules
+       here -- a second copy of "which keys are unsafe" is a second copy that
+       can drift, and this one cannot: whatever the resolver refuses now or
+       later, this refuses too.
+
+       It matters because slugify() keeps letters, so a name like "Prototype"
+       becomes the id `prototype` and "Constructor" becomes `constructor`,
+       both of which unsafeKey() makes the engine refuse. Without this, the
+       panel created the entry, listed it on a card and offered it in a
+       select, and no page could ever publish it. (`__proto__` slugifies to
+       the harmless `proto` and was always fine.)
+
+       The probe is a fresh object literal and the assignment makes an OWN
+       property, so nothing is polluted by asking. Used by the authors editor
+       and by the categories/tags editor below, because the question is the
+       same one and the answer must not be two different answers. */
+    function idUsable(resolve, id) {
+        if (typeof resolve !== 'function') return true;
+        var probe = {};
+        probe[id] = { name: 'probe' };
+        return !!resolve(probe, id);
+    }
+
+    /* A usable id, treating one the engine would refuse exactly like one
+       already taken: the NAME the author typed is kept, and the id gets a
+       suffix. "Constructor" stays "Constructor" and becomes `constructor-2`. */
     function authorSlugId(name, taken) {
         var base = slugify(name) || 'author';
         var id = base, n = 2;
-        while (Object.prototype.hasOwnProperty.call(taken, id)) { id = base + '-' + n; n += 1; }
+        while (Object.prototype.hasOwnProperty.call(taken, id) ||
+               !idUsable(CMS.content && CMS.content.authorFrom, id)) {
+            id = base + '-' + n; n += 1;
+        }
         return id;
     }
 
@@ -2744,9 +2774,16 @@
             host.appendChild(p);
             return;
         }
-        /* How many pages name each author, so removing one says what it costs. */
+        /* How many pages name each author, so removing one says what it costs.
+           COUNTED IN A PROTOTYPE-FREE MAP. A stored author id is arbitrary
+           text, and in a plain object `uses['constructor']` reads back
+           Object.prototype.constructor -- a function -- so `(fn || 0) + 1`
+           was string concatenation and the card read
+           "function Object() { [native code] }11 pages name them".
+           Object.create(null) inherits nothing, so a key is a key and a
+           count is a number. */
         var pages = CMS.data().pages || {};
-        var uses = {};
+        var uses = Object.create(null);
         Object.keys(pages).forEach(function (k) {
             var a = sstr((pages[k] || {}).author);
             if (a) uses[a] = (uses[a] || 0) + 1;
@@ -2873,24 +2910,10 @@
         return uses;
     }
 
-    /* CAN THE ENGINE EVER RESOLVE THIS ID? Asked by handing the engine's own
-       resolver a one-entry collection, rather than by restating its rules
-       here -- a second copy of "which keys are unsafe" is a second copy that
-       can drift, and this one cannot: whatever taxonFrom() refuses now or
-       later, this refuses too.
-
-       It matters because slugify() keeps letters: "Prototype" becomes the id
-       `prototype` and "Constructor" becomes `constructor`, both of which
-       taxonFrom() rejects through unsafeKey(). Without this, the panel
-       created the entry, listed it on a card and offered it in the select,
-       and no page could ever publish it. (`__proto__` slugifies to `proto`
-       and was always fine.) The probe object is a fresh literal and the
-       assignment makes an OWN property, so nothing is polluted by asking. */
+    /* The same question idUsable() answers for an author, asked of the
+       taxonomy resolver. See idUsable() above for why it is asked this way. */
     function taxonIdResolvable(id) {
-        if (!CMS.content || !CMS.content.taxonFrom) return true;
-        var probe = {};
-        probe[id] = { name: 'probe' };
-        return !!CMS.content.taxonFrom(probe, id);
+        return idUsable(CMS.content && CMS.content.taxonFrom, id);
     }
 
     function taxonNewId(name, taken) {
