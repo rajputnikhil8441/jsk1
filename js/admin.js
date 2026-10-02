@@ -2548,7 +2548,125 @@
             '<div id="pageChecks"></div>';
         host.appendChild(chkCard);
 
+        /* ---- DELETE, for a page the CMS created ----
+           Last on the panel, because it is the one control here that cannot
+           be undone from this screen. Gated by exactly the test Publication
+           and the content model above use: a page that ships with the site is
+           generated from its own committed template, so deleting its record
+           would not take it off the site and the control would be a lie. */
+        if (!(CMS.DEFAULTS.pages || {})[key]) host.appendChild(pageDeleteCard(key, page));
+
         paintSeoPreviews();
+    }
+
+    /* ========================================================
+       DELETING A PAGE THE CMS CREATED
+       --------------------------------------------------------
+       The whole of deletion is `delete CMS.data().pages[slug]` and a publish.
+       Everything that makes a page disappear from the site is already in
+       place and was proved before this was written:
+
+         - the build enumerates pages from the published ROW
+           (pbbake.pagesFromRecord), so a page that is not in the record is
+           not generated;
+         - tools/lib/sitekit.js assemble() wipes its output directory before
+           writing, so rebuilding over a previous build removes the old file
+           rather than leaving it to be served ("a stale file is a 404, or
+           worse");
+         - both deploys replace the published tree wholesale rather than
+           copying over it;
+         - the sitemap is built from the same record, so the url goes with it;
+         - every reader of a page reference -- relatedPages(),
+           publishedPages(), the Page list element, automatic related content,
+           the link picker and the ItemList -- already drops one that does not
+           resolve.
+
+       So this adds the ACTION and nothing else. There is no trash, no
+       deleted-pages collection, no redirect and no replacement page: the url
+       simply stops existing, which is what a 404 is for.
+
+       WHAT IT DOES NOT DO. It does not edit any other page. A stored
+       reference to the deleted slug stays where it is and stops resolving,
+       exactly as a dangling category, tag or author id does, and the page's
+       own checks already report it. Rewriting other people's records to tidy
+       up after a deletion would change content nobody asked to change.
+    ======================================================== */
+
+    /* How many OTHER pages name this one in their related list, so the
+       confirmation can say what deleting it costs. Counted from the stored
+       records rather than from resolved output, because a reference that has
+       already stopped resolving is still a reference an author chose. */
+    function pageRefCount(slug) {
+        var pages = CMS.data().pages || {};
+        var n = 0;
+        Object.keys(pages).forEach(function (k) {
+            if (k === slug) return;
+            var rel = (pages[k] || {}).related;
+            if (!isArray(rel)) return;
+            for (var i = 0; i < rel.length; i++) {
+                if (sstr(rel[i]) === slug) { n += 1; return; }
+            }
+        });
+        return n;
+    }
+
+    function pageDeleteCard(key, page) {
+        var card = document.createElement('div');
+        card.className = 'card';
+        var h = document.createElement('h2');
+        h.textContent = 'Delete this page';
+        card.appendChild(h);
+
+        var hint = document.createElement('p');
+        hint.className = 'hint';
+        hint.innerHTML = 'Removes <code>' + esc(key) + '</code> from the CMS permanently. On the ' +
+            'next deploy the build stops generating <code>' + esc(page.url || '') + '</code> and ' +
+            'the file stops being served, so the address returns a normal <strong>404</strong>. ' +
+            'It is <strong>not</strong> redirected anywhere, and there is no undo — to take a ' +
+            'page off the site temporarily, set <strong>Publication</strong> to Draft instead.';
+        card.appendChild(hint);
+
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'adm-btn ghost danger';
+        btn.setAttribute('data-act', 'page-delete');
+        btn.innerHTML = '<i class="fas fa-trash"></i> Delete page';
+        btn.addEventListener('click', function () {
+            /* Re-read rather than trusting the closure: the panel may have
+               been open while something else changed the record. Deleting a
+               key that is no longer an own property of pages, or one the
+               committed layer supplies, must do nothing at all. */
+            var pages = CMS.data().pages || {};
+            if (!Object.prototype.hasOwnProperty.call(pages, key) ||
+                (CMS.DEFAULTS.pages || {})[key]) {
+                toast('That page cannot be deleted.', true);
+                buildPages();
+                return;
+            }
+            var refs = pageRefCount(key);
+            var msg = 'Delete "' + (page.label || key) + '" permanently?\n\n' +
+                'It is removed from the CMS. After the next deploy ' +
+                (page.url ? '/' + page.url : 'its address') + ' is no longer generated and ' +
+                'returns a 404 — it is NOT redirected to another page.\n\n' +
+                (refs
+                    ? refs + ' other page(s) list this one as related. Those references will ' +
+                      'stop resolving: nothing is shown for them, rather than a broken link. ' +
+                      'They are left as they are.\n\n'
+                    : '') +
+                'There is no undo. To hide it instead, cancel and set Publication to Draft.';
+            if (!confirm(msg)) return;
+
+            delete CMS.data().pages[key];
+            /* Let buildPages() choose the next tab: it already falls back to
+               the first key when the active one is gone. */
+            activePageKey = null;
+            markDirty();
+            buildPages();
+            buildSeo();
+            toast('Page deleted. Publish to remove it from the live site.');
+        });
+        card.appendChild(btn);
+        return card;
     }
 
     /* Stamp the edit date so the sitemap lastmod stays honest. */

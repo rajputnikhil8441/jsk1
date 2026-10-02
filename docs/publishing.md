@@ -925,6 +925,66 @@ produced identical output in every file except the five assets whose source
 changed: `js/cms.js`, `js/admin.js`, `js/admin-builder.js`, `css/sections.css`
 and `admin/index.html`.
 
+## Deleting a page
+
+A page the CMS created can be deleted: **Pages → Settings & SEO → Delete this
+page**, at the bottom of the panel. A page that ships with the site (`home`,
+`login`, `register`, `about`, `contact`, `responsible-gaming`,
+`privacy-policy`) is not offered it, because it is generated from its own
+committed template — deleting its record would not take it off the site, so the
+control would be a lie. The gate is the same `CMS.DEFAULTS.pages[key]` test
+**Publication** and the content-model fields already use.
+
+The whole of deletion is `delete pages[slug]` and a publish. Everything that
+makes the page actually disappear was already in place:
+
+| Step | What makes it happen |
+|---|---|
+| Not enumerated | the build reads pages from the published row (`pbbake.pagesFromRecord`) |
+| No `.html` generated | there is no record to generate one from |
+| **Old `.html` removed** | `tools/lib/sitekit.js` `assemble()` wipes its output directory before writing — *"a stale file is a 404, or worse"* |
+| Not served | both deploys replace the published tree wholesale rather than copying over it |
+| Gone from `sitemap.xml` | the sitemap is audited from the same record |
+| Not linked | every reader of a page reference already drops one that does not resolve |
+
+**There is no redirect and no replacement page.** The address stops existing,
+which is what a 404 is for. There is no trash and no restore: to take a page
+off the site reversibly, set **Publication** to Draft instead — the confirmation
+says so.
+
+**Other pages are not edited.** A stored `related` reference to the deleted slug
+stays where it is and stops resolving, exactly as a dangling category, tag or
+author id does, and the referring page's own checks report it. The confirmation
+counts those pages before you commit to it. Rewriting records nobody asked to
+change would be a worse cure than the disease.
+
+### What the tests prove, and what they cannot
+
+`tests/test_page_delete.js` builds a site **twice into one directory** — the
+shape a redeploy has — and asserts the file from the first build is gone after
+the second, that the sitemap no longer lists it, that no generated page links to
+it, that no `ItemList` asserts it, that nothing was generated in its place, that
+no `http-equiv="refresh"` redirect to it exists, and that the build neither fails
+nor needs `--allow-unpublish`. It also asserts that rebuilding over the old
+output is byte-identical to a fresh build, and that deleting a page leaves the
+same site as never having created it.
+
+**It cannot prove the deployed URL returns 404.** `tools/verify-deployed.js`
+derives its URL list from the build artifact, so a page that is no longer in the
+artifact is not something it can look for — absence is not checkable from the
+artifact alone, and inventing a local fake of it would prove nothing. The
+build-level guarantee is asserted instead. To confirm the live behaviour:
+
+1. In `/admin`, create a page with a throwaway slug and set it Published.
+2. Publish, then let the deploy run (push to `main`, or Actions → the deploy
+   workflow).
+3. `curl -sSI https://jsk-1.com/<test-slug>.html` → expect `HTTP/2 200`.
+4. In `/admin`, open that page and use **Delete this page**, then Publish.
+5. Let the deploy run again.
+6. `curl -sSI https://jsk-1.com/<test-slug>.html` → expect `HTTP/2 404`, and
+   **no** `location:` header. A `301`/`302` would mean something is redirecting
+   the address, which this feature deliberately does not do.
+
 ## Not solved here
 
 - Multi-editor concurrency (above).
@@ -947,6 +1007,10 @@ and `admin/index.html`.
   whose type says article but which has no published builder content publishes
   no `Article`.
 - A hub's `lastmod` describes the hub, not the pages it lists.
+- Page deletion has no live-deployment test. `verify-deployed.js` learns its URL
+  list from the build artifact, so it cannot be asked whether a URL that is no
+  longer in the artifact has stopped being served. The build-level guarantee is
+  tested; the live 404 is a documented manual check above.
 - Categories and tags have no public URL space at all: no archive page, no
   pagination, no "everything in Cricket" listing. That is a decision, not an
   omission — a few hundred thin archives would cost this site more than they
