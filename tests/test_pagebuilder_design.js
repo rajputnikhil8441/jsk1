@@ -85,6 +85,13 @@ const CONTENT = {
   gallery:     { items: [{ src: 'assets/images/favicon.png', alt: 'a', caption: 'c' },
                          { src: 'assets/images/favicon.png', alt: 'b' }] },
   progress:    { label: 'Done', value: 60, max: 100 },
+  /* Phase 2C. A page list draws OTHER pages, so its probe content has to
+     name a set that actually resolves: 'page' is the type every shipped
+     page record already has, and those records are in the merged record this
+     page loads. Without a source that resolves, the element renders nothing
+     and every control on it would read as dead. */
+  pageList:    { source: 'type', contentType: 'page', title: 'Other pages',
+                 titleLevel: 'h2', excerpt: true, date: true, author: true, limit: 6 },
   tabs:        { items: [{ label: 'One', text: 'First' }, { label: 'Two', text: 'Second' }] },
   carousel:    { items: [{ title: 'A', text: 'one' }, { title: 'B', text: 'two' }] },
   video:       { url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', title: 'A video' }

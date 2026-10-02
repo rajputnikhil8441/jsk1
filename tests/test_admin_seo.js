@@ -177,6 +177,123 @@ const check=(n,c,e)=>{c?(pass++,console.log('  PASS  '+n)):(fail++,fails.push(n)
   check('export includes seo + pages', !!ex.seo && Object.keys(ex.pages).length>=6);
   check('no admin console errors', errs.length===0, errs);
 
+  /* ==================================================================
+     THE CONTENT-TYPE CONTROL IS NOT OFFERED WHERE IT CANNOT BE PUBLISHED
+     ------------------------------------------------------------------
+     A page that ships with the site is generated from its own committed
+     template, and those carry their own static SEO rather than the baked
+     kind -- so a content type chosen for one would reach its Article data
+     (the mount bakes that) but NOT its og:type, which the template
+     hardcodes. The served HTML would call itself an article in one tag and
+     a website in another, and the runtime would repaint og:type, so the page
+     a crawler reads and the page a visitor gets would disagree.
+
+     Publication has been guarded this way since the page lifecycle existed,
+     for the same reason. This holds the content model to it.
+     ================================================================== */
+  console.log('\n===== CONTENT TYPE: OFFERED ONLY WHERE IT CAN BE PUBLISHED =====');
+  await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(300);
+  await p.click('#pageSubtabSettings'); await p.waitForTimeout(250);
+  await p.click('#pageTabs .pagetab >> nth=0'); await p.waitForTimeout(350);
+  {
+    const shipped = await p.$eval('#pageEditor', e => e.textContent);
+    check('a page that ships with the site is NOT offered a content type',
+      shipped.indexOf('Kind of page') === -1);
+    check('  nor a first-published date, author or related list',
+      shipped.indexOf('First published') === -1 && shipped.indexOf('Related pages') === -1);
+    check('  while the rest of its SEO panel is untouched',
+      shipped.indexOf('Canonical URL override') > -1 && shipped.indexOf('OG title') > -1);
+    check('  and Publication is still withheld from it too (the precedent)',
+      shipped.indexOf('A draft page is not') === -1);
+  }
+
+  /* An address the build cannot create must not be creatable. */
+  console.log('\n===== A SLUG THE BUILD CANNOT BUILD IS REFUSED AT CREATION =====');
+  await p.click('.adm-nav-item[data-panel="seo"]'); await p.waitForTimeout(300);
+  await p.click('#seoTabs .pagetab >> nth=6'); await p.waitForTimeout(300);
+  {
+    const ins = await p.$$('#seoNewPageFields input, #seoNewPageFields textarea');
+    await ins[0].fill('A Perfectly Reasonable Page Name'); await p.waitForTimeout(150);
+    await ins[1].fill('a-very-long-guide-slug-that-an-author-could-easily-type-in-here-ok');
+    await p.waitForTimeout(300);
+    const warn = await p.$eval('#seoNewPageWarn', e => e.textContent);
+    check('a 66-character slug is reported as too long for the build',
+      /too long for the build/i.test(warn), warn.slice(0, 200));
+    check('  and the create button is disabled',
+      (await p.getAttribute('#btnCreatePage', 'disabled')) !== null);
+
+    /* Sixty-one characters is the longest the generator takes. */
+    await ins[1].fill('x'.repeat(61)); await p.waitForTimeout(300);
+    check('a 61-character slug is allowed',
+      (await p.$eval('#seoNewPageWarn', e => e.textContent)).indexOf('too long') === -1 &&
+      (await p.getAttribute('#btnCreatePage', 'disabled')) === null);
+  }
+
+  /* And a page the CMS creates DOES get the control, so the guard above is
+     a guard and not a removal. */
+  console.log('\n===== A PAGE THE CMS CREATES DOES GET THE CONTROL =====');
+  {
+    const ins = await p.$$('#seoNewPageFields input, #seoNewPageFields textarea');
+    await ins[0].fill('Content Model Probe'); await p.waitForTimeout(150);
+    await ins[1].fill('content-model-probe'); await p.waitForTimeout(300);
+    await p.click('#btnCreatePage'); await p.waitForTimeout(500);
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(300);
+    await p.click('#pageSubtabSettings'); await p.waitForTimeout(250);
+    const tabs = await p.$$('#pageTabs .pagetab');
+    let opened = false;
+    for (const t of tabs) {
+      if ((await t.textContent()).trim() === 'Content Model Probe') {
+        await t.click(); await p.waitForTimeout(400); opened = true; break;
+      }
+    }
+    check('the created page opens in the editor', opened);
+    const made = await p.$eval('#pageEditor', e => e.textContent);
+    check('a CMS-created page IS offered a content type', made.indexOf('Kind of page') > -1);
+    check('  and a first-published date, an author and related pages',
+      made.indexOf('First published') > -1 && made.indexOf('Author') > -1 &&
+      made.indexOf('Related pages') > -1);
+    check('  and Publication, as before', made.indexOf('A draft page is not') > -1);
+    const opts = await p.$$eval('#pageEditor select', els =>
+      els.map(e => Array.from(e.options).map(o => o.value)));
+    check('  the type options are the engine\'s own allow-list',
+      opts.some(o => ['page', 'article', 'guide', 'help', 'hub'].every(v => o.indexOf(v) > -1)),
+      opts);
+  }
+  /* A hand-edited record can still put a type on a page that ships with the
+     site, and with no control there nothing else would show it. The checks
+     are where an author already looks. */
+  console.log('\n===== A HAND-EDITED TYPE ON A SHIPPED PAGE IS REPORTED =====');
+  {
+    await p.evaluate(() => { window.CMS.data().pages.about.type = 'article'; });
+    await p.click('.adm-nav-item[data-panel="seo"]'); await p.waitForTimeout(250);
+    await p.click('#seoTabs .pagetab >> nth=0'); await p.waitForTimeout(400);
+    const dash = await p.$eval('#seoDashboard', e => e.textContent);
+    check('a resolving type on a shipped page is reported as unpublishable',
+      /ships with the site and has its own template/.test(dash), dash.slice(0, 300));
+    check('  and names the type that would not be published', /article/.test(dash));
+
+    /* An UNRECOGNISED type resolves to 'page', so nothing half-applies and
+       the message above must not claim it would. */
+    await p.evaluate(() => { window.CMS.data().pages.about.type = 'nonsense'; });
+    await p.click('#seoTabs .pagetab >> nth=1'); await p.waitForTimeout(200);
+    await p.click('#seoTabs .pagetab >> nth=0'); await p.waitForTimeout(400);
+    const dash2 = await p.$eval('#seoDashboard', e => e.textContent);
+    check('an unrecognised type is reported as not a type this site knows',
+      /not one this site knows/.test(dash2), dash2.slice(0, 300));
+    check('  and is NOT also described as unpublishable Article data',
+      !/ships with the site and has its own template/.test(dash2));
+
+    await p.evaluate(() => { delete window.CMS.data().pages.about.type; });
+    await p.click('#seoTabs .pagetab >> nth=1'); await p.waitForTimeout(200);
+    await p.click('#seoTabs .pagetab >> nth=0'); await p.waitForTimeout(400);
+    const dash3 = await p.$eval('#seoDashboard', e => e.textContent);
+    check('with no type set, neither message appears',
+      !/ships with the site and has its own template/.test(dash3) &&
+      !/not one this site knows/.test(dash3));
+  }
+
+  check('no admin console errors after the content-model checks', errs.length === 0, errs);
+
   console.log(`\n==== ${pass} passed, ${fail} failed ====`);
   if(fails.length) console.log('FAILED:', fails.join(' | '));
   await b.close();

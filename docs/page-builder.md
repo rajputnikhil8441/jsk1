@@ -1957,6 +1957,217 @@ for a crawler. Fixed; one value, worked out once.
 
 ---
 
+## Content types and the page list (Phase 2C)
+
+Phase 2C-A put five optional fields on every page record and nothing read them.
+Phase 2C is what reads them.
+
+### What the audit found already built
+
+| Capability | Found as | What Phase 2C did |
+|---|---|---|
+| A `type` field on every page | present and inert since 2C-A | gave it an allow-list and readers |
+| `publishedAt`, `excerpt`, `author`, `related` | present and inert since 2C-A | same |
+| `authors: {}` | present and inert since 2C-A | a resolver and a small editor |
+| `FAQPage` from an accordion | the `faq` **element**, since Phase 2A | reused — there is deliberately no `faq` content type |
+| `BreadcrumbList` | page-level, since Phase 1 | untouched |
+| `WebPage` / `ContactPage` | `buildWebPage()`, since Phase 1 | extended with one subtype, not replaced |
+| Internal link picker | `pbPageLinkField`, Phase 2A | reused by the related-page chooser |
+| Flat `<slug>.html` URLs | `PAGE_NAME_RE`, Phase 1 | unchanged — no nested URLs |
+| The sitemap's published/draft rules | `sitemapAudit`, Phase 1 | unchanged, and now held to a shared table |
+
+### The five types
+
+`PB_CONTENT_TYPES` in `js/cms.js` is the allow-list. A stored value is a NAME;
+what reaches `og:type` and `@type` is the constant stored against it.
+
+| Type | `og:type` | Page-level schema | Publishes a date and author |
+|---|---|---|---|
+| `page` (and `''`) | `website` | `WebPage` | no |
+| `article` | `article` | `WebPage` + `Article` | yes |
+| `guide` | `article` | `WebPage` + `Article` | yes |
+| `help` | `article` | `WebPage` + `Article` | yes |
+| `hub` | `website` | `CollectionPage` (+ `ItemList` in the body) | no |
+
+`''` and `page` are the same thing, which is what makes activating the field
+change nothing: every record written before types existed is an ordinary page.
+
+Case and surrounding space are forgiven — `Article` and `" guide "` are the type
+they obviously mean, and this value can be hand-edited in a row. A value that is
+not a **string** is refused outright, because `String(['article'])` is
+`'article'` and an array would otherwise have named a type.
+
+**There is no `faq` type.** The `faq` element already publishes `FAQPage` from
+its own content. A type that also published one would put two on a page.
+
+### Dates
+
+`publishedAt` is `YYYY-MM-DD`, and the calendar is checked as well as the shape:
+a regex alone accepts `2026-13-45` and `2026-02-30`, and a malformed date in
+JSON-LD is worse than an absent one. Anything that is not a real day resolves to
+`''`, and every reader treats that as "say nothing".
+
+A date is only published by a type whose `dated` flag is set, so a date left on
+a page whose type changed back to `page` stops being published rather than
+lingering. `updatedAt` already existed and already moves on every edit; it
+becomes `dateModified` on the types that publish dates, and it still drives the
+sitemap's `lastmod` exactly as before.
+
+Nothing invents a date. No existing page gained one.
+
+### Authors
+
+`pages.<slug>.author` stores an **id**; `authors` holds the records. The
+resolver returns null for every way that can fail — no id, no collection, no
+such id, not an object, no name — and a reference that does not resolve
+publishes **nothing**: no byline, no `Person`, no empty markup where a name
+should be. An author nobody can name is not an author.
+
+An author record holds four fields: `name` (the only one it cannot do without),
+`bio`, `image` and `url`. The image goes through `crawlableImage()` and the url
+through `pbUrl()`, so a `data:` image and a `javascript:` link are dropped while
+the author still resolves. It is not a profile system.
+
+Brand isolation is **structural rather than checked**: `authors` lives in the
+brand's own record, so there is no collection to read but this brand's, and an
+id belonging to another brand simply does not resolve.
+
+### One published-page reader
+
+`CMS.content.pages({ record, type, indexableOnly, exclude })`.
+
+Everything that needs to know what pages exist asks this. There were already
+four partial answers in the codebase — the sitemap's audit, the baker's record
+reader, the admin's link picker, the builder's mount list — each correct for its
+own job and none reusable. This is the reusable one, and the features built on
+it (related content, the hub listing, the admin's checks) do not grow a second.
+
+It takes the record **explicitly**. It does not reach for ambient state, because
+`tools/lib/pbbake.js` shares one engine across every brand a process builds: a
+reader that read whatever was last loaded would publish one brand's pages on
+another's site. The caller that knows which brand it is passes the record; there
+is no default that could be wrong.
+
+What it applies, and each rule is one the rest of the build already applied:
+
+- **published only**, by the same three rules `js/seo-files.js` and
+  `tools/lib/pbbake.js` use. Those are separate implementations for separate
+  runtimes, and `test_content_types.js` holds all three to one table of status
+  values so they stay one rule rather than three opinions;
+- **a flat `.html` file name**, or `''` for the home page — the only shape the
+  generator creates and the sitemap advertises;
+- **noindex dropped** when the caller asks for indexable only, which a listing
+  wants and a link picker does not.
+
+It sorts newest first, undated last, then by key: total and deterministic, so
+two builds of one record produce the same bytes.
+
+### Related content, and the one listing element
+
+`page.related` is a list of page keys an author chose. There is no scoring, no
+recency window and no recommendation: those are ranking algorithms nobody can
+see into.
+
+`relatedPages()` resolves the list through the reader above, so a draft, a
+noindex page, a bad url, a self-link, a duplicate and a key belonging to another
+brand all fall out without it needing an opinion of its own.
+
+**One element lists other pages**, not three. `pageList` has a `source`:
+
+- `related` — the pages chosen for this page;
+- `type` — every published, indexable page of one content type.
+
+A hub, an archive and a related block are this element with a different source.
+`contentType` is deliberately not called `type`: that key already means the
+element's own kind everywhere else, and one name for two things is how a value
+ends up read by the wrong reader.
+
+It renders nothing — no heading, no empty box — when the list resolves to
+nothing, including when there is no render context at all.
+
+### The render context
+
+An element that lists other pages needs the record those pages live in and the
+slug of the page it is drawing. `renderSectionsInto(host, sections, ctx)` takes
+them, exactly as the section tree is already passed for the contents list.
+
+- In a browser, `paintSections()` passes `{ record: load(), slug }`.
+- In a build, `tools/lib/brandkit.js` computes the brand's merged record **once**
+  and passes it to every `renderPage()`, which threads it into the mount bake.
+
+With no context there are no pages and a listing draws nothing. That is the safe
+direction: visibly empty, never somebody else's content.
+
+### Structured data
+
+Extended, never duplicated:
+
+- **`Article`** for `article`, `guide` and `help`. Built from what resolves and
+  nothing else: no headline or no url means no block; an unresolved author means
+  no `author` key; an impossible date means no `datePublished`; `schema.article:
+  false` turns it off. It is emitted **in the body** by the renderer, beside
+  `FAQPage`, for two reasons: it reaches the static HTML of every page type
+  without a template anchor, and a page that is not an article emits nothing
+  rather than an empty `{}` block that would have changed the markup of pages
+  the content model does not touch.
+- **`CollectionPage`** for a hub, as a **subtype substitution inside the
+  existing `ldPage` block** — the same thing the `contactPage` flag has always
+  done. Not a second page-level block beside `WebPage`.
+- **`ItemList`** for a hub's listing, emitted in the body from the rows the
+  listing actually drew, so the markup and the data cannot describe different
+  lists. One per mount: a second listing adds no second block.
+
+`Organization` and `WebSite` were **deliberately left where they are** — on the
+homepage, with `WebPage.isPartOf` referencing the WebSite inline on every other
+page. That is already semantically correct and non-duplicating; adding them to
+every page would duplicate a site-level entity, and would have changed the HTML
+of pages that are already live.
+
+### What the checks say
+
+`validatePage()` gained one function, and it produces **no output at all** for a
+page that uses none of these fields. What it reports is the set of silent
+failures an author cannot see from the page:
+
+- a content type the allow-list does not know, so the page is published as an
+  ordinary page;
+- a `publishedAt` that is not a real date, or one set on a type that publishes
+  none;
+- an author id that resolves to nothing;
+- each related page that was left out, and why — not a page on this brand, a
+  draft, noindex, or an address the build cannot create;
+- a hub with nothing to list yet.
+
+Every one asks the engine's own readers rather than a second copy of their
+rules, so a check cannot disagree with what gets published.
+
+### Deliberately not built
+
+- **No taxonomy.** Categories and tags depend on automatic archives, which the
+  Phase 2C audit deferred. No empty `taxonomy` key was added either: structure
+  nothing consumes is speculation.
+- **No pagination, no nested URLs, no automatic archives.** The flat-URL rule is
+  unchanged; a hub is an ordinary page that lists.
+- **No `HowTo`.** A guide is prose unless its steps are structured data, and
+  inventing that structure from a list would be a claim the content does not
+  make.
+- **No `NewsArticle`, `Review` or `Rating`.** This is not a news publisher, and
+  the other two cannot be honestly populated by the site about itself.
+- **No automatic related content.** Manual only.
+
+### Known limitations
+
+- An `Article` block rides in the page's **mount**, so a page with no published
+  Page Builder content publishes no `Article` even if its type says article. In
+  practice an article's prose *is* its builder content, but a page with only a
+  heading and a lead is the exception.
+- A hub's `updatedAt` does not move when a page it lists changes, so its
+  sitemap `lastmod` describes the hub, not its contents.
+- `indexAreas()` — the publish review sheet — still reads an explicit list of
+  page fields and does not include the five new ones, so a change to only a
+  content type, date, author or related list is not itemised on the sheet. The
+  values still publish; it is the summary that is silent.
+
 ## Tests
 
 `tests/test_pagebuilder.js` — 343 assertions. Style questions are asserted on

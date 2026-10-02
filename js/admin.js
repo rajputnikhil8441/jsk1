@@ -2183,6 +2183,15 @@
         {
             key: 'lead', label: 'Intro / lead text', kind: 'input',
             hint: 'One sentence under the H1.'
+        },
+        /* Phase 2C. Deliberately NOT the meta description: that is a search
+           snippet, and one field serving both would make a change to how this
+           page looks in Google also change every card that links to it. */
+        {
+            key: 'excerpt', label: 'Summary for listings', kind: 'area', rows: 2,
+            hint: 'Shown by a Page list that links here, and used as the Article description. ' +
+                  'Optional.',
+            counter: 200
         }
     ];
 
@@ -2294,6 +2303,10 @@
 
         renderPageEditor();
         showPageTab(activePageTab);
+        /* The authors editor lives in this panel's Settings & SEO area, and
+           what it shows (which pages name whom) is derived from the pages, so
+           it is rebuilt with them rather than once at startup. */
+        buildAuthors();
     }
 
     function wirePageSubtabs() {
@@ -2339,6 +2352,27 @@
         grid.className = 'grid2';
         PAGE_FIELDS.forEach(function (f) { grid.appendChild(pageField(page, f)); });
         head.appendChild(grid);
+
+        /* ---- THE CONTENT MODEL (Phase 2C) ----
+           What kind of page this is, when it was published, who wrote it and
+           which pages it points at. Every one of these is optional and every
+           one is empty on a page nobody has set them on, which is why adding
+           them changed nothing about what the site publishes.
+
+           GUARDED LIKE PUBLICATION ABOVE, AND FOR THE SAME REASON. A page
+           that ships with the site is generated from its own committed
+           template, and those templates carry their own static SEO rather
+           than the baked kind -- so a content type chosen here would reach
+           the page's Article data (which the mount bakes) but NOT its
+           og:type, which the template hardcodes. The served HTML would then
+           call itself an article in one tag and a website in another, and the
+           runtime would repaint og:type so the page a crawler reads and the
+           page a visitor gets would disagree.
+
+           A control that half-works is worse than no control, so the pages
+           with committed templates do not get one. Everything else on this
+           panel is unchanged for them. */
+        if (!(CMS.DEFAULTS.pages || {})[key]) head.appendChild(pageContentModel(key, page));
         host.appendChild(head);
 
         /* ---- the body, READ ONLY ----
@@ -2649,6 +2683,291 @@
        Anything the build does not recognise is treated as a draft rather than
        published by accident, which is why this writes one of two exact
        words. */
+    /* ========================================================
+       THE CONTENT MODEL PANEL (Phase 2C)
+       --------------------------------------------------------
+       Four controls, and each one writes a value the engine already knows how
+       to read. They are deliberately CHOICES rather than free text wherever a
+       free-text box would let an author write something the renderer would
+       then silently drop: the type comes from the engine's own allow-list, the
+       author from the brand's own authors, and the related pages from the
+       brand's own published pages.
+
+       The date is the one text box, because a date picker that writes
+       anything other than YYYY-MM-DD would be worse than typing it; what
+       stops a bad one reaching the page is the engine refusing it, and the
+       checks on Settings & SEO saying so.
+    ======================================================== */
+    /* ========================================================
+       AUTHORS (Phase 2C)
+       --------------------------------------------------------
+       A small editor over `authors` in this brand's own record. It is not a
+       profile system and deliberately holds four fields: a name, which is the
+       only one an author cannot do without, a line of bio, a picture and one
+       address. Anything more would be a social presence nobody asked for.
+
+       The id is the stable handle a page stores, so it is set once when the
+       author is created and never edited afterwards -- renaming is what the
+       name field is for, and it updates every page at once because no page
+       stores a name.
+    ======================================================== */
+    var AUTHOR_FIELDS = [
+        ['name',  'Name', 'The byline, and the Person name in structured data. Required: an ' +
+                          'author with no name does not resolve and publishes nothing.'],
+        ['bio',   'One line about them', 'Optional. Shown only where a design asks for it.'],
+        ['image', 'Picture', 'Optional. A path or https:// address — an uploaded inline ' +
+                             'image cannot be used, because a crawler fetches this.'],
+        ['url',   'Link', 'Optional. A page on this site, or a full https:// address.']
+    ];
+
+    function authorSlugId(name, taken) {
+        var base = slugify(name) || 'author';
+        var id = base, n = 2;
+        while (Object.prototype.hasOwnProperty.call(taken, id)) { id = base + '-' + n; n += 1; }
+        return id;
+    }
+
+    function buildAuthors() {
+        var host = $('#authorsHost');
+        if (!host) return;
+        host.innerHTML = '';
+        var all = CMS.data().authors;
+        if (!all || typeof all !== 'object') { all = CMS.data().authors = {}; }
+        var ids = Object.keys(all).sort();
+        if (!ids.length) {
+            var p = document.createElement('p');
+            p.className = 'hint';
+            p.textContent = 'No authors yet. A page without one publishes no byline, which is ' +
+                            'correct for an ordinary page.';
+            host.appendChild(p);
+            return;
+        }
+        /* How many pages name each author, so removing one says what it costs. */
+        var pages = CMS.data().pages || {};
+        var uses = {};
+        Object.keys(pages).forEach(function (k) {
+            var a = sstr((pages[k] || {}).author);
+            if (a) uses[a] = (uses[a] || 0) + 1;
+        });
+
+        ids.forEach(function (id) {
+            var a = all[id];
+            if (!a || typeof a !== 'object') return;
+            var card = document.createElement('div');
+            card.className = 'card';
+            card.setAttribute('data-author', id);
+
+            var head = document.createElement('div');
+            head.className = 'pb-bar';
+            var code = document.createElement('code');
+            code.textContent = id;
+            head.appendChild(code);
+            var used = document.createElement('small');
+            used.className = 'hint';
+            used.textContent = uses[id]
+                ? uses[id] + (uses[id] === 1 ? ' page names them' : ' pages name them')
+                : 'no page names them';
+            head.appendChild(used);
+            var del = document.createElement('button');
+            del.type = 'button';
+            del.className = 'adm-btn ghost snip';
+            del.innerHTML = '<i class="fas fa-trash"></i> Remove';
+            del.addEventListener('click', function () {
+                if (!confirm(uses[id]
+                    ? 'Remove this author? ' + uses[id] + ' page(s) refer to them, and those ' +
+                      'references will stop resolving — no byline, rather than a broken one.'
+                    : 'Remove this author?')) return;
+                delete CMS.data().authors[id];
+                markDirty();
+                buildAuthors();
+                buildPages();
+                buildSeo();
+            });
+            head.appendChild(del);
+            card.appendChild(head);
+
+            var grid = document.createElement('div');
+            grid.className = 'grid2';
+            AUTHOR_FIELDS.forEach(function (f) {
+                var wrap = document.createElement('label');
+                wrap.className = 'f';
+                var span = document.createElement('span');
+                span.innerHTML = esc(f[1]) + '<br><small style="opacity:.6">' + esc(f[2]) + '</small>';
+                var input = document.createElement('input');
+                input.type = 'text';
+                input.value = a[f[0]] == null ? '' : a[f[0]];
+                input.addEventListener('input', function () {
+                    var v = sstr(input.value);
+                    if (v === '') delete a[f[0]]; else a[f[0]] = v;
+                    markDirty();
+                    paintSeoPreviews();
+                });
+                /* A name change renames the byline everywhere, so the lists
+                   that show it are rebuilt when the field is left. */
+                if (f[0] === 'name') {
+                    input.addEventListener('change', function () { buildAuthors(); buildPages(); buildSeo(); });
+                }
+                wrap.appendChild(span);
+                wrap.appendChild(input);
+                grid.appendChild(wrap);
+            });
+            card.appendChild(grid);
+            host.appendChild(card);
+        });
+    }
+
+    function pageContentModel(key, page) {
+        var card = document.createElement('div');
+        card.className = 'card';
+        var h = document.createElement('h3');
+        h.textContent = 'Content type';
+        card.appendChild(h);
+
+        var note = document.createElement('p');
+        note.className = 'hint';
+        note.textContent = 'Optional. An ordinary page needs none of this: leave it as Page and ' +
+            'nothing below changes what this page publishes.';
+        card.appendChild(note);
+
+        var grid = document.createElement('div');
+        grid.className = 'grid2';
+
+        /* ---- type ---- */
+        var types = (CMS.content && CMS.content.types) || {};
+        var tWrap = document.createElement('label');
+        tWrap.className = 'f';
+        var tSpan = document.createElement('span');
+        tSpan.innerHTML = 'Kind of page<br><small style="opacity:.6">An Article, Guide or Help ' +
+            'page publishes Article data and an <code>og:type</code> of article. A Hub describes ' +
+            'itself as a collection. A Page is what every page was before this existed.</small>';
+        var tSel = document.createElement('select');
+        Object.keys(types).forEach(function (t) {
+            var o = document.createElement('option');
+            o.value = t;
+            o.textContent = types[t].label || t;
+            tSel.appendChild(o);
+        });
+        tSel.value = CMS.content ? CMS.content.type(page) : 'page';
+        tSel.addEventListener('change', function () {
+            /* 'page' is what an empty value already means, so choosing it
+               stores '' rather than a word that means the same thing. */
+            page.type = tSel.value === 'page' ? '' : tSel.value;
+            touchPage(page);
+            buildPages();
+            buildSeo();
+        });
+        tWrap.appendChild(tSpan);
+        tWrap.appendChild(tSel);
+        grid.appendChild(tWrap);
+
+        /* ---- publishedAt ---- */
+        var dWrap = document.createElement('label');
+        dWrap.className = 'f';
+        var dSpan = document.createElement('span');
+        dSpan.innerHTML = 'First published<br><small style="opacity:.6">YYYY-MM-DD. Used only by ' +
+            'the page kinds that are a piece of writing, and left out of the page entirely when ' +
+            'it is empty or not a real date. Nothing fills this in for you.</small>';
+        var dIn = document.createElement('input');
+        dIn.type = 'text';
+        dIn.placeholder = '2026-03-04';
+        dIn.value = page.publishedAt == null ? '' : page.publishedAt;
+        dIn.addEventListener('input', function () {
+            var v = sstr(dIn.value);
+            if (v === '') delete page.publishedAt; else page.publishedAt = v;
+            touchPage(page);
+        });
+        dWrap.appendChild(dSpan);
+        dWrap.appendChild(dIn);
+        grid.appendChild(dWrap);
+
+        /* ---- author ---- */
+        var authors = (CMS.data().authors) || {};
+        var ids = Object.keys(authors).sort();
+        var aWrap = document.createElement('label');
+        aWrap.className = 'f';
+        var aSpan = document.createElement('span');
+        aSpan.innerHTML = 'Author<br><small style="opacity:.6">From the authors on this brand. ' +
+            'A reference to an author that no longer exists publishes no byline at all, rather ' +
+            'than an empty one.</small>';
+        var aSel = document.createElement('select');
+        var none = document.createElement('option');
+        none.value = '';
+        none.textContent = ids.length ? '(nobody)' : '(no authors yet — add one under Authors)';
+        aSel.appendChild(none);
+        ids.forEach(function (id) {
+            var o = document.createElement('option');
+            o.value = id;
+            o.textContent = sstr((authors[id] || {}).name) || id;
+            aSel.appendChild(o);
+        });
+        /* A stored id that is not in the list any more is kept and shown, so
+           saving this panel cannot quietly discard it. */
+        var cur = sstr(page.author);
+        if (cur && ids.indexOf(cur) === -1) {
+            var o2 = document.createElement('option');
+            o2.value = cur;
+            o2.textContent = cur + ' (no such author)';
+            aSel.appendChild(o2);
+        }
+        aSel.value = cur;
+        aSel.addEventListener('change', function () {
+            if (aSel.value === '') delete page.author; else page.author = aSel.value;
+            touchPage(page);
+            buildSeo();
+        });
+        aWrap.appendChild(aSpan);
+        aWrap.appendChild(aSel);
+        grid.appendChild(aWrap);
+        card.appendChild(grid);
+
+        /* ---- related ---- */
+        var rWrap = document.createElement('div');
+        rWrap.className = 'f';
+        var rSpan = document.createElement('span');
+        rSpan.innerHTML = 'Related pages<br><small style="opacity:.6">Chosen, never guessed. ' +
+            'Only this brand’s published, indexable pages are offered; a Page list element ' +
+            'set to “the pages chosen for this page” renders them.</small>';
+        rWrap.appendChild(rSpan);
+        var pool = (CMS.content ? CMS.content.pages({ record: CMS.data(), indexableOnly: true,
+                                                      exclude: key }) : []);
+        if (!pool.length) {
+            var em = document.createElement('p');
+            em.className = 'hint';
+            em.textContent = 'No other published page to link to yet.';
+            rWrap.appendChild(em);
+        } else {
+            var box = document.createElement('div');
+            box.className = 'pb-parts pb-parts-col';
+            var chosen = isArray(page.related) ? page.related.map(sstr) : [];
+            pool.forEach(function (r) {
+                var lab = document.createElement('label');
+                lab.className = 'cb';
+                var cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.checked = chosen.indexOf(r.key) > -1;
+                cb.addEventListener('change', function () {
+                    var list = isArray(page.related) ? page.related.map(sstr) : [];
+                    var at = list.indexOf(r.key);
+                    if (cb.checked && at === -1) list.push(r.key);
+                    if (!cb.checked && at > -1) list.splice(at, 1);
+                    if (list.length) page.related = list; else delete page.related;
+                    touchPage(page);
+                    buildSeo();
+                });
+                lab.appendChild(cb);
+                var t = document.createElement('span');
+                t.textContent = (r.title || r.label) + '  —  ' + (r.url || './');
+                lab.appendChild(t);
+                box.appendChild(lab);
+            });
+            rWrap.appendChild(box);
+        }
+        card.appendChild(rWrap);
+        return card;
+    }
+
+    function isArray(v) { return Object.prototype.toString.call(v) === '[object Array]'; }
+
     function pageStatusField(page) {
         var wrap = document.createElement('label');
         wrap.className = 'f';
@@ -3584,6 +3903,12 @@
             contentChecks(content, pages, ok, warn, bad, p);
         }
 
+        /* ---------- the Phase 2C content model ----------
+           Only the fields this phase activated, and only when they are set:
+           a page that uses none of this must not collect a single new remark,
+           which is what keeps the existing legacy pages clear. */
+        contentChecksFor(key, p, ok, warn, bad);
+
         var ogImg = (p.og && sstr(p.og.image)) || sstr(seoGet('seo.defaultOgImage', ''));
         var twImg = (p.twitter && sstr(p.twitter.image)) || sstr(seoGet('seo.defaultTwitterImage', ''));
         if (isInlineImage(ogImg) || isInlineImage(twImg)) {
@@ -3597,6 +3922,130 @@
         }
 
         return out;
+    }
+
+    /* ========================================================
+       CHECKS FOR THE CONTENT MODEL (Phase 2C)
+       --------------------------------------------------------
+       Each of these answers a question an author cannot answer by looking at
+       the page, because the failure is silent: a type nobody recognises, a
+       date the engine refuses, an author id that resolves to nothing, a
+       related page that is a draft. The engine's own readers are asked -- not
+       a second copy of their rules -- so a check can never disagree with what
+       gets published.
+
+       A page with none of these fields set produces NO output here at all.
+    ======================================================== */
+    function contentChecksFor(key, p, ok, warn, bad) {
+        if (!CMS.content) return;
+        var C = CMS.content;
+        var rawType = sstr(p.type);
+        var type = C.type(p);
+
+        /* A CONTENT TYPE ON A PAGE THAT SHIPS WITH THE SITE.
+           The panel no longer offers one there, so this can only arrive in a
+           hand-edited record -- and it half-applies: the mount bakes the
+           Article data, the committed template keeps its hardcoded og:type.
+           Reported rather than silently honoured, because with no control on
+           the page there is nothing else that would show it. */
+        /* Only for a type that RESOLVES. An unrecognised one became 'page',
+           so nothing half-applies and the check below is the one that
+           describes it; saying "its Article data would say nonsense" there
+           would describe something that does not happen. */
+        if (rawType && type !== 'page' && (CMS.DEFAULTS.pages || {})[key]) {
+            bad('This page ships with the site and has its own template, so a content type ' +
+                'cannot be fully published for it: its Article data would say ' +
+                '<code>' + esc(rawType) + '</code> while its <code>og:type</code> stays ' +
+                '<code>website</code>. Clear the type on this page.');
+        }
+
+        /* A stored type the allow-list does not know silently became 'page',
+           which means no Article data and no article og:type. */
+        if (rawType && rawType.toLowerCase() !== type) {
+            bad('Content type <code>' + esc(rawType) + '</code> is not one this site knows, so ' +
+                'this page is published as an ordinary page. Pick one from the list.');
+        } else if (rawType) {
+            ok('Published as a ' + ((C.types[type] || {}).label || type) + '.');
+        }
+
+        var dated = !!(C.types[type] || {}).dated;
+
+        /* publishedAt: wrong shape, impossible day, or set on a kind of page
+           that never publishes one. */
+        var rawDate = sstr(p.publishedAt);
+        if (rawDate) {
+            if (!C.isoDate(rawDate)) {
+                bad('First published date <code>' + esc(rawDate) + '</code> is not a real ' +
+                    'date in YYYY-MM-DD form, so it is left out of this page entirely.');
+            } else if (!dated) {
+                warn('This page has a first-published date, but a ' +
+                     ((C.types[type] || {}).label || type) + ' does not publish one. Change the ' +
+                     'kind of page, or the date will keep being ignored.');
+            } else {
+                ok('First published ' + esc(rawDate) + ', in the page’s Article data.');
+            }
+        }
+
+        /* author: a reference that resolves to nothing publishes no byline. */
+        var rawAuthor = sstr(p.author);
+        if (rawAuthor) {
+            var a = C.author(p, CMS.data());
+            if (!a) {
+                bad('This page names the author <code>' + esc(rawAuthor) + '</code>, which does ' +
+                    'not resolve to an author with a name. No byline and no author data are ' +
+                    'published — add the author, or clear the field.');
+            } else if (!dated) {
+                warn('This page names an author, but a ' +
+                     ((C.types[type] || {}).label || type) + ' publishes no author data.');
+            } else {
+                ok('Author resolves to ' + esc(a.name) + '.');
+            }
+        }
+
+        /* related: every reference the renderer would drop, and why. */
+        if (isArray(p.related) && p.related.length) {
+            var pages = CMS.data().pages || {};
+            var kept = C.related(p, CMS.data(), key);
+            var keptKeys = {};
+            kept.forEach(function (r) { keptKeys[r.key] = 1; });
+            var seen = {}, dropped = [];
+            p.related.forEach(function (raw) {
+                var k = sstr(raw);
+                if (!k || keptKeys[k]) return;
+                if (seen[k]) return;
+                seen[k] = 1;
+                var t = pages[k];
+                var why = !t ? 'is not a page on this brand'
+                        : k === key ? 'is this page itself'
+                        : !C.isPublished(t) ? 'is a draft, so the build generates no file for it'
+                        : !C.isIndexable(t) ? 'is set to noindex'
+                        : C.fileName(t) === null ? 'has no address this build can create'
+                        : 'cannot be linked to';
+                dropped.push('<code>' + esc(k) + '</code> ' + why);
+            });
+            if (dropped.length) {
+                warn('Related pages left out: ' + dropped.join('; ') + '.');
+            }
+            if (kept.length) {
+                ok(kept.length + ' related page(s) resolve and are published with this page.');
+            } else {
+                warn('None of this page’s related pages resolve, so a Page list set to ' +
+                     '“the pages chosen for this page” renders nothing here.');
+            }
+        }
+
+        /* A hub that lists nothing is a hub with no reason to exist, and an
+           author cannot see it from the page record. */
+        if (type === 'hub') {
+            var hubRows = 0;
+            try {
+                hubRows = C.pages({ record: CMS.data(), indexableOnly: true, exclude: key }).length;
+            } catch (e) { hubRows = 0; }
+            if (!hubRows) {
+                warn('This is a Hub, but there is no other published page for a Page list on ' +
+                     'it to show yet.');
+            }
+        }
     }
 
     function checksHtml(list) {
@@ -3703,6 +4152,22 @@
             }
             if (/(login|register|signup|sign-up)/.test(slug)) {
                 msgs.push({ level: 'warn', msg: 'Pages built around sign-in keywords rarely earn rankings and often read as doorway pages.' });
+            }
+            /* AN ADDRESS THE BUILD WILL NOT CREATE.
+
+               slugify() above puts no limit on length, and the build refuses
+               a file name longer than sixty-one characters before ".html" --
+               so a long page name produced a record the deploy warned about
+               and generated nothing for. Asked of the engine's own reader, so
+               this cannot drift from what the build will do.
+
+               A `bad` message rather than a silent trim: the slug is the
+               author's, and quietly cutting it in half is worse than saying
+               it is too long. The button below disables on `bad`. */
+            if (CMS.content && CMS.content.fileName({ url: slug + '.html' }) === null) {
+                msgs.push({ level: 'bad', msg: 'The address <code>' + esc(slug) + '.html</code> is too long for ' +
+                            'the build to create: the slug is ' + slug.length + ' characters and 61 is the ' +
+                            'most it can be. Shorten it; the page name above can stay as it is.' });
             }
         }
         warn.innerHTML = msgs.length ? checksHtml(msgs) : '';
@@ -3877,6 +4342,22 @@
         if ((b = $('#btnDownloadSitemap'))) b.addEventListener('click', function () { download('sitemap.xml', buildSitemapXml(), 'application/xml'); });
         if ((b = $('#btnCopyRobots')))      b.addEventListener('click', function () { copyText(buildRobotsTxt(), 'robots.txt'); });
         if ((b = $('#btnDownloadRobots')))  b.addEventListener('click', function () { download('robots.txt', buildRobotsTxt()); });
+
+        if ((b = $('#btnAddAuthor'))) b.addEventListener('click', function () {
+            var name = prompt('The author\u2019s name');
+            if (name === null) return;
+            name = sstr(name);
+            if (!name) { toast('An author needs a name.', true); return; }
+            var all = CMS.data().authors;
+            if (!all || typeof all !== 'object') all = CMS.data().authors = {};
+            var id = authorSlugId(name, all);
+            all[id] = { name: name };
+            markDirty();
+            buildAuthors();
+            buildPages();
+            buildSeo();
+            toast('Author added as "' + id + '". Pages refer to them by that id.');
+        });
 
         if ((b = $('#btnCreatePage'))) b.addEventListener('click', function () {
             var slug = slugify(newPageDraft.slug);

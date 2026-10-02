@@ -378,6 +378,12 @@ const cs = (p, sel, prop) => p.$eval(sel, (n, k) => getComputedStyle(n)[k], prop
                        { title: 'Pro', price: '9', f1: 'A feature' }] },
       gallery: { items: [{ src: 'assets/images/favicon.png', alt: 'a', caption: 'c' }] },
       progress: { label: 'Done', value: 60, max: 100 },
+      /* Phase 2C. Same reason as the Phase 2B entries above: a page list with
+         no source that resolves renders nothing, and a role that reaches
+         nothing reads as a role that does not work. 'page' is the type every
+         shipped page record already carries. */
+      pageList: { source: 'type', contentType: 'page', title: 'Other pages',
+                  titleLevel: 'h2', excerpt: true, limit: 4 },
       tabs: { items: [{ label: 'One', text: 'First' }, { label: 'Two', text: 'Second' }] },
       carousel: { items: [{ title: 'A', text: 'one' }, { title: 'B', text: 'two' }] },
       video: { url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', title: 'A video' }

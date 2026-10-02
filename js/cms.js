@@ -1351,6 +1351,293 @@
         el.textContent = ldText(obj);
     }
 
+    /* ========================================================
+       CONTENT TYPES (Phase 2C)
+       --------------------------------------------------------
+       Phase 2C-A put `type` on every page record and nothing read it. This
+       is the reader, and it is an ALLOW-LIST for the same reason every other
+       stored name in this file is: what reaches og:type and @type is the
+       constant stored against the name, never the name itself. A record
+       holding "<script>", "faq" or a word some later version writes resolves
+       to 'page' and publishes exactly what a page published before types
+       existed.
+
+       Case and surrounding space ARE forgiven -- "Article" and " guide " are
+       the type they obviously mean, and this value can be hand-edited in a
+       row. What is not forgiven is a value that is not a string: an array
+       stringifies to its one element, so ['article'] would otherwise have
+       been accepted as an article.
+
+       WHY 'page' AND '' ARE THE SAME THING. Every record written before this
+       existed has type '', and an empty value must mean "an ordinary page"
+       rather than "unknown" -- otherwise activating the field would change
+       what every existing page publishes.
+
+       WHY THERE IS NO 'faq' TYPE. The faq ELEMENT already emits FAQPage from
+       its own content, validated and tested since Phase 2A. A type that also
+       emitted FAQPage would put two of them on one page. A page of questions
+       is an ordinary page carrying an faq element, exactly as before.
+
+       `schema` names the block buildContentSchema() builds, '' for the pages
+       that keep WebPage and nothing more. `dated` says whether a publication
+       date is meaningful for this type at all, which is what stops a date
+       typed onto a contact page from reaching anything.
+    ======================================================== */
+    var PB_CONTENT_TYPES = {
+        page:    { label: 'Page',    og: 'website', schema: '',               dated: false },
+        article: { label: 'Article', og: 'article', schema: 'Article',        dated: true  },
+        guide:   { label: 'Guide',   og: 'article', schema: 'Article',        dated: true  },
+        help:    { label: 'Help',    og: 'article', schema: 'Article',        dated: true  },
+        hub:     { label: 'Hub',     og: 'website', schema: 'CollectionPage', dated: false }
+    };
+
+    /* What a listing element lists. Two sources, because there are two
+       questions an author actually asks: "the pages I chose" and "every page
+       of this kind". Anything else -- scoring, recency windows, popularity --
+       is a ranking algorithm nobody can see into, and is deliberately absent. */
+    var PB_LIST_SOURCES = { related: 1, type: 1 };
+
+    function pageType(page) {
+        var raw = page && page.type;
+        /* A string, or nothing. Without this, String(['article']) is
+           'article' and an array would name a content type. */
+        if (typeof raw !== 'string') return 'page';
+        var want = str(raw).toLowerCase();
+        return pbPick(PB_CONTENT_TYPES, want) ? want : 'page';
+    }
+
+    function pageTypeDef(page) { return PB_CONTENT_TYPES[pageType(page)]; }
+
+    /* og:type. Only the two values Open Graph actually defines for this
+       content: 'article' for something written on a date, 'website' for
+       everything else. Never a bare stored string. */
+    function pageOgType(page) { return pageTypeDef(page).og; }
+
+    /* ========================================================
+       DATES
+       --------------------------------------------------------
+       The sitemap's lastmod has required YYYY-MM-DD since Phase 1, and this
+       is the same shape -- but a regex alone accepts 2026-13-45, and a
+       malformed date in JSON-LD is worse than an absent one. So the calendar
+       is checked too, and anything that is not a real day resolves to '',
+       which every caller below treats as "say nothing".
+    ======================================================== */
+    var ISO_DATE_RE = /^\d{4}-\d\d-\d\d$/;
+
+    function isoDate(v) {
+        var d = str(v);
+        if (!ISO_DATE_RE.test(d)) return '';
+        var parts = d.split('-'), y = +parts[0], m = +parts[1], day = +parts[2];
+        var dt = new Date(Date.UTC(y, m - 1, day));
+        if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 ||
+            dt.getUTCDate() !== day) return '';
+        return d;
+    }
+
+    /* A date only where the type says one is meaningful, so a publishedAt
+       left on a page whose type changed back to 'page' stops being
+       published rather than lingering in the markup. */
+    function pagePublished(page) {
+        return pageTypeDef(page).dated ? isoDate(page && page.publishedAt) : '';
+    }
+
+    function pageModified(page) {
+        return pageTypeDef(page).dated ? isoDate(page && page.updatedAt) : '';
+    }
+
+    /* ========================================================
+       AUTHORS
+       --------------------------------------------------------
+       `pages.<slug>.author` stores an id; `authors` holds the records. This
+       resolves one against the other and returns null for every way that can
+       fail: no id, no collection, no such id, not an object, no name. A
+       reference that does not resolve publishes NOTHING -- no byline, no
+       Person block, no empty markup where a name should be. An author
+       nobody can name is not an author.
+
+       Brand isolation is structural rather than checked: `authors` lives in
+       the brand's own record, so there is no collection to read but this
+       brand's, and a cross-brand id simply does not resolve.
+    ======================================================== */
+    var AUTHOR_MAX = 400;          /* a bio is a line or two, not an essay */
+
+    function authorFrom(all, id) {
+        var key = str(id);
+        if (!key || unsafeKey(key)) return null;
+        if (!all || typeof all !== 'object') return null;
+        if (!Object.prototype.hasOwnProperty.call(all, key)) return null;
+        var a = all[key];
+        if (!a || typeof a !== 'object') return null;
+        var name = str(a.name).slice(0, AUTHOR_MAX);
+        if (!name) return null;
+        var out = { id: key, name: name };
+        var bio = str(a.bio).slice(0, AUTHOR_MAX);
+        if (bio) out.bio = bio;
+        /* Through the same two filters every other address and image in this
+           file goes through: a data: URL is not fetchable by a crawler, and
+           javascript: is not a link. */
+        var img = crawlableImage(a.image);
+        if (img) out.image = img;
+        var url = pbUrl(a.url);
+        if (url) out.url = url;
+        return out;
+    }
+
+    function pageAuthor(page, record) {
+        if (!page) return null;
+        var rec = record || load();
+        return authorFrom(rec && rec.authors, page.author);
+    }
+
+    /* ========================================================
+       ONE PUBLISHED-PAGE READER
+       --------------------------------------------------------
+       Everything in Phase 2C that needs to know what pages exist -- related
+       content, a hub listing, the admin's checks -- asks THIS, and nothing
+       else grows a second opinion. There were already four partial answers
+       in this codebase (the sitemap's audit, the baker's record reader, the
+       admin's link picker, the builder's mount list), each correct for its
+       own job and none reusable. This is the reusable one.
+
+       WHAT IT TAKES. A record, explicitly. It does not reach for ambient
+       state, because the baker shares ONE engine across every brand it
+       builds: a reader that read whatever was last loaded would publish one
+       brand's pages on another's site. The caller that knows which brand it
+       is passes the record; there is no default that could be wrong.
+
+       WHAT IT APPLIES, and each rule is the one the rest of the build
+       already applies:
+         - published only, by the same three rules js/seo-files.js and
+           tools/lib/pbbake.js use (a test holds all three to one table);
+         - a flat .html file name, or '' for the home page, because that is
+           the only shape the generator creates and the sitemap advertises;
+         - noindex pages dropped when the caller asks for indexable only,
+           which is what a listing wants and a link picker does not.
+
+       It is a pure function of its arguments and sorts deterministically,
+       so two builds of one record produce the same bytes.
+    ======================================================== */
+    /* ------------------------------------------------------------
+       THE SAME RULE THE GENERATOR APPLIES, AND NEVER A LOOSER ONE.
+
+       tools/lib/brandkit.js PAGE_NAME_RE decides which files a build will
+       actually create: /^[a-z0-9][a-z0-9-]{0,60}\.html$/ -- sixty-one
+       characters before ".html", and case-SENSITIVE. This is that rule.
+
+       Why it has to be this one and not a kinder one. js/seo-files.js is
+       more permissive (eighty, case-insensitive) and gets away with it
+       because sitemapAudit() is also handed the list of files the build
+       produced, so a url the generator refused is dropped before it reaches
+       the sitemap. The reader below has no such second gate: whatever it
+       returns gets a link in the page and, for a hub, a url in the ItemList.
+       At eighty it published both for a page the build had already refused
+       to generate -- an href to a 404, and structured data asserting that
+       404 exists, while the build's own warning said nothing was
+       advertising it.
+
+       So this is deliberately the STRICTER of the two, and a test pins it
+       to the generator's own regex over a table of addresses: this may
+       accept nothing the generator would reject.
+       ------------------------------------------------------------ */
+    var PAGE_FILE_RE = /^[a-z0-9][a-z0-9-]{0,60}\.html$/;
+
+    /* 'published' | absent | '' => published. Anything else, including a
+       value this version does not recognise, is not. The asymmetry is the
+       point: wrongly hiding a page costs a missing page, wrongly showing one
+       publishes something nobody approved. */
+    function pageIsPublished(page) {
+        var raw = (page && page.status != null) ? str(page.status).toLowerCase() : '';
+        return raw === '' || raw === 'published';
+    }
+
+    /* The file a page becomes, '' for the home page, or null for a url this
+       build would never create. */
+    function pageFileName(page) {
+        var u = str(page && page.url);
+        if (u === '') return '';
+        return PAGE_FILE_RE.test(u) ? u : null;
+    }
+
+    function pageIsIndexable(page) {
+        var r = (page && page.robots) || {};
+        return r.index !== false;
+    }
+
+    function pageSummary(key, page, record) {
+        var file = pageFileName(page);
+        var author = pageAuthor(page, record);
+        return {
+            key: key,
+            type: pageType(page),
+            url: file,
+            /* What an <a href> on a built page says. The home page is './'
+               because that is what every template already writes for it. */
+            href: file === '' ? './' : file,
+            label: str(page.label) || key,
+            title: str(page.title),
+            heading: str(page.heading),
+            excerpt: str(page.excerpt),
+            publishedAt: pagePublished(page),
+            updatedAt: pageModified(page),
+            author: author,
+            indexable: pageIsIndexable(page),
+            inSitemap: page.inSitemap !== false
+        };
+    }
+
+    function publishedPages(opts) {
+        opts = opts || {};
+        var rec = opts.record;
+        var pages = (rec && rec.pages) || {};
+        var want = str(opts.type).toLowerCase();
+        var only = want && pbPick(PB_CONTENT_TYPES, want) ? want : '';
+        var out = [], k;
+        for (k in pages) {
+            if (!Object.prototype.hasOwnProperty.call(pages, k)) continue;
+            if (unsafeKey(k)) continue;
+            var p = pages[k];
+            if (!p || typeof p !== 'object') continue;
+            if (!pageIsPublished(p)) continue;
+            if (pageFileName(p) === null) continue;
+            if (opts.indexableOnly && !pageIsIndexable(p)) continue;
+            if (only && pageType(p) !== only) continue;
+            if (opts.exclude && k === opts.exclude) continue;
+            out.push(pageSummary(k, p, rec));
+        }
+        /* Newest first, undated last, then by key. Total and deterministic:
+           a listing that reordered between two builds of one record would
+           change the HTML without the content changing. */
+        out.sort(function (a, b) {
+            if (a.publishedAt !== b.publishedAt) {
+                if (!a.publishedAt) return 1;
+                if (!b.publishedAt) return -1;
+                return a.publishedAt < b.publishedAt ? 1 : -1;
+            }
+            return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
+        });
+        return out;
+    }
+
+    /* The pages a page's `related` list names, in the order the author put
+       them, through the reader above -- so a draft, a noindex page, a bad
+       url, a cross-brand id and a self-link all fall out without this
+       needing an opinion of its own. */
+    function relatedPages(page, record, selfKey) {
+        if (!page || !isArr(page.related)) return [];
+        var pool = publishedPages({ record: record, indexableOnly: true }), by = {}, i;
+        for (i = 0; i < pool.length; i++) by[pool[i].key] = pool[i];
+        var out = [], seen = {};
+        for (i = 0; i < page.related.length && out.length < 24; i++) {
+            var k = str(page.related[i]);
+            if (!k || k === selfKey) continue;
+            if (Object.prototype.hasOwnProperty.call(seen, k)) continue;
+            if (!Object.prototype.hasOwnProperty.call(by, k)) continue;
+            seen[k] = 1;
+            out.push(by[k]);
+        }
+        return out;
+    }
+
     function buildOrganization() {
         if (get('seo.schema.organization', true) === false) return null;
         var org = (load().seo && load().seo.organization) || {};
@@ -1390,8 +1677,15 @@
         var name = str(page.title) || str(page.heading);
         var url = pageUrl(page);
         if (!name || !url) return null;
+        /* A hub IS a collection of pages, and CollectionPage is a subtype of
+           WebPage -- so the type substitutes into this one block rather than
+           adding a second page-level block beside it. Exactly what the
+           contactPage flag has always done, for the same reason. */
+        var kind = page.schema.contactPage ? 'ContactPage'
+                 : pageType(page) === 'hub' ? 'CollectionPage'
+                 : 'WebPage';
         var out = {
-            '@type': page.schema.contactPage ? 'ContactPage' : 'WebPage',
+            '@type': kind,
             name: name,
             url: url,
             inLanguage: 'en'
@@ -1400,6 +1694,74 @@
         if (d) out.description = d;
         var site = str(get('seo.baseUrl', ''));
         if (site) out.isPartOf = { '@type': 'WebSite', url: site.replace(/\/+$/, '') + '/' };
+        return out;
+    }
+
+    /* ========================================================
+       ARTICLE (Phase 2C)
+       --------------------------------------------------------
+       For the three types that are a piece of writing: article, guide and
+       help. A hub gets CollectionPage above instead, and an ordinary page
+       gets nothing new -- which is why activating all of this changes no
+       existing page's markup.
+
+       WHAT IT REFUSES TO EMIT, and every one of these is a way a field can
+       exist without being usable:
+         - a type that is not one of the three;
+         - schema.article turned off;
+         - no headline, or no resolvable url (the same bar buildWebPage sets);
+         - an author reference that does not resolve -- no Person, rather
+           than a Person with no name;
+         - a date that is not a real calendar day -- absent, rather than
+           malformed;
+         - an image a crawler cannot fetch.
+
+       A block is built from what resolves and from nothing else. There is no
+       placeholder, no invented date and no "unknown author".
+    ======================================================== */
+    var ARTICLE_TYPES = { article: 1, guide: 1, help: 1 };
+    var HEADLINE_MAX = 110;
+
+    function buildArticle(page, record) {
+        if (!page || !page.schema) return null;
+        if (!pbPick(ARTICLE_TYPES, pageType(page))) return null;
+        if (page.schema.article === false) return null;
+
+        var headline = (str(page.title) || str(page.heading)).slice(0, HEADLINE_MAX);
+        var url = pageUrl(page);
+        if (!headline || !url) return null;
+
+        var out = { '@type': 'Article', headline: headline,
+                    mainEntityOfPage: { '@type': 'WebPage', '@id': url },
+                    inLanguage: 'en' };
+
+        var desc = str(page.excerpt) || computeDescription(page);
+        if (desc) out.description = desc;
+
+        var pub = pagePublished(page);
+        var mod = pageModified(page);
+        if (pub) out.datePublished = pub;
+        if (mod) out.dateModified = mod;
+
+        var a = pageAuthor(page, record);
+        if (a) {
+            var person = { '@type': 'Person', name: a.name };
+            if (a.url) person.url = absUrl(a.url);
+            if (a.image) person.image = a.image;
+            out.author = person;
+        }
+
+        var img = crawlableImage(computeOg(page, 'image'));
+        if (img) out.image = img;
+
+        /* The brand's Organization, when the record has one worth stating.
+           Reused rather than rebuilt: one definition of who publishes this. */
+        var org = buildOrganization();
+        if (org) {
+            var pubr = { '@type': 'Organization', name: org.name };
+            if (org.logo) pubr.logo = org.logo;
+            out.publisher = pubr;
+        }
         return out;
     }
 
@@ -1459,7 +1821,14 @@
             ldOrganization: ldContext(buildOrganization()),
             ldWebSite:      ldContext(buildWebSite()),
             ldPage:         ldContext(buildWebPage(page)),
-            ldBreadcrumb:   ldContext(buildBreadcrumb(page, opts))
+            ldBreadcrumb:   ldContext(buildBreadcrumb(page, opts)),
+            /* Phase 2C. null for every page that is not one of the three
+               writing types, which is why writeLd() leaves the element it
+               would occupy carrying {} exactly as the others do when they
+               cannot be built. opts.record lets a build hand over the brand
+               record the author id resolves against; without it the live
+               record is used, which is what a browser wants. */
+            ldArticle:      ldContext(buildArticle(page, opts && opts.record))
         };
     }
 
@@ -1468,6 +1837,11 @@
         writeLd('ldWebSite', blocks.ldWebSite);
         writeLd('ldPage', blocks.ldPage);
         writeLd('ldBreadcrumb', blocks.ldBreadcrumb);
+        /* ldArticle is deliberately NOT written here. The section renderer
+           emits it in the body, beside FAQPage and ItemList, so there is one
+           emitter and no template anchor that could hold a second copy. It
+           stays in schemaBlocks() because that is the DATA, which the admin's
+           checks and the tests read. */
     }
 
     function paintSchema(page) {
@@ -1508,6 +1882,11 @@
         meta('name', 'robots', robotsValue(page));
 
         meta('property', 'og:site_name', get('seo.siteName', ''));
+        /* Phase 2C: from the page's validated content type, never from the
+           stored string. An ordinary page -- and every record whose type is
+           '' -- still says 'website', which is what the templates hardcoded
+           before this existed. */
+        meta('property', 'og:type', pageOgType(page));
         meta('property', 'og:title', computeOg(page, 'title'));
         meta('property', 'og:description', computeOg(page, 'description'));
         meta('property', 'og:url', pageUrl(page));
@@ -1776,7 +2155,14 @@
         carousel:     ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight',
                        'letterSpacing', 'align', 'bg', 'padding', 'margin', 'maxWidth',
                        'gap', 'minWidth', 'border', 'radius', 'shadow'],
-        video:        ['align', 'margin', 'maxWidth', 'gap', 'border', 'radius', 'shadow']
+        video:        ['align', 'margin', 'maxWidth', 'gap', 'border', 'radius', 'shadow'],
+
+        /* Phase 2C. A listing is a grid of cards, so it gets the same
+           grid controls the gallery has plus the typography roles the card
+           types have. Nothing new in the token system. */
+        pageList:     ['typography', 'color', 'fontSize', 'fontWeight', 'lineHeight',
+                       'letterSpacing', 'align', 'bg', 'padding', 'margin', 'maxWidth',
+                       'gap', 'columns', 'minWidth', 'border', 'radius', 'shadow']
     };
 
     /* The keys a SECTION reacts to. Derived from the section token map, so
@@ -1870,7 +2256,20 @@
         progress:     ['label', 'value', 'max', 'showValue'],
         tabs:         ['rich'],
         carousel:     ['autoplay', 'interval', 'captions'],
-        video:        ['url', 'title', 'caption', 'poster']
+        video:        ['url', 'title', 'caption', 'poster'],
+
+        /* ---- Phase 2C ----
+           The ONE listing element. `source` chooses what it lists -- the
+           author's own `related` list, or every published page of one content
+           type -- and everything else is presentation. There is deliberately
+           no second element for related content, for a hub and for an
+           archive: they are this one with a different source.
+
+           `contentType` is NOT called `type`: that key already means the
+           element's own kind everywhere else in this file, and one name for
+           two things is how a value ends up read by the wrong reader. */
+        pageList:     ['source', 'contentType', 'limit', 'title', 'titleLevel',
+                       'excerpt', 'date', 'author', 'schema']
     };
 
     /* Which content keys hold a URL, and which hold a repeating list. */
@@ -1897,7 +2296,12 @@
         /* Phase 2B. The heading inside a testimonial, a stat or a plan is a
            real heading, so its level is an author's choice -- validated
            against the same list every other level is. */
-        headingLevel: function () { return PB_HEADING_LEVELS; }
+        headingLevel: function () { return PB_HEADING_LEVELS; },
+        /* Phase 2C. Both are names, so both are membership tests: a stored
+           source or content type this version does not know is dropped at
+           import and refused at render, never passed through. */
+        source:       function () { return PB_LIST_SOURCES; },
+        contentType:  function () { return PB_CONTENT_TYPES; }
     };
 
     var PB_ALL_LEVELS = { h1: 1, h2: 1, h3: 1, h4: 1, h5: 1, h6: 1 };
@@ -3925,9 +4329,187 @@
                 fig.appendChild(cap);
             }
             return pbId(fig, el);
+        },
+
+        /* ========================================================
+           A LIST OF OTHER PAGES (Phase 2C)
+           --------------------------------------------------------
+           The one element that knows about pages other than its own. Every
+           row it draws came from publishedPages() through pbListResolve(),
+           so a draft, a noindex page, a page whose url this build would not
+           create, and anything belonging to another brand are already gone
+           before this function sees them.
+
+           It renders nothing -- no heading, no empty box -- when the list
+           resolves to nothing. An author who points a listing at a type with
+           no published pages gets silence rather than a hollow section, and a
+           build with no render context (which is to say: a caller that did
+           not say which brand this is) gets the same.
+        ======================================================== */
+        pageList: function (el) {
+            var c = el.content || {};
+            var rows = pbListResolve(c);
+            if (!rows.length) return null;
+
+            var n = pbEl('section', 'pb-el pb-pagelist');
+            var title = str(c.title);
+            var head = null;
+            if (title) {
+                var want = str(c.titleLevel).toLowerCase() || 'h2';
+                var lvl = pbPick(PB_HEADING_LEVELS, want) ? want : 'h2';
+                head = pbEl(lvl, 'pb-pagelist-title');
+                head.textContent = title;
+                n.appendChild(head);
+            }
+
+            var ul = pbEl('ul', 'pb-pagelist-items');
+            for (var i = 0; i < rows.length; i++) {
+                var r = rows[i];
+                var li = pbEl('li', 'pb-pagelist-item');
+                var a = pbEl('a', 'pb-pagelist-link');
+                a.setAttribute('href', r.href);
+                /* The page's own words, in the order a reader needs them:
+                   what it is called, when it was written, who wrote it, what
+                   it is about. Each one only when the author asked for it and
+                   the page actually has it. */
+                var h = pbEl('span', 'pb-pagelist-name');
+                h.textContent = r.title || r.heading || r.label;
+                a.appendChild(h);
+                li.appendChild(a);
+
+                if (c.date === true && r.publishedAt) {
+                    var t = pbEl('time', 'pb-pagelist-date');
+                    t.setAttribute('datetime', r.publishedAt);
+                    t.textContent = r.publishedAt;
+                    li.appendChild(t);
+                }
+                if (c.author === true && r.author) {
+                    var by = pbEl('span', 'pb-pagelist-by');
+                    by.textContent = r.author.name;
+                    li.appendChild(by);
+                }
+                if (c.excerpt === true && r.excerpt) {
+                    var ex = pbEl('p', 'pb-pagelist-excerpt');
+                    ex.textContent = r.excerpt;
+                    li.appendChild(ex);
+                }
+                ul.appendChild(li);
+            }
+            n.appendChild(ul);
+            if (head) {
+                var hid = pbDomId(el, 'pl');
+                head.id = hid;
+                n.setAttribute('aria-labelledby', hid);
+            }
+            return pbId(n, el);
         }
 
     };
+
+    /* ---- what a listing element lists ----
+
+       ONE resolver, called by the renderer above and by the ItemList block
+       below, so the markup a reader sees and the data a crawler reads cannot
+       describe different lists. That is the same reason pbFaqEntries() is
+       shared between the faq element and its FAQPage block.
+
+       The record and the current slug come from the render context, never
+       from ambient state: see renderSectionsInto(). */
+    var PB_LIST_MAX = 24;
+
+    function pbListResolve(content) {
+        var c = content || {};
+        var rec = pbCtxRecord();
+        if (!rec) return [];
+        var slug = pbCtxSlug();
+        var source = pbPick(PB_LIST_SOURCES, str(c.source).toLowerCase()) ? str(c.source).toLowerCase() : '';
+        if (!source) return [];
+
+        var rows;
+        if (source === 'related') {
+            var page = (rec.pages || {})[slug];
+            rows = relatedPages(page, rec, slug);
+        } else {
+            var want = str(c.contentType).toLowerCase();
+            if (!pbPick(PB_CONTENT_TYPES, want)) return [];
+            rows = publishedPages({ record: rec, type: want, indexableOnly: true,
+                                    exclude: slug });
+        }
+        var lim = c.limit;
+        lim = (typeof lim === 'number' && isFinite(lim)) ? Math.floor(lim) : PB_LIST_MAX;
+        if (lim < 1) lim = 1;
+        if (lim > PB_LIST_MAX) lim = PB_LIST_MAX;
+        return rows.slice(0, lim);
+    }
+
+    /* The Article block for the page being rendered, or null. The PAGE comes
+       out of the render context, so it is this brand's record and this page's
+       record rather than ambient state.
+
+       THE INVARIANT buildArticle() RELIES ON. Its description, canonical url
+       and publisher come from the loaded record through computeDescription(),
+       pageUrl() and buildOrganization() -- Phase 1 readers that take no record
+       argument. In a browser the loaded record IS this brand's. In a build,
+       tools/lib/brandkit.js calls pbbake.recordFor() for this brand BEFORE any
+       page renders, which loads that same record, and passes it here as the
+       context; if that call fails it passes no context and this returns null.
+       So the two are the same record whenever a block is built at all. A
+       future caller that renders without establishing the record gets no
+       Article rather than another brand's publisher. */
+    function pbArticleSchema() {
+        var rec = pbCtxRecord();
+        var slug = pbCtxSlug();
+        if (!rec || !slug) return null;
+        var page = (rec.pages || {})[slug];
+        if (!page) return null;
+        return buildArticle(page, rec);
+    }
+
+    /* ONE ItemList per mount, from the first listing that asked for schema,
+       built from the rows that listing actually drew. A second listing adds
+       no second block: two ItemLists on one page describe one page twice. */
+    function pbListSchema(sections) {
+        var found = null;
+        (function walk(list, depth) {
+            if (found || !isArr(list) || depth > 3) return;
+            for (var i = 0; i < list.length && !found; i++) {
+                var el = list[i];
+                if (!el) continue;
+                if (el.type === 'pageList' && (el.content || {}).schema === true) {
+                    var rows = pbListResolve(el.content);
+                    if (rows.length) { found = rows; return; }
+                }
+                var cols = (el.content || {}).columns;
+                if (isArr(cols)) {
+                    for (var j = 0; j < cols.length; j++) walk((cols[j] || {}).elements, depth + 1);
+                }
+            }
+        }(sectionsElements(sections), 0));
+        if (!found) return null;
+        var items = [];
+        for (var i = 0; i < found.length; i++) {
+            var u = absUrl(found[i].url);
+            if (!u) continue;
+            items.push({ '@type': 'ListItem', position: items.length + 1,
+                         name: found[i].title || found[i].heading || found[i].label,
+                         url: u });
+        }
+        if (!items.length) return null;
+        return { '@type': 'ItemList', itemListElement: items };
+    }
+
+    /* Every element in a section array, flattened one level, so the two
+       walkers above and below read the tree the same way. */
+    function sectionsElements(sections) {
+        var out = [];
+        if (!isArr(sections)) return out;
+        for (var i = 0; i < sections.length; i++) {
+            var sec = sections[i];
+            if (!sec || sec.enabled === false || !isArr(sec.elements)) continue;
+            for (var j = 0; j < sec.elements.length; j++) out.push(sec.elements[j]);
+        }
+        return out;
+    }
 
     /* ---- the interaction the two interactive elements need ----
 
@@ -4346,12 +4928,33 @@
        heading is. */
     var pbRenderTree = null;
 
-    function renderSectionsInto(host, sections) {
+    /* ========================================================
+       THE RENDER CONTEXT (Phase 2C)
+       --------------------------------------------------------
+       An element that lists OTHER pages needs the record those pages live in
+       and the slug of the page it is drawing. It must not reach for ambient
+       state: tools/lib/pbbake.js shares ONE engine across every brand a
+       process builds, so an element that read "whatever is loaded" would
+       publish one brand's pages on another's site.
+
+       So the caller that knows which brand and which page this is passes it
+       in, exactly as the tree itself is passed for the contents list. With no
+       context there are no pages, and a listing renders nothing -- visibly
+       empty, never somebody else's content.
+    ======================================================== */
+    var pbRenderCtx = null;
+
+    function pbCtxRecord() { return (pbRenderCtx && pbRenderCtx.record) || null; }
+    function pbCtxSlug() { return str(pbRenderCtx && pbRenderCtx.slug); }
+
+    function renderSectionsInto(host, sections, ctx) {
         pbRenderTree = isArr(sections) ? sections : null;
+        pbRenderCtx = (ctx && typeof ctx === 'object') ? ctx : null;
         try {
             renderSectionsBody(host, sections);
         } finally {
             pbRenderTree = null;
+            pbRenderCtx = null;
         }
     }
 
@@ -4380,6 +4983,30 @@
             ld.setAttribute('data-pb-faq', '1');
             ld.textContent = ldText(faq);
             frag.appendChild(ld);
+        }
+        /* Phase 2C: the Article for a page that is one, in the body for the
+           same reason the FAQPage block is -- it reaches the static HTML of
+           every kind of page without a template needing an anchor, and a page
+           that is not an article emits NOTHING rather than an empty block
+           that would change the markup of pages the content model does not
+           touch. One emitter: writeSchema() deliberately does not write it. */
+        var art = pbArticleSchema();
+        if (art) {
+            var ldA = pbEl('script');
+            ldA.setAttribute('type', 'application/ld+json');
+            ldA.setAttribute('data-pb-article', '1');
+            ldA.textContent = ldText(art);
+            frag.appendChild(ldA);
+        }
+        /* The ItemList a listing earned, built from the rows that listing
+           actually drew. One per mount, never two. */
+        var listLd = pbListSchema(sections);
+        if (listLd) {
+            var ld2 = pbEl('script');
+            ld2.setAttribute('type', 'application/ld+json');
+            ld2.setAttribute('data-pb-list', '1');
+            ld2.textContent = ldText(listLd);
+            frag.appendChild(ld2);
         }
         host.textContent = '';
         host.appendChild(frag);
@@ -4440,7 +5067,10 @@
                 }
                 continue;                             /* leave the static markup alone */
             }
-            renderSectionsInto(host, sections);
+            /* The live record and the slug being painted, so a listing
+               element draws THIS brand's pages. In a browser there is one
+               record and it is this brand's; the build passes its own. */
+            renderSectionsInto(host, sections, { record: load(), slug: slug });
             css += builderCSS(sections);
             painted++;
         }
@@ -5083,6 +5713,124 @@
                                       text: 'Say what you want a reader to do.',
                                       linkText: 'Primary action', href: '#',
                                       linkText2: 'Secondary action', href2: '#' })
+              ])
+          ]; } }
+,
+
+        /* ---- Phase 2C content types ----
+           Four starting points for the four kinds of page the content model
+           knows. They are DATA, like every template above: no new element, no
+           new CSS and no new renderer -- an article template is the elements
+           that already existed, arranged the way an article usually goes.
+
+           None of them states a fact about the site, invents a date or names a
+           person. The content type, the publication date and the author are
+           page SETTINGS, not content, so a template cannot and does not fill
+           them in: that happens in Pages > Settings & SEO. */
+        { id: 'article', name: 'Article', version: PB_TEMPLATE_VERSION,
+          description: 'An introduction, a contents list, two sections and a related list.',
+          sections: function () { return [
+              tSec('text', [
+                  tEl('text', { text: 'One paragraph saying what this article is about and who ' +
+                                      'it is for.' }),
+                  tEl('toc', { title: 'On this page', depth: 'h3' })
+              ]),
+              tSec('text', [
+                  tEl('heading', { text: 'The first thing to say', level: 'h2' }),
+                  tEl('text', { text: 'Replace this with the first part of the article.',
+                                rich: true })
+              ]),
+              tSec('text', [
+                  tEl('heading', { text: 'The second thing to say', level: 'h2' }),
+                  tEl('text', { text: 'And this with the second.', rich: true })
+              ]),
+              tSec('text', [
+                  tEl('pageList', { source: 'related', title: 'Related reading', titleLevel: 'h2',
+                                    limit: 4, excerpt: true })
+              ])
+          ]; } },
+
+        { id: 'guide', name: 'Guide', version: PB_TEMPLATE_VERSION,
+          description: 'An introduction, a contents list, numbered steps, questions and a related list.',
+          sections: function () { return [
+              tSec('text', [
+                  tEl('text', { text: 'What this guide covers, and what a reader will be able to ' +
+                                      'do by the end of it.' }),
+                  tEl('toc', { title: 'On this page', depth: 'h3' })
+              ]),
+              tSec('text', [
+                  tEl('heading', { text: 'Before you start', level: 'h2' }),
+                  tEl('list', { ordered: false, items: [
+                      { text: 'The first thing a reader needs.' },
+                      { text: 'And the second.' }
+                  ] })
+              ]),
+              tSec('text', [
+                  tEl('heading', { text: 'Step by step', level: 'h2' }),
+                  tEl('list', { ordered: true, items: [
+                      { text: 'The first step.' },
+                      { text: 'The second step.' },
+                      { text: 'The third step.' }
+                  ] })
+              ]),
+              tSec('text', [
+                  tEl('heading', { text: 'Questions', level: 'h2' }),
+                  /* The faq element, which already publishes FAQPage data from
+                     its own content. There is no 'faq' content type for the
+                     same reason: one FAQPage per page, from one place. */
+                  tEl('faq', { single: false, items: [
+                      { question: 'A question a reader of this guide would ask?',
+                        answer: 'The answer.' }
+                  ] })
+              ]),
+              tSec('text', [
+                  tEl('pageList', { source: 'related', title: 'Related guides', titleLevel: 'h2',
+                                    limit: 4, excerpt: true })
+              ])
+          ]; } },
+
+        { id: 'hub', name: 'Hub', version: PB_TEMPLATE_VERSION,
+          description: 'An introduction and a list of every published page of one kind.',
+          sections: function () { return [
+              tSec('text', [
+                  tEl('text', { text: 'One paragraph saying what this hub collects and why ' +
+                                      'somebody would start here.' })
+              ]),
+              tSec('text', [
+                  /* A heading of its OWN, not the listing's. A page list draws
+                     nothing until the pages it lists exist, and a hub whose
+                     only heading lived inside the listing would have no
+                     heading at all on the day it was created. */
+                  tEl('heading', { text: 'Guides', level: 'h2' }),
+                  /* schema: true, so this one page publishes the ItemList that
+                     describes what it collects. The renderer emits exactly the
+                     rows it drew, so the two cannot disagree. */
+                  tEl('pageList', { source: 'type', contentType: 'guide',
+                                    limit: 12, excerpt: true, date: true,
+                                    schema: true })
+              ])
+          ]; } },
+
+        { id: 'help', name: 'Help article', version: PB_TEMPLATE_VERSION,
+          description: 'A short answer, the detail behind it, questions and a related list.',
+          sections: function () { return [
+              tSec('text', [
+                  tEl('notice', { variant: 'info', icon: 'question',
+                                  text: 'The short answer, for a reader who only needs that.' })
+              ]),
+              tSec('text', [
+                  tEl('heading', { text: 'In more detail', level: 'h2' }),
+                  tEl('text', { text: 'The longer explanation.', rich: true })
+              ]),
+              tSec('text', [
+                  tEl('heading', { text: 'Related questions', level: 'h2' }),
+                  tEl('faq', { single: true, items: [
+                      { question: 'A related question?', answer: 'The answer.' }
+                  ] })
+              ]),
+              tSec('text', [
+                  tEl('pageList', { source: 'related', title: 'Related help', titleLevel: 'h2',
+                                    limit: 4 })
               ])
           ]; } }
     ];
@@ -6496,6 +7244,35 @@
                treats an image or a relative URL exactly as the tags do. */
             image: crawlableImage,
             absUrl: absUrl
+        },
+
+        /* ========================================================
+           THE CONTENT MODEL (Phase 2C)
+           --------------------------------------------------------
+           One place every caller asks about content types, dates, authors
+           and which pages exist. The admin's checks, the build's SEO and the
+           listing element all read these, and nothing grows a second answer.
+
+           `pages` takes the record explicitly: see publishedPages().
+        ======================================================== */
+        content: {
+            types: PB_CONTENT_TYPES,
+            listSources: PB_LIST_SOURCES,
+            type: pageType,
+            ogType: pageOgType,
+            isoDate: isoDate,
+            publishedAt: pagePublished,
+            modifiedAt: pageModified,
+            author: pageAuthor,
+            authorFrom: authorFrom,
+            isPublished: pageIsPublished,
+            isIndexable: pageIsIndexable,
+            fileName: pageFileName,
+            summary: pageSummary,
+            pages: publishedPages,
+            related: relatedPages,
+            article: buildArticle,
+            itemList: pbListSchema
         },
 
         seoUrlFor: pageUrl,

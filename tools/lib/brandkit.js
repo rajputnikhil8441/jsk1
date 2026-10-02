@@ -479,12 +479,16 @@ const MOUNT_RE = /<div data-cms-sections="([a-z0-9-]+)"\s*>([\s\S]*?)<\/div>/g;
    the engine twice for no reason, so the result is memoised per brand+slug for
    the life of the build. */
 const PB_CACHE = new Map();
-function pbrender(brand, slug, block) {
+/* `ctx` is the render context a listing element needs: the brand record whose
+   pages it may list, and the slug being drawn. The cache key stays as it was
+   because the record is constant for the whole of one build -- what varies per
+   mount is the slug, and that is already in the key. */
+function pbrender(brand, slug, block, ctx) {
     const key = brand.dir + '\u0000' + slug;
     if (PB_CACHE.has(key)) return PB_CACHE.get(key);
     let r;
     try {
-        r = pbbake.render(brand.sharedRoot, block);
+        r = pbbake.render(brand.sharedRoot, block, ctx);
     } catch (e) {
         /* Never emit a page that claims to carry builder content it does not.
            A baker that cannot run is a build failure, not a silent empty div. */
@@ -612,8 +616,17 @@ function seoTokenValues(brand, tags, slug, page) {
         'seo.twittertitle': pick(metaOf(tags, 'twitter:title'), title),
         'seo.twitterdescription': pick(metaOf(tags, 'twitter:description'), desc),
         'seo.imagetags': imageTags,
+        /* Phase 2C. og:type comes from the page's validated content type, so
+           an ordinary page -- and every record whose type is '' -- still bakes
+           the 'website' the template used to hardcode. */
+        'seo.ogtype': pick(metaOf(tags, 'og:type'), 'website'),
         'seo.ldpage': ldJson(tags.jsonLd.ldPage, '    '),
-        'seo.ldbreadcrumb': ldJson(tags.jsonLd.ldBreadcrumb, '    ')
+        'seo.ldbreadcrumb': ldJson(tags.jsonLd.ldBreadcrumb, '    '),
+        /* No seo.ldarticle token: the Article block is emitted IN THE BODY by
+           the renderer, from the record it is already handed -- the same place
+           and the same reason FAQPage and ItemList are. A head anchor would
+           have put an empty {} into every page that is not an article,
+           changing the HTML of pages the content model does not touch. */
     };
 }
 
@@ -626,7 +639,7 @@ function seoTokenValues(brand, tags, slug, page) {
    exactly as before: it is handed nothing, so page.* is not a known token
    there and a committed template that used one would fail loudly rather
    than silently resolving to a blank. */
-function renderPage(templateHtml, brand, where, pageTokens) {
+function renderPage(templateHtml, brand, where, pageTokens, record) {
     const values = Object.assign(tokenValues(brand), pageTokens || {});
     /* Matching is case-insensitive, so the lookup table has to be
        folded too -- otherwise {{brand.siteId}} misses the entry that
@@ -710,7 +723,7 @@ function renderPage(templateHtml, brand, where, pageTokens) {
         /* A published EMPTY canvas is published. It bakes an empty mount,
            which is the same thing the renderer does at runtime: an empty
            page, not a quiet restoration of the shipped copy. */
-        const r = pbrender(brand, slug, block);
+        const r = pbrender(brand, slug, block, { record: record || null, slug: slug });
         baked.push({ slug: slug, sections: block.sections.length, bytes: r.html.length });
         /* data-cms-baked lets the runtime tell "content I baked" from
            "content a visitor's browser drew", which is what makes clearing it
@@ -724,7 +737,8 @@ function renderPage(templateHtml, brand, where, pageTokens) {
        runtime replaces this element's contents wholesale with the value it
        computes from the same array, so baking it cannot double anything. */
     if (baked.length) {
-        const css = baked.map(x => pbrender(brand, x.slug, brand.builder[x.slug]).css).join('');
+        const css = baked.map(x => pbrender(brand, x.slug, brand.builder[x.slug],
+            { record: record || null, slug: x.slug }).css).join('');
         if (css) {
             const tag = '<style id="cmsBuilder">' + css + '</style>';
             if (out.indexOf('</head>') === -1) {
@@ -834,6 +848,42 @@ function planBrand(opts) {
     }
 
     const wanted = brand.pages || available.slice();
+
+    /* ------------------------------------------------------------
+       THE RECORD A VISITOR'S BROWSER WOULD MERGE, FOR THIS BRAND
+       ------------------------------------------------------------
+       This brand's committed layer with its published row over it, on the
+       host this build is actually served from. Built ONCE here, above both
+       page loops, because two things need it and they must not merge their
+       own: the SEO the generic template bakes, and the page set a listing
+       element is allowed to draw from.
+
+       Keyed on the brand directory and environment so the engine cache
+       answers for this brand, and read through tools/lib/pbbake.js, which
+       re-establishes the record on a cache hit -- without that, a second
+       brand built in the same process would hand this one its pages.
+       ------------------------------------------------------------ */
+    /* A MISSING brand.js IS NOT THIS CODE'S ERROR TO RAISE. The refusal that
+       names the file and says what it is for lives further down, after the page
+       templates have been checked, and it is the message an operator needs.
+       Reading the file here would replace it with a bare ENOENT, so this reads
+       it only if it is there and leaves the refusal where it belongs. */
+    const brandJsPath = path.join(brand.dir, 'brand.js');
+    const seoSource = fs.existsSync(brandJsPath) ? {
+        key: brand.dir + '\u0000' + brand.env,
+        brand: pbbake.brandRecord(fs.readFileSync(brandJsPath, 'utf8')),
+        row: (opts.row && typeof opts.row === 'object') ? opts.row : null,
+        baseUrl: 'https://' + brand.domain,
+        noindex: brand.noindex === true
+    } : null;
+    /* A record the engine cannot build is not a reason to fail the whole
+       build: every page below still renders, and a listing with no record
+       draws nothing rather than something wrong. */
+    let liveRecord = null;
+    if (seoSource) {
+        try { liveRecord = pbbake.recordFor(brand.sharedRoot, seoSource); } catch (e) { liveRecord = null; }
+    }
+
     const collector = makeCollector(brand.id);
     /* What the build put into the HTML, per page, so the build can say so and a
        drift between the committed layer and the live row is visible. */
@@ -860,7 +910,7 @@ function planBrand(opts) {
             tpl = fs.readFileSync(safeJoin(path.join(templatesDir, 'pages'), page, 'Template'), 'utf8');
             tplSource = 'templates/pages/' + page;
         }
-        const r = renderPage(tpl, brand, tplSource);
+        const r = renderPage(tpl, brand, tplSource, null, liveRecord);
         r.slotsDeclared.forEach(s => slotsUsed.add(s));
         (r.baked || []).forEach(x => bakedPages.push(x));
         emit(page, r.html, tplSource);
@@ -895,13 +945,6 @@ function planBrand(opts) {
            published row over it, and the host this build is actually
            served from. Keyed on the brand directory and environment, so
            two brands built in one process cannot read each other's. */
-        const seoSource = {
-            key: brand.dir + '\u0000' + brand.env,
-            brand: pbbake.brandRecord(fs.readFileSync(path.join(brand.dir, 'brand.js'), 'utf8')),
-            row: (opts.row && typeof opts.row === 'object') ? opts.row : null,
-            baseUrl: 'https://' + brand.domain,
-            noindex: brand.noindex === true
-        };
         const generic = path.join(templatesDir, CMS_PAGE_TEMPLATE);
         const claimed = new Map();              /* output file -> what emitted it */
         wanted.forEach(p => claimed.set(p, 'templates/pages/' + p));
@@ -978,8 +1021,12 @@ function planBrand(opts) {
                record -- but a crawler that runs no JavaScript now reads the
                same values. A page the engine does not know is left to the
                template's own fallbacks. */
-            const tags = pbbake.seoTags(brand.sharedRoot, seoSource, slug,
-                                        { breadcrumbNav: true }) || EMPTY_TAGS;
+            /* No seoSource means there is no brand.js to merge, which the
+               refusal below reports properly. Until then this behaves as a page
+               the engine cannot resolve: the template's own values, which is
+               what it carried before SEO was baked. */
+            const tags = (seoSource && pbbake.seoTags(brand.sharedRoot, seoSource, slug,
+                                        { breadcrumbNav: true })) || EMPTY_TAGS;
             if (tags === EMPTY_TAGS) {
                 warnings.push('CMS page "' + slug + '" could not be resolved by the CMS engine, so ' +
                     'nothing was computed for it. The page carries the record\'s own values ' +
@@ -990,7 +1037,8 @@ function planBrand(opts) {
             const tplSource = 'templates/' + CMS_PAGE_TEMPLATE;
             const r = renderPage(fs.readFileSync(generic, 'utf8'), brand, tplSource +
                                  ' (CMS page "' + slug + '")',
-                                 Object.assign(pageTokenValues(slug, page), seoTokens));
+                                 Object.assign(pageTokenValues(slug, page), seoTokens),
+                                 liveRecord);
             r.slotsDeclared.forEach(s => slotsUsed.add(s));
             (r.baked || []).forEach(x => bakedPages.push(x));
             emit(file, r.html, tplSource + ' (CMS page "' + slug + '")');
