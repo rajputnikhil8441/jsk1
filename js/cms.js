@@ -1517,7 +1517,29 @@
        It is a pure function of its arguments and sorts deterministically,
        so two builds of one record produce the same bytes.
     ======================================================== */
-    var PAGE_FILE_RE = /^[a-z0-9][a-z0-9-]{0,80}\.html$/i;
+    /* ------------------------------------------------------------
+       THE SAME RULE THE GENERATOR APPLIES, AND NEVER A LOOSER ONE.
+
+       tools/lib/brandkit.js PAGE_NAME_RE decides which files a build will
+       actually create: /^[a-z0-9][a-z0-9-]{0,60}\.html$/ -- sixty-one
+       characters before ".html", and case-SENSITIVE. This is that rule.
+
+       Why it has to be this one and not a kinder one. js/seo-files.js is
+       more permissive (eighty, case-insensitive) and gets away with it
+       because sitemapAudit() is also handed the list of files the build
+       produced, so a url the generator refused is dropped before it reaches
+       the sitemap. The reader below has no such second gate: whatever it
+       returns gets a link in the page and, for a hub, a url in the ItemList.
+       At eighty it published both for a page the build had already refused
+       to generate -- an href to a 404, and structured data asserting that
+       404 exists, while the build's own warning said nothing was
+       advertising it.
+
+       So this is deliberately the STRICTER of the two, and a test pins it
+       to the generator's own regex over a table of addresses: this may
+       accept nothing the generator would reject.
+       ------------------------------------------------------------ */
+    var PAGE_FILE_RE = /^[a-z0-9][a-z0-9-]{0,60}\.html$/;
 
     /* 'published' | absent | '' => published. Anything else, including a
        value this version does not recognise, is not. The asymmetry is the

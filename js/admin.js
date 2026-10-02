@@ -2357,8 +2357,22 @@
            What kind of page this is, when it was published, who wrote it and
            which pages it points at. Every one of these is optional and every
            one is empty on a page nobody has set them on, which is why adding
-           them changed nothing about what the site publishes. */
-        head.appendChild(pageContentModel(key, page));
+           them changed nothing about what the site publishes.
+
+           GUARDED LIKE PUBLICATION ABOVE, AND FOR THE SAME REASON. A page
+           that ships with the site is generated from its own committed
+           template, and those templates carry their own static SEO rather
+           than the baked kind -- so a content type chosen here would reach
+           the page's Article data (which the mount bakes) but NOT its
+           og:type, which the template hardcodes. The served HTML would then
+           call itself an article in one tag and a website in another, and the
+           runtime would repaint og:type so the page a crawler reads and the
+           page a visitor gets would disagree.
+
+           A control that half-works is worse than no control, so the pages
+           with committed templates do not get one. Everything else on this
+           panel is unchanged for them. */
+        if (!(CMS.DEFAULTS.pages || {})[key]) head.appendChild(pageContentModel(key, page));
         host.appendChild(head);
 
         /* ---- the body, READ ONLY ----
@@ -3928,6 +3942,23 @@
         var rawType = sstr(p.type);
         var type = C.type(p);
 
+        /* A CONTENT TYPE ON A PAGE THAT SHIPS WITH THE SITE.
+           The panel no longer offers one there, so this can only arrive in a
+           hand-edited record -- and it half-applies: the mount bakes the
+           Article data, the committed template keeps its hardcoded og:type.
+           Reported rather than silently honoured, because with no control on
+           the page there is nothing else that would show it. */
+        /* Only for a type that RESOLVES. An unrecognised one became 'page',
+           so nothing half-applies and the check below is the one that
+           describes it; saying "its Article data would say nonsense" there
+           would describe something that does not happen. */
+        if (rawType && type !== 'page' && (CMS.DEFAULTS.pages || {})[key]) {
+            bad('This page ships with the site and has its own template, so a content type ' +
+                'cannot be fully published for it: its Article data would say ' +
+                '<code>' + esc(rawType) + '</code> while its <code>og:type</code> stays ' +
+                '<code>website</code>. Clear the type on this page.');
+        }
+
         /* A stored type the allow-list does not know silently became 'page',
            which means no Article data and no article og:type. */
         if (rawType && rawType.toLowerCase() !== type) {
@@ -4121,6 +4152,22 @@
             }
             if (/(login|register|signup|sign-up)/.test(slug)) {
                 msgs.push({ level: 'warn', msg: 'Pages built around sign-in keywords rarely earn rankings and often read as doorway pages.' });
+            }
+            /* AN ADDRESS THE BUILD WILL NOT CREATE.
+
+               slugify() above puts no limit on length, and the build refuses
+               a file name longer than sixty-one characters before ".html" --
+               so a long page name produced a record the deploy warned about
+               and generated nothing for. Asked of the engine's own reader, so
+               this cannot drift from what the build will do.
+
+               A `bad` message rather than a silent trim: the slug is the
+               author's, and quietly cutting it in half is worse than saying
+               it is too long. The button below disables on `bad`. */
+            if (CMS.content && CMS.content.fileName({ url: slug + '.html' }) === null) {
+                msgs.push({ level: 'bad', msg: 'The address <code>' + esc(slug) + '.html</code> is too long for ' +
+                            'the build to create: the slug is ' + slug.length + ' characters and 61 is the ' +
+                            'most it can be. Shorten it; the page name above can stay as it is.' });
             }
         }
         warn.innerHTML = msgs.length ? checksHtml(msgs) : '';

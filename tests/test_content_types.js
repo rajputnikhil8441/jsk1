@@ -268,6 +268,91 @@ console.log('\n===== ONE READER, AND EVERY RULE THE BUILD ALREADY APPLIES ====='
 }
 
 /* ====================================================================
+   4b. THE URL RULE IS THE GENERATOR'S, PINNED TO IT
+   --------------------------------------------------------------------
+   Three layers have an opinion about what a page address may be, and only
+   one of them decides which files exist:
+
+     tools/lib/brandkit.js PAGE_NAME_RE   sixty-one characters, case-SENSITIVE
+     js/seo-files.js       pageFile       eighty, case-insensitive
+     js/cms.js             pageFileName   the reader these listings use
+
+   seo-files is allowed to be kinder because sitemapAudit() is also handed
+   the list of files the build produced, so an address the generator refused
+   never reaches the sitemap. The reader has no second gate: what it returns
+   gets an <a href> in the page and, on a hub, a url in the ItemList. At
+   eighty it advertised a page the build had already refused to generate.
+
+   So the invariant is one-directional and that is what is asserted here:
+   THE READER MAY ACCEPT NOTHING THE GENERATOR WOULD REJECT. The generator's
+   regex is read out of its own source rather than copied, so this cannot
+   drift into agreeing with a stale copy of it.
+   ==================================================================== */
+console.log('\n===== THE READER NEVER ACCEPTS AN ADDRESS THE BUILD WOULD REFUSE =====');
+{
+  /* The generator's own rule, lifted from its source. If brandkit stops
+     declaring it this way the test fails rather than quietly comparing
+     against a literal nobody maintained. */
+  const kitSrc = fs.readFileSync(path.join(ROOT, 'tools', 'lib', 'brandkit.js'), 'utf8');
+  const m = /const PAGE_NAME_RE = (\/\^.*?\/);/.exec(kitSrc);
+  check('the generator still declares PAGE_NAME_RE where this test reads it', !!m,
+    kitSrc.slice(kitSrc.indexOf('PAGE_NAME_RE'), kitSrc.indexOf('PAGE_NAME_RE') + 80));
+  const GEN = m ? eval(m[1]) : null;
+  check('  and it is case-sensitive', !!GEN && !GEN.flags.includes('i'), GEN && GEN.flags);
+
+  const long61 = 'x'.repeat(61);          /* the longest the generator takes */
+  const long62 = 'x'.repeat(62);          /* one over */
+  const REAL   = 'a-very-long-guide-slug-that-an-author-could-easily-type-in-here-ok';
+
+  const ADDRESSES = [
+    '', 'a.html', 'about.html', 'second-page.html', 'a-b-c.html',
+    long61 + '.html', long62 + '.html', REAL + '.html',
+    'About.html', 'ABOUT.HTML', 'about.HTML',
+    'guides/nested.html', '../escape.html', '/root.html',
+    '-leading.html', 'a_b.html', 'a b.html', 'a.htm', 'a.html.html',
+    'a.html?x=1', 'a.html#frag', 'index.html', 'sitemap.html'
+  ];
+
+  const looser = [];
+  for (const u of ADDRESSES) {
+    const reader = C.fileName({ url: u });
+    if (reader === null) continue;              /* refused: nothing to advertise */
+    if (u === '') continue;                     /* the home page, by convention */
+    if (!GEN || !GEN.test(u)) looser.push(u);
+  }
+  check('the reader accepts nothing the generator rejects', looser.length === 0, looser);
+
+  /* Named cases, so a failure says which rule moved rather than only that
+     one did. */
+  check('a 61-character name is accepted by both',
+    C.fileName({ url: long61 + '.html' }) === long61 + '.html' && GEN.test(long61 + '.html'));
+  check('a 62-character name is refused by both',
+    C.fileName({ url: long62 + '.html' }) === null && !GEN.test(long62 + '.html'));
+  check('the 66-character slug that bakes a dead link is refused',
+    C.fileName({ url: REAL + '.html' }) === null, C.fileName({ url: REAL + '.html' }));
+  check('an uppercase name is refused, because the generator refuses it',
+    C.fileName({ url: 'About.html' }) === null && !GEN.test('About.html'));
+  check('a nested address is still refused', C.fileName({ url: 'guides/n.html' }) === null);
+  check('the home page is still the empty name', C.fileName({ url: '' }) === '');
+
+  /* And the reader that feeds the listings must drop such a page outright,
+     because a page with no address the build can create has nothing to link
+     to. Both sources of a listing go through this. */
+  const rec = { pages: {
+    ok:   { url: 'ok.html', title: 'Ok', type: 'guide', status: 'published', robots: { index: true } },
+    toolong: { url: REAL + '.html', title: 'Too long', type: 'guide', status: 'published',
+               robots: { index: true } },
+    upper: { url: 'Upper.html', title: 'Upper', type: 'guide', status: 'published',
+             robots: { index: true } }
+  } };
+  const keys = C.pages({ record: rec, type: 'guide', indexableOnly: true }).map(p => p.key);
+  check('publishedPages() drops a page whose address the build would refuse',
+    JSON.stringify(keys) === JSON.stringify(['ok']), keys);
+  check('  and relatedPages() drops it too, through the same reader',
+    C.related({ related: ['toolong', 'upper', 'ok'] }, rec, 'me').map(p => p.key).join(',') === 'ok');
+}
+
+/* ====================================================================
    5. RELATED CONTENT
    ==================================================================== */
 console.log('\n===== RELATED IS CHOSEN, AND EVERY BAD CHOICE FALLS OUT =====');

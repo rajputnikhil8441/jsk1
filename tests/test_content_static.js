@@ -210,6 +210,88 @@ let aDir = '';
 }
 
 /* ====================================================================
+   1b. A PAGE THE BUILD REFUSES TO GENERATE IS NEVER ADVERTISED
+   --------------------------------------------------------------------
+   The regression this exists for. slugify() in the admin puts no limit on
+   length, and tools/lib/brandkit.js refuses a file name longer than
+   sixty-one characters before ".html" -- it warns and generates nothing.
+   The sitemap already handled that, because sitemapAudit() is handed the
+   list of files the build produced.
+
+   A listing was NOT handled: it read the page set through a looser rule, so
+   a hub baked three <a href>s to a file that did not exist and an ItemList
+   asserting that url existed, while the build's own warning said nothing was
+   advertising it. Everything below reads the generated files.
+   ==================================================================== */
+console.log('\n===== A LISTING CANNOT LINK TO A PAGE THE BUILD DID NOT CREATE =====');
+{
+  const LONG = 'a-very-long-guide-slug-that-an-author-could-easily-type-in-here-ok'; /* 66 */
+  const out = mktmp('long');
+  const row = rowFor('jsk-1.com', 'long.json', d => {
+    d.pages[LONG] = page(LONG, { type: 'guide', publishedAt: '2026-01-01',
+      excerpt: 'Should never be advertised.',
+      builder: pub([ el('L1', 'heading', { text: 'Long', level: 'h2' }) ]) });
+    /* One page the build CAN create, so the listing has something to draw
+       and an empty list cannot be mistaken for the fix working. */
+    d.pages['ok-guide'] = page('ok-guide', { type: 'guide', publishedAt: '2026-02-02',
+      excerpt: 'This one is fine.',
+      builder: pub([ el('L2', 'heading', { text: 'Ok', level: 'h2' }) ]) });
+    d.pages['long-hub'] = page('long-hub', { type: 'hub', related: [LONG, 'ok-guide'],
+      builder: pub([
+        el('L3', 'pageList', { source: 'type', contentType: 'guide', title: 'Guides',
+                               schema: true, limit: 10 }),
+        el('L4', 'pageList', { source: 'related', title: 'Related', limit: 10 }) ]) });
+  });
+  const r = build(['jsk-1.com', '--row', rel(row), '--out', out]);
+  check('the build succeeds and warns about the address it will not create',
+    r.ok && r.out.indexOf('is not a page file name this build can create') > -1,
+    r.out.slice(-500));
+  const dir = path.join(out, fs.readdirSync(out)[0]);
+
+  check('no file was generated for it', !fs.existsSync(path.join(dir, LONG + '.html')));
+  check('  and the page that IS buildable was generated',
+    fs.existsSync(path.join(dir, 'ok-guide.html')));
+
+  const hub = read(path.join(dir, 'long-hub.html'));
+  check('the hub renders a listing at all (so these checks mean something)',
+    /pb-pagelist/.test(hub));
+  check('  and it links to the buildable page', /href="ok-guide\.html"/.test(hub));
+  check('the hub does NOT link to the ungenerated page', hub.indexOf(LONG) === -1,
+    (hub.match(new RegExp('href="' + LONG + '[^"]*"', 'g')) || []).slice(0, 3));
+  check('  not through the type listing, and not through the related one',
+    (hub.match(/href="/g) || []).length > 0 && hub.indexOf(LONG + '.html') === -1);
+
+  const list = ldOf(hub, 'data-pb-list');
+  check('the ItemList exists', !!list && list['@type'] === 'ItemList', list);
+  check('  and advertises only the generated page',
+    list && list.itemListElement.length === 1 &&
+    list.itemListElement[0].url === 'https://jsk-1.com/ok-guide.html',
+    list && list.itemListElement.map(x => x.url));
+  check('  so no ItemList url points at a file that does not exist',
+    list && list.itemListElement.every(x =>
+      fs.existsSync(path.join(dir, x.url.split('/').pop()))),
+    list && list.itemListElement.map(x => x.url));
+
+  /* The sitemap behaved correctly before this fix and must still. */
+  const sm = read(path.join(dir, 'sitemap.xml'));
+  check('the sitemap still excludes the ungenerated page', sm.indexOf(LONG) === -1);
+  check('  and still includes the generated one', sm.indexOf('/ok-guide.html') > -1);
+
+  /* Every baked href on every generated page must resolve to a file that
+     exists. The broad form of the same rule, so a future listing source
+     cannot reintroduce this. */
+  const dead = [];
+  for (const f of walk(dir).filter(x => /\.html$/.test(x) && x.indexOf('admin/') !== 0)) {
+    const h = read(path.join(dir, f));
+    for (const mm of h.matchAll(/href="([a-zA-Z0-9][a-zA-Z0-9._-]*\.html)"/g)) {
+      if (!fs.existsSync(path.join(dir, mm[1]))) dead.push(f + ' -> ' + mm[1]);
+    }
+  }
+  check('no generated page carries an href to a .html file that was not built',
+    dead.length === 0, dead.slice(0, 8));
+}
+
+/* ====================================================================
    2. WHITE LABEL: TWO BRANDS, NOTHING CROSSES
    ==================================================================== */
 console.log('\n===== ONE BRAND\'S CONTENT NEVER REACHES ANOTHER\'S BUILD =====');
