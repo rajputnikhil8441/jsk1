@@ -1811,14 +1811,26 @@
 
     var TAGS_WITHOUT_CATEGORY = 2;   /* how many shared tags stand alone */
 
+    /* A page summary always carries resolved `category`, `tags` and `type`,
+       so every caller inside this file hands over a complete shape. This is
+       also a PUBLIC helper (CMS.content.score), and a caller that hands it
+       something else should get 0 rather than a TypeError: a scorer that
+       throws on a malformed record could take down a whole page render over
+       one bad row. Nothing here changes the score of a real summary --
+       a present tags array is used exactly as before. */
     function taxonScore(self, other) {
-        if (!self || !other) return 0;
+        if (!self || typeof self !== 'object' || !other || typeof other !== 'object') return 0;
         var sameCat = !!(self.category && other.category &&
                          self.category.id === other.category.id);
+        var mineTags = isArr(self.tags) ? self.tags : [];
+        var theirTags = isArr(other.tags) ? other.tags : [];
         var mine = {}, shared = 0, i;
-        for (i = 0; i < self.tags.length; i++) mine[self.tags[i].id] = 1;
-        for (i = 0; i < other.tags.length; i++) {
-            if (Object.prototype.hasOwnProperty.call(mine, other.tags[i].id)) shared += 1;
+        for (i = 0; i < mineTags.length; i++) {
+            if (mineTags[i] && mineTags[i].id) mine[mineTags[i].id] = 1;
+        }
+        for (i = 0; i < theirTags.length; i++) {
+            if (!theirTags[i] || !theirTags[i].id) continue;
+            if (Object.prototype.hasOwnProperty.call(mine, theirTags[i].id)) shared += 1;
         }
         /* The gate, before any arithmetic: a shared year is not a topic. */
         if (!sameCat && shared < TAGS_WITHOUT_CATEGORY) return 0;
@@ -7622,6 +7634,11 @@
                relates to, so nothing grows a second answer. */
             taxonTypes: TAXON_TYPES,
             taxonFrom: taxonFrom,
+            /* The cap pageTags() enforces. Exported so the admin can say what
+               a cap did instead of keeping its own copy of the number --
+               the same reason taxonTypes is exported rather than listed
+               twice. */
+            tagsMax: PAGE_TAGS_MAX,
             category: pageCategory,
             tags: pageTags,
             autoRelated: autoRelatedPages,

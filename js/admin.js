@@ -2845,16 +2845,23 @@
     }
 
     /* How many pages name each entry, so removing one says what it costs. */
+    /* COUNTED IN A PROTOTYPE-FREE MAP, and the slug index below is built in
+       one too. A stored id or slug is arbitrary text, and in a plain object
+       `uses['constructor']` reads back Object.prototype.constructor -- a
+       function. `(fn || 0) + 1` is then string concatenation, so a hand-edited
+       record produced a nonsense use count, and `(bySlug[sl] || []).push(...)`
+       threw outright and stopped the card list rendering. Object.create(null)
+       inherits nothing, so a key is a key. */
     function taxonUses(kind) {
         var pages = CMS.data().pages || {};
-        var uses = {};
+        var uses = Object.create(null);
         Object.keys(pages).forEach(function (k) {
             var p = pages[k] || {};
             if (kind === 'categories') {
                 var c = sstr(p.category);
                 if (c) uses[c] = (uses[c] || 0) + 1;
             } else if (isArray(p.tags)) {
-                var seen = {};
+                var seen = Object.create(null);
                 p.tags.forEach(function (raw) {
                     var t = sstr(raw);
                     if (!t || seen[t]) return;
@@ -2866,10 +2873,35 @@
         return uses;
     }
 
+    /* CAN THE ENGINE EVER RESOLVE THIS ID? Asked by handing the engine's own
+       resolver a one-entry collection, rather than by restating its rules
+       here -- a second copy of "which keys are unsafe" is a second copy that
+       can drift, and this one cannot: whatever taxonFrom() refuses now or
+       later, this refuses too.
+
+       It matters because slugify() keeps letters: "Prototype" becomes the id
+       `prototype` and "Constructor" becomes `constructor`, both of which
+       taxonFrom() rejects through unsafeKey(). Without this, the panel
+       created the entry, listed it on a card and offered it in the select,
+       and no page could ever publish it. (`__proto__` slugifies to `proto`
+       and was always fine.) The probe object is a fresh literal and the
+       assignment makes an OWN property, so nothing is polluted by asking. */
+    function taxonIdResolvable(id) {
+        if (!CMS.content || !CMS.content.taxonFrom) return true;
+        var probe = {};
+        probe[id] = { name: 'probe' };
+        return !!CMS.content.taxonFrom(probe, id);
+    }
+
     function taxonNewId(name, taken) {
         var base = slugify(name) || 'item';
         var id = base, n = 2;
-        while (Object.prototype.hasOwnProperty.call(taken, id)) { id = base + '-' + n; n += 1; }
+        /* An id the engine would refuse is treated exactly like one already
+           taken: the NAME the author typed is kept, and the id gets a
+           suffix. "Prototype" stays "Prototype" and becomes `prototype-2`. */
+        while (Object.prototype.hasOwnProperty.call(taken, id) || !taxonIdResolvable(id)) {
+            id = base + '-' + n; n += 1;
+        }
         return id;
     }
 
@@ -2892,7 +2924,7 @@
         /* Two entries with the same slug are not an error the build cares
            about -- nothing is addressed by slug -- but they are a sign an
            editor duplicated a topic, which IS worth saying. */
-        var bySlug = {};
+        var bySlug = Object.create(null);
         ids.forEach(function (id) {
             var sl = sstr((all[id] || {}).slug).toLowerCase();
             if (sl) (bySlug[sl] = bySlug[sl] || []).push(id);
@@ -4376,17 +4408,49 @@
             }
             if (rawTags.length) {
                 var keptTags = C.tags(p, rec2);
-                var tagOk = {};
+                /* Prototype-free, for the reason taxonUses() gives: a stored
+                   tag id of "constructor" read back as truthy from a plain
+                   object and the tag was silently left unreported. */
+                var tagOk = Object.create(null);
                 keptTags.forEach(function (t) { tagOk[t.id] = 1; });
-                var tagSeen = {}, tagBad = [];
+
+                /* TWO DIFFERENT REASONS A TICKED TAG IS NOT PUBLISHED, and
+                   they need different messages. Before this they shared one:
+                   everything pageTags() did not return was reported as "does
+                   not resolve", so with thirteen tags ticked the thirteenth
+                   was reported as a tag that does not exist. It exists; the
+                   CAP dropped it. That message sent an author looking for a
+                   problem that was not there.
+
+                     - unresolved: no such tag, or a tag with no name. Nothing
+                       will ever publish it, so this is the author's to fix.
+                     - over the cap: a real tag, in order, past the limit
+                       pageTags() enforces. Publishing is working as designed;
+                       the author simply chose more than it will take. */
+                var tagSeen = Object.create(null), tagBad = [], tagOver = [];
                 rawTags.forEach(function (id) {
                     if (tagOk[id] || tagSeen[id]) return;
                     tagSeen[id] = 1;
-                    tagBad.push('<code>' + esc(id) + '</code>');
+                    /* Resolvable but absent from the published set == the cap
+                       took it. Asked of the engine's own resolver, so the two
+                       cannot disagree about which tags are real. */
+                    var t = C.taxonFrom(rec2.tags, id);
+                    if (t) tagOver.push({ id: id, name: t.name });
+                    else tagBad.push('<code>' + esc(id) + '</code>');
                 });
                 if (tagBad.length) {
                     warn('Tags left out because they do not resolve to a tag with a name: ' +
                          tagBad.join(', ') + '.');
+                }
+                if (tagOver.length) {
+                    var capN = C.tagsMax;
+                    warn((keptTags.length + tagOver.length) + ' of this page\u2019s tags resolve, ' +
+                         'and only the first ' + capN + ' are published. ' +
+                         (tagOver.length === 1 ? 'One was dropped: ' : tagOver.length +
+                          ' were dropped: ') + tagOver.map(function (t) {
+                             return '<code>' + esc(t.name) + '</code>';
+                         }).join(', ') + '. Untick ' + tagOver.length +
+                         ' to choose which ' + capN + ' are published.');
                 }
                 if (keptTags.length) {
                     ok(keptTags.length + ' tag(s) published with this page.');

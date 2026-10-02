@@ -620,6 +620,159 @@ const check=(n,c,e)=>{c?(pass++,console.log('  PASS  '+n)):(fail++,fails.push(n)
       /Nothing breaks/.test(dup) && /split it/.test(dup));
   }
 
+  console.log('\n===== THE TAG CAP IS DISCLOSED, AND NOT MISREPORTED =====');
+  {
+    const seed = n => p.evaluate((count) => {
+      const d = window.CMS.data();
+      d.tags = {};
+      for (let i = 1; i <= 20; i++) d.tags['t' + i] = { name: 'Tag ' + i, slug: 't' + i };
+      d.categories = {};
+      const t = d.pages['tax-demo'];
+      t.type = 'article';
+      delete t.category;
+      t.tags = Array.from({ length: count }, (_, i) => 't' + (i + 1));
+    }, n);
+    const dash = async n => {
+      await seed(n);
+      await p.click('.adm-nav-item[data-panel="seo"]'); await p.waitForTimeout(200);
+      await p.click('#seoTabs .pagetab >> nth=1'); await p.waitForTimeout(150);
+      await p.click('#seoTabs .pagetab >> nth=0'); await p.waitForTimeout(450);
+      return p.$eval('#seoDashboard', e => e.textContent);
+    };
+
+    const d12 = await dash(12);
+    check('exactly 12 tags publishes 12 and says nothing about a cap',
+      /12 tag\(s\) published/.test(d12) && !/only the first/.test(d12), d12.slice(0, 400));
+
+    const d13 = await dash(13);
+    check('13 tags warns that only the first 12 are published',
+      /only the first 12 are published/.test(d13), d13.slice(0, 600));
+    check('  and says how many resolve', /13 of this page.s tags resolve/.test(d13));
+    check('  and names the one that was dropped',
+      /One was dropped: ?Tag 13/.test(d13.replace(/\s+/g, ' ')), d13.slice(0, 600));
+    check('  and says how to choose which 12', /Untick 1 to choose which 12/.test(d13));
+    check('  it still reports 12 published', /12 tag\(s\) published/.test(d13));
+    /* The defect this fix exists for: the 13th tag is REAL, and the old
+       message called it a tag that does not resolve. */
+    check('  and does NOT claim the dropped tag fails to resolve',
+      !/do not resolve to a tag with a name/.test(d13), d13.slice(0, 600));
+
+    const d20 = await dash(20);
+    check('20 tags names all 8 dropped tags', /8 were dropped/.test(d20), d20.slice(0, 700));
+    check('  and lists them by name',
+      ['Tag 13', 'Tag 20'].every(n => d20.indexOf(n) > -1), d20.slice(0, 700));
+    check('  and still does not call any of them unresolvable',
+      !/do not resolve to a tag with a name/.test(d20));
+
+    /* Both causes at once must produce BOTH messages, each about the right
+       tags -- the two are no longer one. */
+    await p.evaluate(() => {
+      const t = window.CMS.data().pages['tax-demo'];
+      t.tags = Array.from({ length: 13 }, (_, i) => 't' + (i + 1)).concat(['ghost-tag']);
+    });
+    await p.click('.adm-nav-item[data-panel="seo"]'); await p.waitForTimeout(200);
+    await p.click('#seoTabs .pagetab >> nth=1'); await p.waitForTimeout(150);
+    await p.click('#seoTabs .pagetab >> nth=0'); await p.waitForTimeout(450);
+    const both = await p.$eval('#seoDashboard', e => e.textContent);
+    check('a dangling tag AND an over-cap tag produce two different messages',
+      /do not resolve to a tag with a name/.test(both) &&
+      /only the first 12 are published/.test(both), both.slice(0, 700));
+    check('  the dangling one is named as dangling', /ghost-tag/.test(both));
+    check('  and the capped count ignores the dangling one',
+      /13 of this page.s tags resolve/.test(both), both.slice(0, 700));
+
+    const d1 = await dash(1);
+    check('back at one tag, the cap message is gone', !/only the first/.test(d1));
+  }
+
+  console.log('\n===== A NAME WHOSE ID COULD NEVER RESOLVE IS STILL USABLE =====');
+  {
+    await p.evaluate(() => {
+      const d = window.CMS.data();
+      d.categories = {}; d.tags = {};
+      const t = d.pages['tax-demo'];
+      t.type = 'article'; delete t.category; delete t.tags;
+    });
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(450);
+
+    const answer = v => p.once('dialog', d => v === null ? d.dismiss() : d.accept(v));
+    answer('Prototype');
+    await p.click('#btnAddCategory'); await p.waitForTimeout(350);
+    answer('Constructor');
+    await p.click('#btnAddCategory'); await p.waitForTimeout(350);
+    answer('Cricket');
+    await p.click('#btnAddCategory'); await p.waitForTimeout(350);
+    const cats = await p.evaluate(() => JSON.parse(JSON.stringify(window.CMS.data().categories)));
+    const catIds = Object.keys(cats).sort();
+    check('all three categories were created', catIds.length === 3, cats);
+    check('  "Prototype" did NOT take the id `prototype`', catIds.indexOf('prototype') === -1, catIds);
+    check('  it took `prototype-2` instead', catIds.indexOf('prototype-2') > -1, catIds);
+    check('  "Constructor" took `constructor-2`', catIds.indexOf('constructor-2') > -1, catIds);
+    check('  and neither reserved key is an own property of the collection',
+      !Object.prototype.hasOwnProperty.call(cats, 'constructor') &&
+      !Object.prototype.hasOwnProperty.call(cats, 'prototype'), catIds);
+    check('  the NAMES the author typed are kept exactly',
+      (cats['prototype-2'] || {}).name === 'Prototype' &&
+      (cats['constructor-2'] || {}).name === 'Constructor', cats);
+    check('  an ordinary name is unaffected', catIds.indexOf('cricket') > -1, catIds);
+
+    /* The point of the fix: these ids now RESOLVE, so a page can publish them. */
+    const resolves = await p.evaluate(() => {
+      const d = window.CMS.data();
+      return ['prototype-2', 'constructor-2', 'cricket'].map(id => {
+        const r = window.CMS.content.taxonFrom(d.categories, id);
+        return r ? r.name : null;
+      });
+    });
+    check('every created category id resolves through the engine',
+      JSON.stringify(resolves) === JSON.stringify(['Prototype', 'Constructor', 'Cricket']), resolves);
+
+    /* And end to end: assign it to a page and see the checks accept it. */
+    await p.evaluate(() => { window.CMS.data().pages['tax-demo'].category = 'prototype-2'; });
+    await p.click('.adm-nav-item[data-panel="seo"]'); await p.waitForTimeout(200);
+    await p.click('#seoTabs .pagetab >> nth=1'); await p.waitForTimeout(150);
+    await p.click('#seoTabs .pagetab >> nth=0'); await p.waitForTimeout(450);
+    const dash = await p.$eval('#seoDashboard', e => e.textContent);
+    check('a page using it is reported as resolving, not dangling',
+      /Category resolves to Prototype/.test(dash), dash.slice(0, 400));
+
+    /* A tag goes down the same path. */
+    await p.click('.adm-nav-item[data-panel="pages"]'); await p.waitForTimeout(400);
+    answer('Prototype');
+    await p.click('#btnAddTag'); await p.waitForTimeout(350);
+    const tagIds = Object.keys(await p.evaluate(() => window.CMS.data().tags));
+    check('a TAG named "Prototype" gets the same treatment',
+      tagIds.indexOf('prototype-2') > -1 && tagIds.indexOf('prototype') === -1, tagIds);
+
+    /* A SLUG is still slugify(name), so "Constructor" yields the slug
+       `constructor` even though the id is `constructor-2`. The card list
+       indexes entries BY SLUG to spot duplicates, and in a plain object that
+       key read back as Object.prototype.constructor -- a function -- so
+       .push threw and the whole list stopped rendering. */
+    const cardIds = await p.$$eval('#categoriesHost .card', els =>
+      els.map(e => e.getAttribute('data-taxon')));
+    check('a category whose SLUG is a reserved word still renders its card',
+      cardIds.length === 3, cardIds);
+    check('  including the one slugged "constructor"',
+      cardIds.indexOf('categories:constructor-2') > -1, cardIds);
+    const counts = await p.$$eval('#categoriesHost .card .hint', els =>
+      els.map(e => e.textContent.trim()));
+    check('  and its use count is a real count, not a stringified function',
+      counts.every(t => /^(no page uses it|\d+ pages? uses? it|\d+ page uses it)$/.test(t)),
+      counts);
+    check('  the page using prototype-2 is counted as exactly one',
+      counts.indexOf('1 page uses it') > -1, counts);
+
+    /* Nothing was polluted by minting any of those ids. */
+    const clean = await p.evaluate(() => ({
+      protoName: ({}).name === undefined,
+      protoHasName: 'name' in Object.prototype,
+      objIsClean: JSON.stringify({}) === '{}'
+    }));
+    check('Object.prototype was not polluted by the probe',
+      clean.protoName && !clean.protoHasName && clean.objIsClean, clean);
+  }
+
   check('no admin console errors after the content-model checks', errs.length === 0, errs);
 
   console.log(`\n==== ${pass} passed, ${fail} failed ====`);

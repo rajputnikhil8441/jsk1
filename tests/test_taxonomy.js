@@ -554,7 +554,175 @@ console.log('\n===== A CATEGORY NAME IS TEXT, AND ONLY EVER TEXT =====');
 }
 
 /* ====================================================================
-   13. THE ADMIN AND THE BUILDER AGREE WITH THE ENGINE
+   13. THE TAG CAP IS A NUMBER THE ADMIN CAN ASK FOR
+   ==================================================================== */
+console.log('\n===== THE CAP IS ONE NUMBER, AND IT IS EXACTLY TWELVE =====');
+{
+  check('the cap is exported so nothing keeps a second copy of it',
+    C.tagsMax === 12, C.tagsMax);
+
+  const tags = {};
+  for (let i = 1; i <= 25; i++) tags['t' + i] = { name: 'Tag ' + i, slug: 't' + i };
+  const rec = { tags: tags, categories: {}, pages: {} };
+  const take = n => C.tags(page('p', { type: 'article',
+    tags: Array.from({ length: n }, (_, i) => 't' + (i + 1)) }), rec);
+
+  /* The boundary, from both sides. */
+  check('eleven tags publish eleven', take(11).length === 11);
+  check('exactly twelve publish twelve -- the cap is not off by one',
+    take(12).length === 12, take(12).length);
+  check('  and all twelve are the ones chosen, in order',
+    ids(take(12)).join() === Array.from({ length: 12 }, (_, i) => 't' + (i + 1)).join());
+  check('thirteen publish twelve', take(13).length === 12, take(13).length);
+  check('  and the one dropped is the THIRTEENTH, not an arbitrary one',
+    ids(take(13)).indexOf('t13') === -1 && ids(take(13)).indexOf('t12') === 11);
+  check('twenty-five publish twelve', take(25).length === 12);
+  check('  the cap applies to RESOLVING tags, so junk does not use up the budget',
+    C.tags(page('p', { type: 'article',
+      tags: ['nope1', 'nope2'].concat(Array.from({ length: 12 }, (_, i) => 't' + (i + 1))) }),
+      rec).length === 12);
+
+  /* The dropped ones resolve perfectly well. This is the fact the admin's
+     message now has to tell an author, and the fact the old message got
+     wrong by calling them unresolvable. */
+  const over = Object.keys(tags).slice(12);
+  check('a tag the cap dropped still RESOLVES -- it is real, just not published',
+    over.every(id => !!C.taxonFrom(tags, id)), over.slice(0, 3));
+
+  /* Structured data is capped by the same reader, so it cannot disagree. */
+  const art = (function () {
+    const p13 = page('p', { type: 'article',
+      tags: Array.from({ length: 13 }, (_, i) => 't' + (i + 1)) });
+    const r = { seo: { baseUrl: 'https://example.test', siteName: 'Example' },
+                tags: tags, categories: {}, pages: { p: p13 } };
+    CMS.replace(r);
+    return C.article(p13, r);
+  })();
+  check('Article keywords carries twelve names, not thirteen',
+    art.keywords.split(', ').length === 12, art.keywords.split(', ').length);
+}
+
+/* ====================================================================
+   14. A MALFORMED ARGUMENT TO THE PUBLIC SCORER RETURNS 0
+   ==================================================================== */
+console.log('\n===== A SCORER THAT THROWS COULD TAKE DOWN A PAGE RENDER =====');
+{
+  const bad = [
+    ['two empty objects', {}, {}],
+    ['null and an object', null, {}],
+    ['an object and null', {}, null],
+    ['no tags key at all', { category: null, type: 'article' }, { category: null, type: 'article' }],
+    ['tags that is a string', { tags: 'ipl', type: 'article' }, { tags: 'ipl', type: 'article' }],
+    ['tags that is a number', { tags: 3, type: 'article' }, { tags: 3, type: 'article' }],
+    ['tags holding nulls', { tags: [null, undefined], type: 'article' },
+                           { tags: [null, undefined], type: 'article' }],
+    ['tags holding strings', { tags: ['ipl'], type: 'article' }, { tags: ['ipl'], type: 'article' }],
+    ['plain strings', 'a', 'b'],
+    ['numbers', 1, 2],
+    ['arrays', [], []],
+    ['undefined', undefined, undefined]
+  ];
+  for (const [label, a, b] of bad) {
+    let got, threw = null;
+    try { got = C.score(a, b); } catch (e) { threw = e.constructor.name + ': ' + e.message; }
+    check('score(' + label + ') returns 0 instead of throwing',
+      threw === null && got === 0, threw !== null ? threw : got);
+  }
+
+  /* And the valid cases are untouched: the same table section 6 pins, built
+     by hand here so a change to the guard cannot quietly change a score. */
+  const S = (cat, tagIds, type) => ({ category: cat ? { id: cat } : null,
+    tags: tagIds.map(id => ({ id: id })), type: type });
+  check('same category + 1 shared tag + same type is still 5',
+    C.score(S('c', ['t1'], 'article'), S('c', ['t1', 't2'], 'article')) === 5);
+  check('same category + 0 shared tags + same type is still 4',
+    C.score(S('c', [], 'article'), S('c', ['t9'], 'article')) === 4);
+  check('one shared tag and no shared category is still 0',
+    C.score(S('c1', ['y'], 'article'), S('c2', ['y', 'f'], 'article')) === 0);
+  check('two shared tags and no category is still 2',
+    C.score(S(null, ['a', 'b'], 'article'), S(null, ['a', 'b'], 'guide')) === 2);
+  check('same type alone is still 0',
+    C.score(S(null, ['x'], 'article'), S(null, ['y'], 'article')) === 0);
+  check('a tags array present but empty on both sides is still 0',
+    C.score(S(null, [], 'article'), S(null, [], 'article')) === 0);
+}
+
+/* ====================================================================
+   15. AN ID THE ENGINE WOULD REFUSE IS NEVER MINTED
+   ==================================================================== */
+console.log('\n===== THE ADMIN CANNOT CREATE A TOPIC NO PAGE COULD USE =====');
+{
+  /* The admin's own two functions, read out of js/admin.js and run here --
+     the browser suite exercises them through the real button; this pins the
+     rule itself over a table of hostile names. */
+  const adminSrc = fs.readFileSync(path.join(ROOT, 'js', 'admin.js'), 'utf8');
+  const slugify = v => String(v || '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const taxonIdResolvable = id => {
+    const probe = {}; probe[id] = { name: 'probe' };
+    return !!C.taxonFrom(probe, id);
+  };
+  const taxonNewId = (name, taken) => {
+    const base = slugify(name) || 'item';
+    let id = base, n = 2;
+    while (Object.prototype.hasOwnProperty.call(taken, id) || !taxonIdResolvable(id)) {
+      id = base + '-' + n; n += 1;
+    }
+    return id;
+  };
+
+  check('the admin asks the engine\u2019s own resolver rather than restating its rules',
+    /taxonIdResolvable/.test(adminSrc) && /CMS\.content\.taxonFrom\(probe, id\)/.test(adminSrc));
+  check('  and the id loop consults it',
+    /!taxonIdResolvable\(id\)/.test(adminSrc));
+
+  const hostile = ['Constructor', 'constructor', 'CONSTRUCTOR', 'Prototype', 'prototype',
+                   '__proto__', 'toString', 'valueOf', 'hasOwnProperty', 'isPrototypeOf'];
+  for (const name of hostile) {
+    const id = taxonNewId(name, {});
+    check('a taxonomy named ' + JSON.stringify(name) + ' gets the usable id ' +
+      JSON.stringify(id), taxonIdResolvable(id), id);
+    check('  and that id is not a reserved key',
+      id !== '__proto__' && id !== 'constructor' && id !== 'prototype', id);
+  }
+  check('"Constructor" specifically becomes constructor-2, keeping the name',
+    taxonNewId('Constructor', {}) === 'constructor-2', taxonNewId('Constructor', {}));
+  check('"Prototype" specifically becomes prototype-2',
+    taxonNewId('Prototype', {}) === 'prototype-2', taxonNewId('Prototype', {}));
+  check('"__proto__" still slugifies to the harmless "proto" it always did',
+    taxonNewId('__proto__', {}) === 'proto', taxonNewId('__proto__', {}));
+
+  /* Ordinary names are untouched -- the guard must not have moved them. */
+  const ordinary = { 'Cricket': 'cricket', 'Cricket News': 'cricket-news',
+                     'IPL 2026': 'ipl-2026', 'Payments & Fees': 'payments-fees',
+                     '2026': '2026', 'Help': 'help' };
+  for (const name of Object.keys(ordinary)) {
+    check('an ordinary name ' + JSON.stringify(name) + ' still gets ' +
+      JSON.stringify(ordinary[name]), taxonNewId(name, {}) === ordinary[name],
+      taxonNewId(name, {}));
+  }
+  check('a collision still appends a suffix as before',
+    taxonNewId('Cricket', { cricket: 1 }) === 'cricket-2');
+  check('  and keeps counting', taxonNewId('Cricket', { cricket: 1, 'cricket-2': 1 }) === 'cricket-3');
+  check('an unslugifiable name still falls back to "item"',
+    taxonNewId('!!!', {}) === 'item');
+
+  /* NOTHING WAS POLLUTED BY ASKING. The probe assigns the candidate id on a
+     fresh object literal, so a reserved name must not have reached
+     Object.prototype or any shared object. */
+  check('Object.prototype gained no name property', !('name' in Object.prototype));
+  check('  and no probe leaked onto it', ({}).name === undefined);
+  check('  a fresh object is still clean', JSON.stringify({}) === '{}');
+  const after = taxonFromProbeEffect();
+  check('  and a real collection still resolves normally afterwards', after === 'Cricket', after);
+  function taxonFromProbeEffect() {
+    const r = C.taxonFrom({ cricket: { name: 'Cricket', slug: 'cricket' } }, 'cricket');
+    return r && r.name;
+  }
+}
+
+/* ====================================================================
+   16. THE ADMIN AND THE BUILDER AGREE WITH THE ENGINE
    ==================================================================== */
 console.log('\n===== ONE LIST OF TAXONOMY TYPES, NOT THREE =====');
 {

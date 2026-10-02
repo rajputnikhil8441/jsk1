@@ -275,13 +275,44 @@ console.log('\n===== A TAXONOMY ADDS TOPICS, NOT URLS =====');
     JSON.stringify(a) === JSON.stringify(b),
     a.filter(f => b.indexOf(f) === -1).concat(b.filter(f => a.indexOf(f) === -1)));
 
-  const sm = read(path.join(withDir, 'sitemap.xml'));
-  const smNo = read(path.join(noDir, 'sitemap.xml'));
+  /* read() returns '' for a file that is not there, so an absent-url
+     assertion over an absent sitemap would pass for the wrong reason. Both
+     files are asserted to EXIST and to have real content first; only then do
+     the comparisons below mean anything. */
+  const smPath = path.join(withDir, 'sitemap.xml');
+  const rbPath = path.join(withDir, 'robots.txt');
+  check('the taxonomy build wrote a sitemap.xml', fs.existsSync(smPath));
+  check('  and the bare build wrote one too', fs.existsSync(path.join(noDir, 'sitemap.xml')));
+  check('the taxonomy build wrote a robots.txt', fs.existsSync(rbPath));
+  check('  and the bare build wrote one too', fs.existsSync(path.join(noDir, 'robots.txt')));
+
+  const sm = read(smPath);
+  const smNo = read(noDir + path.sep + 'sitemap.xml');
+  const smUrls = (sm.match(/<loc>([^<]*)<\/loc>/g) || []).map(x => x.replace(/<\/?loc>/g, ''));
+  check('  the sitemap has real urls in it, so the assertions below mean something',
+    smUrls.length > 0, smUrls);
+  check('  including the two content pages this build generated',
+    smUrls.some(u => /\/u-a\.html$/.test(u)) && smUrls.some(u => /\/u-b\.html$/.test(u)), smUrls);
+
   check('the sitemap is byte-identical with and without taxonomy', sm === smNo);
-  check('  and contains no category url', sm.indexOf('/category') === -1);
-  check('  and no tag url', sm.indexOf('/tag') === -1 && sm.indexOf('cricket') === -1);
-  check('robots.txt is byte-identical too',
-    read(path.join(withDir, 'robots.txt')) === read(path.join(noDir, 'robots.txt')));
+  check('  and every url in it is a flat .html address or the home page',
+    smUrls.every(u => /^https?:\/\/[^/]+\/([a-z0-9][a-z0-9-]*\.html)?$/.test(u)), smUrls);
+  check('  no url is a category url', !smUrls.some(u => /\/category/i.test(u)), smUrls);
+  check('  no url is a tag url', !smUrls.some(u => /\/tags?\//i.test(u)), smUrls);
+  check('  and no taxonomy NAME or SLUG appears anywhere in it',
+    sm.indexOf('cricket') === -1 && sm.indexOf('Cricket') === -1 &&
+    sm.indexOf('ipl') === -1 && sm.indexOf('IPL') === -1, smUrls);
+  /* The count is the real no-explosion claim: a taxonomy with a category and
+     a tag on both pages added not one url. */
+  check('  and the url COUNT is the same with and without taxonomy',
+    smUrls.length === (smNo.match(/<loc>/g) || []).length, smUrls.length);
+
+  const rb = read(rbPath);
+  const rbNo = read(noDir + path.sep + 'robots.txt');
+  check('robots.txt has real content', rb.length > 0 && /sitemap:/i.test(rb), rb.slice(0, 200));
+  check('  and is byte-identical with and without taxonomy', rb === rbNo);
+  check('  and disallows nothing new for a taxonomy that has no urls',
+    rb.indexOf('category') === -1 && rb.indexOf('/tag') === -1, rb.slice(0, 300));
 
   /* The element is in the four content templates. On a page with no
      category and no tags it must draw NOTHING, so adding it to a template
