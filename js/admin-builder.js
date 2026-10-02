@@ -1642,7 +1642,9 @@ window.PBAdmin = function (host) {
            related list, or every published page of one content type. There is
            deliberately no separate "related", "hub" or "archive" element:
            they are this one with a different source. */
-        ['pageList',     'Page list']
+        ['pageList',     'Page list'],
+        /* Phase 2F. This page's own category and tags, as text. */
+        ['taxonomy',     'Category and tags']
     ];
 
     /* Choice lists come from the renderer's own allow-lists, so the admin
@@ -1755,7 +1757,17 @@ window.PBAdmin = function (host) {
                        ['excerpt', 'Show each page\u2019s summary', 'bool'],
                        ['date', 'Show the publication date', 'bool'],
                        ['author', 'Show the author', 'bool'],
-                       ['schema', 'Describe this list for search engines (ItemList)', 'bool']]
+                       ['schema', 'Describe this list for search engines (ItemList)', 'bool'],
+                       /* Phase 2F. Off by default, so a listing saved before
+                          this existed shows exactly what its author chose. */
+                       ['autoFill', 'Fill the rest automatically (same category or shared tags)', 'bool']],
+
+        /* Phase 2F. Labels only: what is shown comes from the page's own
+           category and tags, and there is nothing to configure about that. */
+        taxonomy:     [['categoryLabel', 'Word before the category', 'text'],
+                       ['tagsLabel', 'Word before the tags', 'text'],
+                       ['showCategory', 'Show the category', 'bool'],
+                       ['showTags', 'Show the tags', 'bool']]
     };
 
     /* Repeating sub-items: which element types have them, what one blank
@@ -3517,7 +3529,12 @@ window.PBAdmin = function (host) {
         pageList: function () {
             return { source: 'related', contentType: 'article', title: 'Related',
                      titleLevel: 'h2', limit: 6, excerpt: true, date: false,
-                     author: false, schema: false };
+                     author: false, schema: false, autoFill: true };
+        },
+        /* Both on: an element added to show taxonomy should show it. */
+        taxonomy: function () {
+            return { categoryLabel: 'Category', tagsLabel: 'Tags',
+                     showCategory: true, showTags: true };
         }
     };
 

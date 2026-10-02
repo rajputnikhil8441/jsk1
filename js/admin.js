@@ -2305,8 +2305,10 @@
         showPageTab(activePageTab);
         /* The authors editor lives in this panel's Settings & SEO area, and
            what it shows (which pages name whom) is derived from the pages, so
-           it is rebuilt with them rather than once at startup. */
+           it is rebuilt with them rather than once at startup. The category and
+           tag editors live beside it and show the same derived counts. */
         buildAuthors();
+        refreshTaxonomy();
     }
 
     function wirePageSubtabs() {
@@ -2816,6 +2818,178 @@
         });
     }
 
+    /* ========================================================
+       CATEGORIES AND TAGS (Phase 2F)
+       --------------------------------------------------------
+       One editor, driven twice: the two collections differ only in their
+       label and in whether a description is worth offering, so there is one
+       function rather than two that drift apart.
+
+       The id is the stable handle a page stores, so it is set once when the
+       entry is created and never edited afterwards -- renaming is what the
+       name field is for, and it updates every page at once because no page
+       stores a name. The slug is derived from the name and editable, and it
+       is NOT a URL: nothing generates a page for it.
+    ======================================================== */
+    var TAXON_KINDS = {
+        categories: { one: 'category', many: 'categories', host: '#categoriesHost',
+                      describable: true },
+        tags:       { one: 'tag', many: 'tags', host: '#tagsHost',
+                      describable: false }
+    };
+
+    function taxonStore(kind) {
+        var d = CMS.data();
+        if (!d[kind] || typeof d[kind] !== 'object') d[kind] = {};
+        return d[kind];
+    }
+
+    /* How many pages name each entry, so removing one says what it costs. */
+    function taxonUses(kind) {
+        var pages = CMS.data().pages || {};
+        var uses = {};
+        Object.keys(pages).forEach(function (k) {
+            var p = pages[k] || {};
+            if (kind === 'categories') {
+                var c = sstr(p.category);
+                if (c) uses[c] = (uses[c] || 0) + 1;
+            } else if (isArray(p.tags)) {
+                var seen = {};
+                p.tags.forEach(function (raw) {
+                    var t = sstr(raw);
+                    if (!t || seen[t]) return;
+                    seen[t] = 1;
+                    uses[t] = (uses[t] || 0) + 1;
+                });
+            }
+        });
+        return uses;
+    }
+
+    function taxonNewId(name, taken) {
+        var base = slugify(name) || 'item';
+        var id = base, n = 2;
+        while (Object.prototype.hasOwnProperty.call(taken, id)) { id = base + '-' + n; n += 1; }
+        return id;
+    }
+
+    function buildTaxonomy(kind) {
+        var def = TAXON_KINDS[kind];
+        var host = $(def.host);
+        if (!host) return;
+        host.innerHTML = '';
+        var all = taxonStore(kind);
+        var ids = Object.keys(all).sort();
+        if (!ids.length) {
+            var p = document.createElement('p');
+            p.className = 'hint';
+            p.textContent = 'No ' + def.many + ' yet. Content without ' + def.many +
+                            ' publishes exactly as it does now.';
+            host.appendChild(p);
+            return;
+        }
+        var uses = taxonUses(kind);
+        /* Two entries with the same slug are not an error the build cares
+           about -- nothing is addressed by slug -- but they are a sign an
+           editor duplicated a topic, which IS worth saying. */
+        var bySlug = {};
+        ids.forEach(function (id) {
+            var sl = sstr((all[id] || {}).slug).toLowerCase();
+            if (sl) (bySlug[sl] = bySlug[sl] || []).push(id);
+        });
+
+        ids.forEach(function (id) {
+            var t = all[id];
+            if (!t || typeof t !== 'object') return;
+            var card = document.createElement('div');
+            card.className = 'card';
+            card.setAttribute('data-taxon', kind + ':' + id);
+
+            var head = document.createElement('div');
+            head.className = 'pb-bar';
+            var code = document.createElement('code');
+            code.textContent = id;
+            head.appendChild(code);
+            var used = document.createElement('small');
+            used.className = 'hint';
+            used.textContent = uses[id]
+                ? uses[id] + (uses[id] === 1 ? ' page uses it' : ' pages use it')
+                : 'no page uses it';
+            head.appendChild(used);
+            var del = document.createElement('button');
+            del.type = 'button';
+            del.className = 'adm-btn ghost snip';
+            del.innerHTML = '<i class="fas fa-trash"></i> Remove';
+            del.addEventListener('click', function () {
+                if (!confirm(uses[id]
+                    ? 'Remove this ' + def.one + '? ' + uses[id] + ' page(s) refer to it, and ' +
+                      'those references will stop resolving — nothing shown, rather than ' +
+                      'a broken label.'
+                    : 'Remove this ' + def.one + '?')) return;
+                delete taxonStore(kind)[id];
+                markDirty();
+                refreshTaxonomy();
+                buildPages();
+                buildSeo();
+            });
+            head.appendChild(del);
+            card.appendChild(head);
+
+            var dupes = bySlug[sstr(t.slug).toLowerCase()] || [];
+            if (dupes.length > 1) {
+                var warn = document.createElement('p');
+                warn.className = 'hint';
+                warn.innerHTML = '<i class="fas fa-triangle-exclamation"></i> Shares its slug ' +
+                    'with <code>' + dupes.filter(function (x) { return x !== id; })
+                        .map(esc).join('</code>, <code>') + '</code>. Nothing breaks — no page ' +
+                    'is addressed by slug — but two ' + def.many + ' for one topic split it.';
+                card.appendChild(warn);
+            }
+
+            var grid = document.createElement('div');
+            grid.className = 'grid2';
+            var fields = [['name', 'Name', 'What an editor and a reader see.'],
+                          ['slug', 'Slug', 'Lowercase, hyphens. A stable handle, NOT a URL: ' +
+                                           'no page is generated for it.']];
+            if (def.describable) {
+                fields.push(['description', 'Description',
+                             'Optional, for editors. Not published anywhere today.']);
+            }
+            fields.forEach(function (f) {
+                var wrap = document.createElement('label');
+                wrap.className = 'f';
+                var span = document.createElement('span');
+                span.innerHTML = esc(f[1]) + '<br><small style="opacity:.6">' + esc(f[2]) + '</small>';
+                var input = document.createElement('input');
+                input.type = 'text';
+                input.value = t[f[0]] == null ? '' : t[f[0]];
+                input.addEventListener('input', function () {
+                    var v = sstr(input.value);
+                    if (f[0] === 'slug') v = slugify(v);
+                    if (v === '') delete t[f[0]]; else t[f[0]] = v;
+                    markDirty();
+                });
+                /* A name or slug change is visible in every list that shows
+                   it, so those are rebuilt when the field is left. */
+                if (f[0] !== 'description') {
+                    input.addEventListener('change', function () {
+                        refreshTaxonomy(); buildPages(); buildSeo();
+                    });
+                }
+                wrap.appendChild(span);
+                wrap.appendChild(input);
+                grid.appendChild(wrap);
+            });
+            card.appendChild(grid);
+            host.appendChild(card);
+        });
+    }
+
+    function refreshTaxonomy() {
+        buildTaxonomy('categories');
+        buildTaxonomy('tags');
+    }
+
     function pageContentModel(key, page) {
         var card = document.createElement('div');
         card.className = 'card';
@@ -2918,7 +3092,145 @@
         aWrap.appendChild(aSpan);
         aWrap.appendChild(aSel);
         grid.appendChild(aWrap);
+
+        /* ---- category (Phase 2F) ----
+           One select, like the author. Only the content types that carry
+           taxonomy offer it: a plain page is site furniture, and classifying
+           it would add nothing while inviting thin topics. */
+        var taxonOk = !!(CMS.content && CMS.content.taxonTypes &&
+                         Object.prototype.hasOwnProperty.call(
+                             CMS.content.taxonTypes, CMS.content.type(page)));
+        var cats = taxonStore('categories');
+        var catIds = Object.keys(cats).sort();
+        var cWrap = document.createElement('label');
+        cWrap.className = 'f';
+        var cSpan = document.createElement('span');
+        cSpan.innerHTML = 'Category<br><small style="opacity:.6">' + (taxonOk
+            ? 'The one main topic. No category page is generated and nothing is added to the ' +
+              'sitemap — it organises content and is the strongest signal for related content.'
+            : 'Only an Article, Guide, Help page or Hub carries a category. Change the kind of ' +
+              'page above to set one.') + '</small>';
+        var cSel = document.createElement('select');
+        cSel.disabled = !taxonOk;
+        var cNone = document.createElement('option');
+        cNone.value = '';
+        cNone.textContent = catIds.length ? '(none)' : '(no categories yet — add one below)';
+        cSel.appendChild(cNone);
+        catIds.forEach(function (id) {
+            var o = document.createElement('option');
+            o.value = id;
+            o.textContent = sstr((cats[id] || {}).name) || id;
+            cSel.appendChild(o);
+        });
+        var curCat = sstr(page.category);
+        /* A stored id that is no longer in the collection is kept and shown,
+           so opening this panel cannot quietly discard it. */
+        if (curCat && catIds.indexOf(curCat) === -1) {
+            var cGhost = document.createElement('option');
+            cGhost.value = curCat;
+            cGhost.textContent = curCat + ' (no such category)';
+            cSel.appendChild(cGhost);
+        }
+        cSel.value = curCat;
+        cSel.addEventListener('change', function () {
+            if (cSel.value === '') delete page.category; else page.category = cSel.value;
+            touchPage(page);
+            buildSeo();
+        });
+        cWrap.appendChild(cSpan);
+        cWrap.appendChild(cSel);
+        grid.appendChild(cWrap);
         card.appendChild(grid);
+
+        /* ---- tags (Phase 2F) ----
+           Checkboxes rather than a text box, for the same reason the related
+           list uses them: a typed id that does not resolve publishes nothing
+           and says nothing about why. */
+        var tagAll = taxonStore('tags');
+        var tagIds = Object.keys(tagAll).sort(function (a, b) {
+            var an = sstr((tagAll[a] || {}).name).toLowerCase();
+            var bn = sstr((tagAll[b] || {}).name).toLowerCase();
+            return an < bn ? -1 : an > bn ? 1 : 0;
+        });
+        var tWrap2 = document.createElement('div');
+        tWrap2.className = 'f';
+        var tSpan2 = document.createElement('span');
+        tSpan2.innerHTML = 'Tags<br><small style="opacity:.6">' + (taxonOk
+            ? 'Reusable keywords. Two pages sharing two or more count as related; one shared ' +
+              'tag deliberately does not. No tag page is generated.'
+            : 'Only an Article, Guide, Help page or Hub carries tags.') + '</small>';
+        tWrap2.appendChild(tSpan2);
+        if (!taxonOk) {
+            /* Nothing to offer, and saying why beats an empty box. */
+        } else if (!tagIds.length) {
+            var tNone = document.createElement('p');
+            tNone.className = 'hint';
+            tNone.textContent = 'No tags yet. Add some below.';
+            tWrap2.appendChild(tNone);
+        } else {
+            var tBox = document.createElement('div');
+            tBox.className = 'pb-parts pb-parts-col';
+            var chosenTags = isArray(page.tags) ? page.tags.map(sstr) : [];
+            tagIds.forEach(function (id) {
+                var lab = document.createElement('label');
+                lab.className = 'cb';
+                var cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.checked = chosenTags.indexOf(id) > -1;
+                cb.addEventListener('change', function () {
+                    var list = isArray(page.tags) ? page.tags.map(sstr) : [];
+                    var at = list.indexOf(id);
+                    if (cb.checked && at === -1) list.push(id);
+                    if (!cb.checked && at > -1) list.splice(at, 1);
+                    if (list.length) page.tags = list; else delete page.tags;
+                    touchPage(page);
+                    buildSeo();
+                });
+                lab.appendChild(cb);
+                var tx = document.createElement('span');
+                tx.textContent = sstr((tagAll[id] || {}).name) || id;
+                lab.appendChild(tx);
+                tBox.appendChild(lab);
+            });
+            tWrap2.appendChild(tBox);
+        }
+        /* A stored id no longer in the collection gets a ticked box of its
+           own, for the same reason the category keeps its ghost option: a
+           reference the panel does not show is a reference an editor cannot
+           clear. Shown whether or not the collection has any live tags. */
+        if (taxonOk) {
+            var ghostIds = (isArray(page.tags) ? page.tags.map(sstr) : [])
+                .filter(function (id, i, arr) {
+                    return !!id && arr.indexOf(id) === i && tagIds.indexOf(id) === -1;
+                });
+            if (ghostIds.length) {
+                var gBox = document.createElement('div');
+                gBox.className = 'pb-parts pb-parts-col';
+                ghostIds.forEach(function (id) {
+                    var lab = document.createElement('label');
+                    lab.className = 'cb';
+                    var cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.checked = true;
+                    cb.addEventListener('change', function () {
+                        var list = isArray(page.tags) ? page.tags.map(sstr) : [];
+                        var at = list.indexOf(id);
+                        if (at > -1) list.splice(at, 1);
+                        if (list.length) page.tags = list; else delete page.tags;
+                        touchPage(page);
+                        buildPages();
+                        buildSeo();
+                    });
+                    lab.appendChild(cb);
+                    var tx = document.createElement('span');
+                    tx.textContent = id + ' (no such tag)';
+                    lab.appendChild(tx);
+                    gBox.appendChild(lab);
+                });
+                tWrap2.appendChild(gBox);
+            }
+        }
+        card.appendChild(tWrap2);
 
         /* ---- related ---- */
         var rWrap = document.createElement('div');
@@ -4034,6 +4346,66 @@
             }
         }
 
+        /* ---- CATEGORY AND TAGS (Phase 2F) ----
+           Same principle as the author field above: a reference that does not
+           resolve publishes nothing at all, so the only place an author can
+           find out is here. */
+        var taxonCarries = !!(C.taxonTypes &&
+            Object.prototype.hasOwnProperty.call(C.taxonTypes, type));
+        var rec2 = CMS.data();
+        var rawCat = sstr(p.category);
+        var rawTags = isArray(p.tags) ? p.tags.map(sstr).filter(function (t) { return !!t; }) : [];
+
+        if (!taxonCarries && (rawCat || rawTags.length)) {
+            /* The panel hides both controls for this kind of page, so this is
+               a leftover from a type change or a hand-edited record. Nothing
+               is published from it, and nothing is corrected either. */
+            warn('This page has a category or tags stored, but a ' +
+                 ((C.types[type] || {}).label || type) + ' does not publish them. They are ' +
+                 'ignored until the kind of page changes.');
+        } else if (taxonCarries) {
+            if (rawCat) {
+                var cat = C.category(p, rec2);
+                if (!cat) {
+                    bad('This page names the category <code>' + esc(rawCat) + '</code>, which ' +
+                        'does not resolve to a category with a name. No category is published — ' +
+                        'add it under Categories, or clear the field.');
+                } else {
+                    ok('Category resolves to ' + esc(cat.name) + '.');
+                }
+            }
+            if (rawTags.length) {
+                var keptTags = C.tags(p, rec2);
+                var tagOk = {};
+                keptTags.forEach(function (t) { tagOk[t.id] = 1; });
+                var tagSeen = {}, tagBad = [];
+                rawTags.forEach(function (id) {
+                    if (tagOk[id] || tagSeen[id]) return;
+                    tagSeen[id] = 1;
+                    tagBad.push('<code>' + esc(id) + '</code>');
+                });
+                if (tagBad.length) {
+                    warn('Tags left out because they do not resolve to a tag with a name: ' +
+                         tagBad.join(', ') + '.');
+                }
+                if (keptTags.length) {
+                    ok(keptTags.length + ' tag(s) published with this page.');
+                }
+            }
+            /* ONE tag and no category is the confusing case: the author has
+               started, and automatic related content still finds nothing,
+               because a single shared tag deliberately does not relate two
+               pages. An article with NO taxonomy at all says nothing here --
+               an absent field never produces a message anywhere else in this
+               panel, and every new article would otherwise carry a warning
+               before anybody had a chance to set anything. */
+            if (!rawCat && rawTags.length === 1) {
+                warn('With one tag and no category, automatic related content has nothing to ' +
+                     'match on: two pages need the same category, or two tags in common. A ' +
+                     'Page list set to fill automatically shows only the pages chosen by hand.');
+            }
+        }
+
         /* A hub that lists nothing is a hub with no reason to exist, and an
            author cannot see it from the page record. */
         if (type === 'hub') {
@@ -4342,6 +4714,37 @@
         if ((b = $('#btnDownloadSitemap'))) b.addEventListener('click', function () { download('sitemap.xml', buildSitemapXml(), 'application/xml'); });
         if ((b = $('#btnCopyRobots')))      b.addEventListener('click', function () { copyText(buildRobotsTxt(), 'robots.txt'); });
         if ((b = $('#btnDownloadRobots')))  b.addEventListener('click', function () { download('robots.txt', buildRobotsTxt()); });
+
+        Object.keys(TAXON_KINDS).forEach(function (kind) {
+            var def = TAXON_KINDS[kind];
+            var btn = $(kind === 'categories' ? '#btnAddCategory' : '#btnAddTag');
+            if (!btn) return;
+            btn.addEventListener('click', function () {
+                var name = prompt('The ' + def.one + '\u2019s name');
+                if (name === null) return;
+                name = sstr(name);
+                if (!name) { toast('A ' + def.one + ' needs a name.', true); return; }
+                var all = taxonStore(kind);
+                /* The same name twice is almost always a mistake rather than
+                   two topics, so it is refused with the existing one named. */
+                var clash = Object.keys(all).filter(function (id) {
+                    return sstr((all[id] || {}).name).toLowerCase() === name.toLowerCase();
+                });
+                if (clash.length) {
+                    toast('A ' + def.one + ' called \u201c' + name + '\u201d already exists as "' +
+                          clash[0] + '". Use that one.', true);
+                    return;
+                }
+                var id = taxonNewId(name, all);
+                all[id] = { name: name, slug: slugify(name) || id };
+                markDirty();
+                refreshTaxonomy();
+                buildPages();
+                buildSeo();
+                toast(def.one.charAt(0).toUpperCase() + def.one.slice(1) +
+                      ' added as "' + id + '". Pages refer to it by that id.');
+            });
+        });
 
         if ((b = $('#btnAddAuthor'))) b.addEventListener('click', function () {
             var name = prompt('The author\u2019s name');
