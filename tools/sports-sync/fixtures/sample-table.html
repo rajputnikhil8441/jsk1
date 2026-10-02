@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>sports-sync fixture (synthetic)</title>
+<!--
+  OFFLINE TEST FIXTURE - SYNTHETIC DATA ONLY.
+
+  Rebuilds the reference site's documented DOM shape (.bet-table /
+  .bet-table-row / .bet-nation-name / .bet-nation-odd / .odd-box / .bet-odd /
+  .bet-nation-suspended-box / .game-icons) so the extraction logic in
+  scrape.js can be exercised without touching the live site.
+
+  Every team name, odd and id here is made up. It deliberately includes the
+  awkward cases: a header row, a section heading, a spacer row, a hidden row,
+  a suspended match, a match with missing odds, a market with several back
+  boxes, a two-market sport, a name cell holding only a date, and a row that
+  is injected after load so the settle logic has something to wait for.
+-->
+<style>
+  body { font: 14px system-ui, sans-serif; margin: 20px; }
+  .bet-table-row { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid #ddd; }
+  .bet-nation-name { flex: 1; min-width: 260px; }
+  .bet-nation-game-name span { display: block; }
+  .bet-nation-odd { display: flex; gap: 2px; min-width: 120px; position: relative; }
+  .odd-box { width: 56px; text-align: center; padding: 3px 0; }
+  .back.odd-box { background: #a6d8ff; }
+  .lay.odd-box { background: #f9c9d4; }
+  .bet-nation-suspended-box { position: absolute; inset: 0; background: rgba(0,0,0,.75); color: #fff; text-align: center; }
+  .row-hidden { display: none; }
+  .bet-table-section-title { font-weight: 700; padding: 10px 0 4px; }
+</style>
+</head>
+<body>
+
+<div class="bet-table">
+  <div class="bet-table-header bet-table-row">
+    <div class="bet-nation-odd">1</div>
+    <div class="bet-nation-odd">X</div>
+    <div class="bet-nation-odd">2</div>
+  </div>
+
+  <div class="bet-table-body">
+
+    <div class="bet-table-row bet-table-section-title">Cricket</div>
+
+    <!-- 1. ordinary match, 3 markets, id in the path -->
+    <div class="bet-table-row">
+      <div class="bet-nation-name">
+        <a href="/game-detail/4/33871049">
+          <div class="bet-nation-game-name">
+            <span>Team Alpha v Team Bravo</span>
+            <span>25/07/2026 23:30:00</span>
+          </div>
+        </a>
+        <div class="game-icons"><span class="icon-fancy" title="Fancy"></span></div>
+      </div>
+      <div class="bet-nation-odd">
+        <div class="back odd-box"><div class="bet-odd"><b>1.85</b><span>2.4K</span></div></div>
+        <div class="lay odd-box"><div class="bet-odd"><b>1.87</b><span>1.1K</span></div></div>
+      </div>
+      <div class="bet-nation-odd">
+        <div class="back odd-box"><div class="bet-odd"><b>3.40</b></div></div>
+        <div class="lay odd-box"><div class="bet-odd"><b>3.55</b></div></div>
+      </div>
+      <div class="bet-nation-odd">
+        <div class="back odd-box"><div class="bet-odd"><b>2.02</b></div></div>
+        <div class="lay odd-box"><div class="bet-odd"><b>2.06</b></div></div>
+      </div>
+    </div>
+
+    <!-- 2. live match, id in a query string -->
+    <div class="bet-table-row in-play">
+      <div class="bet-nation-name">
+        <a href="/detail?eventId=99871234&amp;sport=4">
+          <div class="bet-nation-game-name">
+            <span>Team Charlie v Team Delta</span>
+            <span>18/09/2026 14:00:00</span>
+          </div>
+        </a>
+        <div class="game-icons"><span class="live-icon" title="In-Play"></span><span class="tv-icon" aria-label="TV"></span></div>
+      </div>
+      <div class="bet-nation-odd">
+        <div class="back odd-box"><div class="bet-odd"><b>1.24</b></div></div>
+        <div class="lay odd-box"><div class="bet-odd"><b>1.26</b></div></div>
+      </div>
+      <div class="bet-nation-odd">
+        <div class="back odd-box"><div class="bet-odd"><b>--</b></div></div>
+        <div class="lay odd-box"><div class="bet-odd"><b>--</b></div></div>
+      </div>
+      <div class="bet-nation-odd">
+        <div class="back odd-box"><div class="bet-odd"><b>4.10</b></div></div>
+        <div class="lay odd-box"><div class="bet-odd"><b>4.30</b></div></div>
+      </div>
+    </div>
+
+    <!-- 3. fully suspended match -->
+    <div class="bet-table-row">
+      <div class="bet-nation-name">
+        <a href="/game-detail/4/33871050">
+          <div class="bet-nation-game-name">
+            <span>Team Echo v Team Foxtrot</span>
+            <span>19/09/2026 09:15:00</span>
+          </div>
+        </a>
+      </div>
+      <div class="bet-nation-odd">
+        <div class="back odd-box"><div class="bet-odd"><b>1.55</b></div></div>
+        <div class="lay odd-box"><div class="bet-odd"><b>1.58</b></div></div>
+        <div class="bet-nation-suspended-box">SUSPENDED</div>
+      </div>
+      <div class="bet-nation-odd">
+        <div class="back odd-box"><div class="bet-odd"><b>2.90</b></div></div>
+        <div class="lay odd-box"><div class="bet-odd"><b>3.00</b></div></div>
+        <div class="bet-nation-suspended-box">SUSPENDED</div>
+      </div>
+      <div class="bet-nation-odd">
+        <div class="back odd-box"><div class="bet-odd"><b>2.44</b></div></div>
+        <div class="lay odd-box"><div class="bet-odd"><b>2.50</b></div></div>
+        <div class="bet-nation-suspended-box">SUSPENDED</div>
+      </div>
+    </div>
+
+    <!-- 4. match with one market not populated at all -->
+    <div class="bet-table-row">
+      <div class="bet-nation-name">
+        <div class="bet-nation-game-name">
+          <span>Team Golf v Team Hotel</span>
+          <span>20/09/2026 18:45:00</span>
+        </div>
+      </div>
+      <div class="bet-nation-odd">
+        <div class="back odd-box"><div class="bet-odd"><b>1.98</b></div></div>
+        <div class="lay odd-box"><div class="bet-odd"><b>2.02</b></div></div>
+      </div>
+      <div class="bet-nation-odd"></div>
+      <div class="bet-nation-odd">
+        <div class="back odd-box"><div class="bet-odd"><b>1.92</b></div></div>
+        <div class="lay odd-box"><div class="bet-odd"><b>1.96</b></div></div>
+      </div>
+    </div>
+
+    <div class="bet-table-row bet-table-section-title">Soccer</div>
+
+    <!-- 5. two-market sport, several back boxes on one side -->
+    <div class="bet-table-row">
+      <div class="bet-nation-name">
+        <a href="/game-detail/1/71002233">
+          <div class="bet-nation-game-name">
+            <span>Club India v Club Juliet</span>
+            <span>21/09/2026 20:00:00</span>
+          </div>
+        </a>
+      </div>
+      <div class="bet-nation-odd">
+        <div class="back odd-box back3"><div class="bet-odd"><b>2.10</b></div></div>
+        <div class="back odd-box back2"><div class="bet-odd"><b>2.12</b></div></div>
+        <div class="back odd-box back1"><div class="bet-odd"><b>2.14</b><span>900</span></div></div>
+        <div class="lay odd-box lay1"><div class="bet-odd"><b>2.16</b><span>750</span></div></div>
+        <div class="lay odd-box lay2"><div class="bet-odd"><b>2.18</b></div></div>
+      </div>
+      <div class="bet-nation-odd">
+        <div class="back odd-box"><div class="bet-odd"><b>1.70</b></div></div>
+        <div class="lay odd-box"><div class="bet-odd"><b>1.74</b></div></div>
+      </div>
+    </div>
+
+    <!-- 6. spacer row: no name cell, nothing in it -->
+    <div class="bet-table-row"></div>
+
+    <!-- 7. hidden row: must not be counted -->
+    <div class="bet-table-row row-hidden">
+      <div class="bet-nation-name">
+        <div class="bet-nation-game-name">
+          <span>Team Kilo v Team Lima</span>
+          <span>22/09/2026 12:00:00</span>
+        </div>
+      </div>
+      <div class="bet-nation-odd">
+        <div class="back odd-box"><div class="bet-odd"><b>1.50</b></div></div>
+        <div class="lay odd-box"><div class="bet-odd"><b>1.52</b></div></div>
+      </div>
+    </div>
+
+    <!-- 8. name cell that only holds a date -->
+    <div class="bet-table-row">
+      <div class="bet-nation-name">
+        <div class="bet-nation-game-name">
+          <span>23/09/2026</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  // A row that only appears after first paint, so the settle logic has to wait.
+  setTimeout(function () {
+    var body = document.querySelector('.bet-table-body');
+    var row = document.createElement('div');
+    row.className = 'bet-table-row';
+    row.innerHTML =
+      '<div class="bet-nation-name">' +
+        '<a href="/game-detail/2/55009911">' +
+          '<div class="bet-nation-game-name">' +
+            '<span>Team Mike v Team November</span>' +
+            '<span>24/09/2026 16:30:00</span>' +
+          '</div>' +
+        '</a>' +
+      '</div>' +
+      '<div class="bet-nation-odd">' +
+        '<div class="back odd-box"><div class="bet-odd"><b>1.66</b></div></div>' +
+        '<div class="lay odd-box"><div class="bet-odd"><b>1.69</b></div></div>' +
+      '</div>' +
+      '<div class="bet-nation-odd">' +
+        '<div class="back odd-box"><div class="bet-odd"><b>2.30</b></div></div>' +
+        '<div class="lay odd-box"><div class="bet-odd"><b>2.36</b></div></div>' +
+      '</div>';
+    body.appendChild(row);
+  }, 1200);
+</script>
+
+</body>
+</html>
