@@ -2168,6 +2168,271 @@ rules, so a check cannot disagree with what gets published.
   content type, date, author or related list is not itemised on the sheet. The
   values still publish; it is the summary that is silent.
 
+## Categories, tags and automatic related content (Phase 2F)
+
+Phase 2C gave content a type, a date, an author and a hand-picked related list.
+This adds the two things an editor still had no way to say — *what is this
+about* — and uses them to finish the related list automatically.
+
+It is deliberately small. There is no archive, no taxonomy page, no nested URL,
+no pagination and no recommender. The flat URL architecture is untouched: a
+site with a hundred categories generates exactly the same files as the same
+site with none, and a test asserts that by building both and comparing the file
+sets.
+
+### What a Category is, and what a Tag is
+
+**A category is the one main topic** a piece of content is about — Cricket,
+Casino, Payments. A page has at most one. It is the strongest statement in the
+record about what a page is, which is why it scores highest below.
+
+**A tag is a reusable keyword** — IPL, 2026, Final. A page can carry up to
+twelve.
+
+Both live in the brand's own CMS record, in `categories` and `tags`, exactly as
+`authors` does:
+
+```js
+categories: {
+  cricket: { name: 'Cricket', slug: 'cricket', description: 'Bat and ball.' }
+},
+tags: {
+  ipl:  { name: 'IPL',  slug: 'ipl' },
+  y2026: { name: '2026', slug: '2026' }
+}
+```
+
+A page refers to one **by id**:
+
+```js
+pages: {
+  'ipl-final-preview': {
+    type: 'article',
+    category: 'cricket',
+    tags: ['ipl', 'y2026'],
+    ...
+  }
+}
+```
+
+Referring by id is what makes a rename safe: changing `name` updates every page
+at once, and nothing in any generated file depends on the id itself.
+
+`slug` is a stable, readable handle for editors. **It is not a URL.** No page is
+generated for it, nothing is addressed by it, and nothing is added to
+`sitemap.xml`. It exists so a later phase could use one without re-slugging
+every name, and so two editors naming the same topic twice can be told about it.
+
+`description` (categories only) is for editors. It is not published anywhere
+today.
+
+### Which content types carry taxonomy
+
+`article`, `guide`, `help` and `hub`. **Not `page`.**
+
+A plain page is site furniture — About, Contact, Privacy. It has no topic, so
+offering it one would be offering an editor something that publishes nothing.
+The engine exports the list as `CMS.content.taxonTypes`, and the admin and the
+checks both read it rather than keeping copies.
+
+A category or tag stored on a plain page is **ignored, not deleted**. It
+publishes nothing, the panel says so in the page's checks, and the value stays
+in the record so changing the type back restores it.
+
+### How an editor uses them
+
+In **/admin → Pages** there are two cards, below Authors:
+
+- **Categories** — *Add a category*, which asks for a name and derives an id
+  and a slug from it. The same name twice is refused and the existing one is
+  named, because that is almost always a mistake rather than a second topic. A
+  different name that happens to slugify the same way gets its own id.
+- **Tags** — the same, for tags.
+
+Each entry's card shows the id a page refers to it by, **how many pages use
+it**, and a Remove button that states the cost before doing anything: *"3
+page(s) refer to it, and those references will stop resolving — nothing shown,
+rather than a broken label."* Removing one does **not** edit any page: the
+pages keep their now-dangling ids, the editor shows them as
+`cricket-news (no such category)`, and nothing is published for them.
+
+On a content page, **Pages → Settings & SEO → Content type** gains a
+**Category** select and **Tags** checkboxes. They are checkboxes for the same
+reason the related-page picker is: a typed id that does not resolve publishes
+nothing and explains nothing.
+
+The page's SEO checks report every way this can be wrong:
+
+| Situation | What the checks say |
+|---|---|
+| Category resolves | `Category resolves to Cricket.` |
+| Tags resolve | `2 tag(s) published with this page.` |
+| Category id resolves to nothing | **bad** — names the id, says no category is published |
+| Some tag ids resolve to nothing | **warn** — names them; the rest still publish |
+| Taxonomy on a type that does not carry it | **warn** — ignored until the type changes |
+| One tag, no category | **warn** — nothing for automatic matching to use, and why |
+| No taxonomy at all | *nothing* — an absent field is never nagged about |
+
+Two entries sharing a slug are flagged on the card: nothing breaks, but two
+categories for one topic split it.
+
+### Showing them on the page
+
+One new element, **Category and tags** (`taxonomy`). It draws the current
+page's own category and tags:
+
+```html
+<aside class="pb-el pb-taxonomy">
+  <p class="pb-taxonomy-cat"><span class="pb-taxonomy-label">Category</span><span
+    class="pb-taxonomy-value">Cricket</span></p>
+  <p class="pb-taxonomy-tags"><span class="pb-taxonomy-label">Tags</span><span
+    class="pb-taxonomy-values"><span class="pb-taxonomy-tag">IPL</span><span
+    class="pb-taxonomy-tag">2026</span></span></p>
+</aside>
+```
+
+Three things about that markup are deliberate:
+
+1. **It is in the static HTML**, written by the build, not by JavaScript. A
+   crawler reads it without executing anything.
+2. **Tags are text, not links.** There is no tag page to link to, so there is
+   no `<a>` pretending otherwise.
+3. **It renders nothing at all** when the page has no resolvable taxonomy, when
+   its type does not carry any, or when there is no render context. An empty
+   label is worse than silence — which is why the element now sits in the
+   `article`, `guide`, `help` and `hub` templates and costs an untagged page
+   nothing.
+
+The labels (`Category`, `Tags`) and two visibility switches are the element's
+only content fields. It takes the same style controls every other element takes.
+
+### Automatic related content
+
+The `pageList` element gained one boolean, **`autoFill`**. With it on, a list
+whose source is *the pages chosen for this page* shows the hand-picked pages
+first and then fills the remaining room automatically. With it off — and it is
+off unless set — the element behaves exactly as it did in Phase 2C: *exactly*
+what was chosen, nothing more. The four content templates ship with it on.
+
+**Manual always wins.** The author's choices come first, in the author's order.
+A page that is both hand-picked and found automatically appears **once**, in its
+manual position: an editor's choice is not demoted by the machine agreeing with
+it.
+
+**The scoring.** Three visible signals, added up:
+
+| Signal | Points | Why |
+|---|---|---|
+| Same category | **+3** | an editor chose one topic for each; the strongest statement in the record |
+| Each shared tag | **+1** | agreement on a keyword |
+| Same content type | **+1** | a guide sits better beside a guide |
+
+**What qualifies a page at all** — two rules, both earned by a case that came
+out wrong without them:
+
+1. **The same category, or at least two shared tags.** One shared tag is
+   deliberately not enough. A Cricket article tagged IPL/2026/Final and a
+   Football article tagged FIFA/2026 share `2026` — a year that says nothing
+   about what either is about — and a single-tag rule related them. Two tags is
+   where agreement starts meaning something; one editor-chosen category means it
+   immediately.
+2. **Same type is never sufficient.** It only breaks ties. Otherwise every
+   article would relate to every other article merely by being one.
+
+**The order** is score descending, then newest `publishedAt` first with undated
+pages last, then by page key. That is a *total* order over a pure function of
+the record, so two builds of one record produce the same bytes and the
+insertion order of the record cannot change the result.
+
+**The candidate pool is `publishedPages()`** — the one authoritative reader
+Phase 2C built, called with `indexableOnly: true` and the page itself excluded.
+Nothing here re-implements it, so drafts, `noindex` pages, addresses the build
+will not create, the page itself and anything belonging to another brand are
+gone before the scoring starts. The default and maximum fill is **6**.
+
+**It reaches structured data.** An `Article` gains `articleSection` (the
+category name) and `keywords` (the tag names, comma separated) — the two
+properties schema.org already has for exactly this, and only when the taxonomy
+resolves. A dangling id adds nothing there, as it adds nothing to the page. A
+hub is a `CollectionPage` and publishes no `Article`, so neither key can appear
+on one.
+
+### White-label isolation
+
+Structural, not checked — exactly as it is for authors. `categories` and `tags`
+live in the brand's own record, so there is no collection to read but this
+brand's, and an id belonging to another brand simply does not resolve. Two
+brands can use the id `news` for different categories; each build shows its own
+name, and a test builds both and asserts neither output contains a trace of the
+other's names or pages.
+
+The render context exists for this reason: the baker shares **one** engine
+across every brand it builds, so an element that read ambient state would have
+published the wrong brand's topics.
+
+### What is intentionally not implemented
+
+- **No category or tag pages.** A few hundred thin archives would cost this
+  site more than they could return.
+- **Nothing in the sitemap, nothing in robots.txt.** Asserted by building the
+  same site with and without taxonomy and comparing both files byte for byte.
+- **No nested URLs.** The flat `<slug>.html` rule is untouched. A slug with a
+  slash is not a valid slug.
+- **No pagination, no automatic archives, no "all posts in Cricket" page.**
+- **No AI, embeddings, external APIs or machine learning.** The scoring above is
+  the whole algorithm, and an editor can predict it from the page.
+- **No second content engine and no second published-page reader.** Everything
+  reads `publishedPages()`.
+- **Manual related content is unchanged.** `CMS.content.related()` still means
+  exactly what was chosen; `relatedCombined()` is a second reader over it.
+
+### Tests
+
+`tests/test_taxonomy.js` — 149 assertions, in process against the real engine.
+Mostly about **refusal**: an id that names nothing, a prototype key, an array
+where a string belongs, a category on a type that does not carry one, a shared
+year, same-type-alone, a draft or `noindex` candidate, a slug that is not a slug.
+Plus the order being total: the same record in a different key order produces
+the same list.
+
+`tests/test_taxonomy_static.js` — 76 assertions, every one read out of files a
+real `tools/build-site.js` wrote. The static markup; tags not being links; the
+file set, sitemap and robots.txt being identical with and without taxonomy;
+manual priority in document order; `autoFill` off behaving exactly as Phase 2C
+did; two brands with the same ids seeing only their own; hostile names escaped;
+a review host indexing nothing.
+
+`tests/test_admin_seo.js` grew from 82 to 132: creating a category through the
+real button and prompt, the duplicate-name refusal, a colliding slug getting its
+own id, assignment by id, tag checkboxes, removal stating its cost and leaving
+the page's id intact, the dangling id shown as `(no such category)`, the split
+slug warning, and each of the six check messages appearing exactly when it
+should and not when it should not.
+
+Five mutations were applied to confirm these suites can fail: loosening the
+two-tag gate, adding `page` to the taxonomy types, putting automatic before
+manual, rendering a tag as a link, and removing the string-type guard on ids.
+Each was caught.
+
+### Known limitations
+
+- A category's `description` is stored and never published. It is editor
+  context, and inventing a place to show it would have meant inventing a
+  taxonomy page.
+- `slug` is validated but unused by anything that generates output. A site that
+  never looks at it loses nothing.
+- Two categories may share a slug. Nothing is addressed by slug so nothing
+  breaks; the admin flags it as a split topic.
+- The publish review sheet (`indexAreas()`) does not itemise `category` or
+  `tags`, for the same reason it does not itemise the Phase 2C fields: it reads
+  an explicit list. The values publish; the summary is silent.
+- `autoFill` only affects a list whose source is *the pages chosen for this
+  page*. A list showing every page of one kind is already complete by
+  definition.
+- A page with a category but no published Page Builder content publishes no
+  taxonomy block, because the element rides in the mount — the same limitation
+  the `Article` block has.
+
 ## Tests
 
 `tests/test_pagebuilder.js` — 343 assertions. Style questions are asserted on
