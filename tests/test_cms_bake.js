@@ -1655,6 +1655,106 @@ console.log('\n===== NOTHING STILL DESCRIBES THE OLD WORKFLOW =====');
   }
 }
 
+/* ====================================================================
+   THE SHIPPED FALLBACK BODY IS HIDDEN WHERE THE MOUNT IS BAKED
+   --------------------------------------------------------------------
+   A builder-managed page ships two things in its <article>: the mount
+   (<div data-cms-sections="slug">) and, above it, the fallback copy
+   (<div class="info-body" data-cms-html="pages.slug.body"> ... </div>)
+   that a visitor without JavaScript reads and that comes back the moment
+   the page is unpublished.
+
+   js/cms.js paintSections() hides that fallback in the live DOM whenever
+   the slug is builder-managed, so a visitor sees the baked/live content
+   and not the placeholder underneath it. The BUILD bakes the mount but
+   used to leave the fallback visible in the static HTML -- so View Source
+   carried two bodies at one URL while the rendered page showed one. This
+   section pins the build doing the same hiding the runtime does, so raw
+   HTML and rendered DOM agree.
+   ==================================================================== */
+console.log('\n===== THE FALLBACK BODY IS HIDDEN IN STATIC HTML WHERE THE MOUNT IS BAKED =====');
+{
+  /* Build brand A from a row that publishes real content for every slug
+     its committed layer publishes -- which is every page that carries an
+     info-body fallback. Read the generated files and assert the fallback
+     is present (not deleted) but hidden (not shown), beside baked content. */
+  const bodyOut = path.join(WORK, 'bodyout');
+  const bodyRow = writeRow(path.join(ROWS, 'body.json'),
+    rowFor(A.id, 'ABOUT LIVE BODY MARKER'));
+  const rb = build([A.id].concat(A.env).concat(['--row', rel(bodyRow), '--out', bodyOut]));
+  check('a build with published builder content succeeds', rb.ok, rb.out.slice(-500));
+
+  /* The committed layer tells the suite which slugs carry a fallback body,
+     so nothing is hard-coded: whatever brand A publishes is what is checked. */
+  const layer = SHELL.publishedBlocks(path.join(ROOT, 'brands'), A.id);
+  const infoSlugs = Object.keys(layer).filter(slug => {
+    const tpl = path.join(ROOT, 'templates', 'pages', slug + '.html');
+    return fs.existsSync(tpl) &&
+      fs.readFileSync(tpl, 'utf8').indexOf('data-cms-html="pages.' + slug + '.body"') > -1;
+  });
+  check('brand A has at least one builder-managed page with a fallback body',
+    infoSlugs.length >= 1, infoSlugs);
+
+  infoSlugs.forEach(function (slug) {
+    const html = fs.readFileSync(path.join(bodyOut, A.out, slug + '.html'), 'utf8');
+    const openTag = (html.match(new RegExp(
+      '<div class="info-body" data-cms-html="pages\\.' + slug + '\\.body"[^>]*>')) || [])[0] || '';
+    check('[' + slug + '] the fallback body opening tag is present', !!openTag, openTag);
+    check('[' + slug + ']   and carries the hidden attribute', / hidden>/.test(openTag), openTag);
+    check('[' + slug + '] the mount beside it is baked',
+      html.indexOf('data-cms-sections="' + slug + '" data-cms-baked=') > -1);
+    /* HIDDEN, NOT REMOVED: the fallback text must survive for no-JS and for
+       the runtime unpublish-restore that un-hides this very node. The home
+       page carries no info-body, so the placeholder prose in these four is
+       the signal that the fallback element still has its contents. */
+    check('[' + slug + '] the fallback TEXT is still in the file, not stripped',
+      html.indexOf('</div>') > -1 &&
+      html.split('data-cms-html="pages.' + slug + '.body"')[1].indexOf('</div>') > 5);
+    /* No SECOND copy: the baked mount replaced its own contents, and the
+       fallback is hidden, so the live marker appears exactly once. */
+    check('[' + slug + '] exactly one visible body region (no duplicate at one URL)',
+      slug !== 'about' || (html.split('ABOUT LIVE BODY MARKER').length - 1) === 1);
+  });
+
+  /* THE RUNTIME AND THE BUILD NOW AGREE. paintSections() sets
+     legacy.hidden = bodyIsBuilderManaged(slug); the build hides exactly the
+     slugs it bakes; and bodyIsBuilderManaged is true for exactly a published
+     block with a sections array -- which is exactly what the build bakes.
+     Asserted from the engine source so the two conditions cannot drift. */
+  const cms = fs.readFileSync(path.join(ROOT, 'js', 'cms.js'), 'utf8');
+  check('the runtime still hides the fallback for builder-managed slugs',
+    /legacy\.hidden\s*=\s*\(use && use\.slug === slug\)\s*\?\s*true\s*:\s*bodyIsBuilderManaged\(slug\)/
+      .test(cms));
+  check('  and bodyIsBuilderManaged is "published block with a sections array"',
+    /b\.status === 'published' && isArr\(b\.sections\)/.test(cms));
+
+  /* AN UNPUBLISHED PAGE KEEPS ITS FALLBACK VISIBLE. Brand B publishes
+     nothing from its committed layer for these slugs, so if its row leaves a
+     slug unpublished the mount is not baked and the fallback must NOT be
+     hidden -- the documented no-JS behaviour. about is published in the row;
+     a slug absent from the row stays as the template wrote it. */
+  const unpubOut = path.join(WORK, 'unpubout');
+  const unpubRow = writeRow(path.join(ROWS, 'unpub.json'), rowFor(B.id, 'B LIVE ABOUT'));
+  const ru = build([B.id].concat(B.env).concat(['--row', rel(unpubRow), '--out', unpubOut]));
+  check('a build leaving some info pages unpublished succeeds', ru.ok, ru.out.slice(-500));
+  /* contact carries a fallback body and is NOT in brand B's committed layer,
+     so unless the row published it, its mount is unbaked and its fallback
+     must stay visible. */
+  const contactB = fs.readFileSync(path.join(unpubOut, B.out, 'contact.html'), 'utf8');
+  const contactTag = (contactB.match(
+    /<div class="info-body" data-cms-html="pages\.contact\.body"[^>]*>/) || [])[0] || '';
+  const contactBaked = contactB.indexOf('data-cms-sections="contact" data-cms-baked=') > -1;
+  check('an UNBAKED info page keeps its fallback visible (not hidden)',
+    !contactBaked ? !/ hidden>/.test(contactTag) : true, { contactBaked, contactTag });
+
+  /* BRAND ISOLATION: brand A's live body marker must never appear in brand
+     B's output, baked or fallback. */
+  const anyB = walk(path.join(unpubOut, B.out)).filter(f => /\.html$/.test(f))
+    .some(f => fs.readFileSync(path.join(unpubOut, B.out, f), 'utf8')
+      .indexOf('ABOUT LIVE BODY MARKER') > -1);
+  check('brand A\'s live body does not leak into brand B\'s build', !anyB);
+}
+
 tmpRoots.forEach(d => { try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) {} });
 
 console.log(`\n==== ${pass} passed, ${fail} failed ====`);

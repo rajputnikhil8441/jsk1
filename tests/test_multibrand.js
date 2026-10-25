@@ -298,10 +298,26 @@ console.log('\n===== THE ENGINE IS SHARED, NOT COPIED =====');
     check(p + ': the shell and the real build line up', d.aligned, d.detail);
     if (blocks[slug]) {
       bakedOnlyInJsk1++;
+      /* Baking a builder-managed page changes TWO lines versus the empty
+         shell: the mount gains data-cms-baked and its content, and the
+         fallback body above it gains `hidden` -- the build doing what
+         js/cms.js paintSections() does in the DOM, so the static HTML and
+         the rendered page agree instead of carrying two bodies at one URL.
+         A published page without a fallback body would change only the
+         mount; so the mount change is required, and every OTHER changed
+         line must be its info-body gaining `hidden` and nothing else. */
+      const mountChange = d.changed.filter(c =>
+        c.baked.indexOf('data-cms-baked="' + blocks[slug] + '"') > -1);
+      const bodyHide = d.changed.filter(c =>
+        c.baked.indexOf('data-cms-html="pages.' + slug + '.body"') > -1 &&
+        / hidden>/.test(c.baked) && !/ hidden>/.test(c.shell));
       check(p + ': JSK1 bakes its published content into the mount',
-        d.aligned && d.changed.length === 1 && d.styles.length === 1 &&
-        d.changed[0].baked.indexOf('data-cms-baked="' + blocks[slug] + '"') > -1,
+        d.aligned && d.styles.length === 1 &&
+        mountChange.length === 1 &&
+        d.changed.length === mountChange.length + bodyHide.length,
         { changed: d.changed.map(c => c.line), styles: d.styles.length });
+      check(p + ': and the fallback body is hidden in the static HTML, not left to double the page',
+        bodyHide.length === 1, d.changed.map(c => c.line));
       check(p + ': and acme\'s copy of that page carries none of it',
         /data-cms-sections="[a-z0-9-]+"><\/div>/.test(acme.files[p]) &&
         acme.files[p].indexOf('data-cms-baked') === -1);
