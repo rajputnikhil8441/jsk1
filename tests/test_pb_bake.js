@@ -645,14 +645,24 @@ function buildBrand(brandsDir, id, outDir) {
      which is a different thing from pages.<slug>.body in brand.js; the two
      normally say the same thing but the file's copy is the template's. */
   const fallbackOf = html => {
-    const m = html.match(/<div class="info-body" data-cms-html="pages\.about\.body">([\s\S]*?)\n            <\/div>/);
+    /* The opening tag now carries `hidden` when the mount above is baked
+       (the build hides the fallback as js/cms.js paintSections() does), so
+       this matches any attributes after the binding, not a bare `>`. */
+    const m = html.match(/<div class="info-body" data-cms-html="pages\.about\.body"[^>]*>([\s\S]*?)\n            <\/div>/);
     return m ? m[1] : '';
   };
+  const fallbackTagOf = html =>
+    (html.match(/<div class="info-body" data-cms-html="pages\.about\.body"[^>]*>/) || [''])[0];
   check('the shipped fallback body is still in the file',
     fallbackOf(alpha).replace(/<[^>]+>/g, ' ').trim().split(/\s+/).length > 40,
     fallbackOf(alpha).length);
   check('  and it carries this brand\'s name, not another\'s',
     fallbackOf(alpha).includes('ALPHA') && !fallbackOf(alpha).includes('BETA'), true);
+  /* alpha.test publishes `about` (its baked content is asserted above), so
+     the fallback must be HIDDEN in the static HTML -- present for no-JS and
+     unpublish-restore, but not shown underneath the baked content. */
+  check('  and the fallback is hidden, matching the rendered DOM',
+    / hidden>/.test(fallbackTagOf(alpha)), fallbackTagOf(alpha));
   check('brands/<id>/brand.js was not rewritten by the build',
     fs.readFileSync(path.join(brandsDir, 'alpha.test', 'brand.js'), 'utf8')
       .includes('Fallback copy for alpha.test'), true);

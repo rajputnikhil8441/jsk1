@@ -473,6 +473,23 @@ function readOverrides(dir, id) {
 
 /* The builder mount, exactly as the templates write it. Captured rather than
    assumed: the slug is what pairs a mount with its published sections. */
+/* The fallback body a builder-managed page ships above its mount:
+   <div class="info-body" data-cms-html="pages.<slug>.body"> ... </div>.
+   Found by its binding, exactly as js/cms.js legacyBodyNode() finds it, so
+   no template needed a new hook. Returns html with `hidden` added to that
+   one opening tag, idempotently; a slug with no such node is left untouched
+   (home, login, register, and the generic page whose body is empty all pass
+   through unchanged). */
+function hideLegacyBody(html, slug) {
+    const esc = String(slug).replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const re = new RegExp('(<div\\b(?:[^>]*?\\s)?data-cms-html="pages\\.' +
+        esc + '\\.body"[^>]*?)(\\s*/?)>');
+    return html.replace(re, function (whole, open, tail) {
+        if (/\bhidden\b/.test(open)) return whole;   /* already hidden */
+        return open + ' hidden' + tail + '>';
+    });
+}
+
 const MOUNT_RE = /<div data-cms-sections="([a-z0-9-]+)"\s*>([\s\S]*?)<\/div>/g;
 
 /* Rendering the same section array twice per page (markup, then CSS) would run
@@ -731,6 +748,25 @@ function renderPage(templateHtml, brand, where, pageTokens, record) {
         return '<div data-cms-sections="' + slug + '" data-cms-baked="' +
                block.sections.length + '">' + r.html + '</div>';
     });
+
+    /* THE SAME HIDING js/cms.js paintSections() DOES, BUT IN THE STATIC HTML.
+       The builder now owns the body of every slug we just baked, so the
+       fallback copy that shipped in the template must not render underneath
+       the baked content. The runtime sets legacy.hidden =
+       bodyIsBuilderManaged(slug) -- true for exactly these published slugs --
+       but the build did not, so View Source carried two bodies at one URL
+       while the rendered DOM showed one. That static-vs-DOM mismatch is the
+       defect; this closes it.
+
+       HIDDEN, NOT REMOVED. The copy stays in the file: it is still the
+       fallback a visitor without JavaScript needs the instant the page is
+       unpublished, when paintSections() clears the baked mount and un-hides
+       this very node. Stripping its text would leave an unpublish restore
+       showing a blank body on an already-deployed page. So raw HTML and
+       rendered DOM now agree -- the fallback present and hidden in both --
+       which is also why this is not cloaking: bots and visitors get one and
+       the same document. */
+    baked.forEach(function (b) { out = hideLegacyBody(out, b.slug); });
 
     /* The scoped custom properties the sections need, so a visitor without
        JavaScript sees the content styled rather than merely present. The

@@ -178,9 +178,18 @@ console.log('\n===== JSK1: ASSEMBLED == DEPLOYED =====');
       continue;
     }
     baked++;
-    check(rel + ': the mount is the only line that differs, and it is baked',
-      d.aligned && d.changed.length === 1 && d.styles.length === 1 &&
-      d.changed[0].baked.indexOf('data-cms-baked="' + blocks[slug] + '"') > -1,
+    /* Two lines may differ from the empty shell: the mount (gains
+       data-cms-baked and content) and the fallback body above it (gains
+       `hidden`, so the static HTML matches the DOM js/cms.js paintSections()
+       produces). Nothing else. */
+    const mountChange = d.changed.filter(c =>
+      c.baked.indexOf('data-cms-baked="' + blocks[slug] + '"') > -1);
+    const bodyHide = d.changed.filter(c =>
+      c.baked.indexOf('data-cms-html="pages.' + slug + '.body"') > -1 &&
+      / hidden>/.test(c.baked) && !/ hidden>/.test(c.shell));
+    check(rel + ': the mount is baked and only it and the hidden fallback differ',
+      d.aligned && d.styles.length === 1 && mountChange.length === 1 &&
+      d.changed.length === mountChange.length + bodyHide.length,
       { changed: d.changed.map(c => c.line), styles: d.styles.length });
   }
   check('every published page was checked', baked === Object.keys(blocks).length,

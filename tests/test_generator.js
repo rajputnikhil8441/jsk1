@@ -301,19 +301,28 @@ console.log('\n===== JSK1: GENERATED == DEPLOYED =====');
       continue;
     }
     bakedPages++;
-    const only = d.aligned && d.changed.length === 1 && d.styles.length === 1;
-    check(rel + ': the mount is the ONLY line the bake changed',
-      only && /^\s*<div data-cms-sections="[a-z0-9-]+"><\/div>$/.test(d.changed[0].shell) &&
-      d.changed[0].baked.indexOf('data-cms-baked="' + blocks[slug] + '"') > -1,
-      { changed: d.changed.map(c => c.line), styles: d.styles.length });
+    /* Baking changes the mount line, and -- on a page that ships a fallback
+       body -- the info-body line, which gains `hidden` so the static HTML
+       matches the rendered DOM (js/cms.js paintSections() hides it too).
+       Those are the only two lines that may differ from the empty shell. */
+    const mountChange = d.changed.filter(c =>
+      /^\s*<div data-cms-sections="[a-z0-9-]+"><\/div>$/.test(c.shell) &&
+      c.baked.indexOf('data-cms-baked="' + blocks[slug] + '"') > -1);
+    const bodyHide = d.changed.filter(c =>
+      c.baked.indexOf('data-cms-html="pages.' + slug + '.body"') > -1 &&
+      / hidden>/.test(c.baked) && !/ hidden>/.test(c.shell));
+    const only = d.aligned && d.styles.length === 1 && mountChange.length === 1 &&
+      d.changed.length === mountChange.length + bodyHide.length;
+    check(rel + ': the mount is baked and nothing changed but it and the hidden fallback',
+      only, { changed: d.changed.map(c => c.line), styles: d.styles.length });
     check(rel + ': and the content it baked in is the published content',
-      only && d.changed[0].baked.indexOf('class="pb-section') > -1,
-      (d.changed[0] || {}).baked && d.changed[0].baked.slice(0, 120));
+      mountChange.length === 1 && mountChange[0].baked.indexOf('class="pb-section') > -1,
+      (mountChange[0] || {}).baked && mountChange[0].baked.slice(0, 120));
     if (!only) strayPages.push(rel);
   }
   check('every page the brand publishes was checked', bakedPages === Object.keys(blocks).length,
     bakedPages + '/' + Object.keys(blocks).length);
-  check('no page differs anywhere outside its mount and its style tag',
+  check('no page differs anywhere outside its mount, its hidden fallback, and its style tag',
     strayPages.length === 0, strayPages);
 
   /* Nothing half-rendered got through. */
