@@ -264,8 +264,22 @@ console.log('\n===== THE ENGINE IS SHARED, NOT COPIED =====');
 
   /* The strongest available statement of "same markup, different
      brand": acme's shared pages are JSK1's pages with the two brand
-     strings swapped, and nothing else. If a template ever grows a
-     brand-specific branch, this stops being true. */
+     strings swapped, and -- for every line the TEMPLATE owns -- nothing
+     else. If a template ever grows a brand-specific branch, this stops
+     being true.
+
+     Two lines per page are no longer template-owned. brandkit.bakeHeadSeo()
+     (G1) bakes each brand's published CMS <title> and meta description into
+     the raw <head>, keyed on the data-cms-title / data-cms-meta bindings, so
+     a crawler sees what the CMS published instead of the template fallback.
+     That is brand CONTENT differing -- exactly like the Page Builder mount
+     pbshell.js already accounts for -- not a brand branch in the template.
+     Two brands with different published titles therefore produce different
+     bytes on those two lines, by design. So the claim is split rather than
+     loosened (the pattern pbshell.js documents): every template-owned line
+     is still byte-identical modulo the brand strings, and the only lines
+     allowed to differ are the two the bake owns -- which are then asserted
+     to carry each brand's OWN content below, never waved through. */
   const shared = jsk1.paths.filter(p => p.endsWith('.html') && p !== 'login.html');
   check('there are shared pages to compare', shared.length === 7, shared.length);
   /* JSK1 publishes Page Builder content and acme does not, and the build
@@ -277,14 +291,48 @@ console.log('\n===== THE ENGINE IS SHARED, NOT COPIED =====');
   const shellRoot = mktmp('mb-shell');
   const jsk1Shell = buildBrand(SHELL.shellBrandsDir(PROD_BRANDS, path.join(shellRoot, 'brands')),
                                'jsk-1.com');
-  let equivalent = 0;
+  /* A line the SEO bake owns: the <title> bound to data-cms-title, or the
+     meta bound to data-cms-meta. Only these may differ beyond brand strings. */
+  const isBakedSeoLine = l =>
+    /<title\b[^>]*\bdata-cms-title="pages\./.test(l) || /\bdata-cms-meta="pages\./.test(l);
+  const headTitle = h => (/<title\b[^>]*>([\s\S]*?)<\/title>/.exec(h) || [, ''])[1];
+  let templateNeutral = 0, seoDivergent = 0;
   for (const p of shared) {
-    const projected = jsk1Shell.files[p].split('JSK1').join('ACMEPLAY').split('jsk-1.com').join('acme.test');
-    if (projected === acme.files[p]) equivalent++;
-    else check(p + ': acme output is not JSK1 output with the brand strings swapped', false);
+    const projected = jsk1Shell.files[p].split('JSK1').join('ACMEPLAY')
+      .split('jsk-1.com').join('acme.test').split('\n');
+    const actual = acme.files[p].split('\n');
+    check(p + ': acme and the projected JSK1 shell have the same line structure',
+      projected.length === actual.length, [projected.length, actual.length]);
+    const diff = [];
+    for (let i = 0; i < Math.min(projected.length, actual.length); i++) {
+      if (projected[i] !== actual[i]) diff.push(actual[i]);
+    }
+    /* The real invariant: every TEMPLATE-owned line is JSK1's with the brand
+       strings swapped. A brand-specific branch in the template would show up
+       here as a non-SEO differing line. */
+    const nonSeo = diff.filter(l => !isBakedSeoLine(l));
+    check(p + ': every template-owned line is JSK1\'s shell with the brand strings swapped',
+      nonSeo.length === 0, nonSeo.slice(0, 3));
+    if (diff.length === 0) templateNeutral++; else seoDivergent++;
   }
-  check('all seven shared pages were compared', equivalent === shared.length && shared.length > 0, equivalent);
-  check('acme\'s shared pages differ from JSK1\'s ONLY in the brand strings', equivalent === 7, equivalent);
+  check('all seven shared pages were compared',
+    templateNeutral + seoDivergent === shared.length && shared.length === 7,
+    templateNeutral + ' + ' + seoDivergent);
+  /* The six pages whose published title equals the rendered template literal
+     bake to the same bytes as acme's fallback, so they stay byte-identical;
+     home is the one page the two fixtures give DIFFERENT published titles, so
+     its baked <title> is the only cross-brand difference -- and it carries
+     each brand's OWN title, not the other's. */
+  check('the shared pages are byte-identical except where the brands publish different SEO',
+    templateNeutral === 6 && seoDivergent === 1, templateNeutral + ' + ' + seoDivergent);
+  check('acme home bakes ACME\'s own published title, not JSK1\'s',
+    headTitle(acme.files['index.html']).indexOf('ACMEPLAY') > -1 &&
+    headTitle(acme.files['index.html']).indexOf('JSK1') === -1,
+    headTitle(acme.files['index.html']));
+  check('JSK1 home bakes JSK1\'s own published title, not acme\'s',
+    headTitle(jsk1.files['index.html']).indexOf('JSK1') > -1 &&
+    headTitle(jsk1.files['index.html']).indexOf('ACMEPLAY') === -1,
+    headTitle(jsk1.files['index.html']));
 
   /* And what the shell build left out is exactly one brand's published
      content, in its own mounts. Neither brand's content can reach the

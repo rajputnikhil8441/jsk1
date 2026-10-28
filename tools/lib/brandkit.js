@@ -490,6 +490,60 @@ function hideLegacyBody(html, slug) {
     });
 }
 
+/* ------------------------------------------------------------
+   BAKE THE CMS TITLE + META DESCRIPTION INTO A COMMITTED PAGE
+   ------------------------------------------------------------
+   The seven pages that ship with the site (home, login, register, about,
+   contact, responsible-gaming, privacy-policy) carry their <title> and meta
+   description as LITERAL template text, with data-cms-title / data-cms-meta
+   hooks that js/cms.js repaints at runtime. A crawler that runs no
+   JavaScript therefore read the template fallback, not what the CMS
+   published -- exactly the gap generic CMS pages do not have, because they
+   bake {{seo.title}} / {{page.metadescription}} from pbbake.seoTags().
+
+   This closes it the same way, as a POST-RENDER OVERLAY keyed on the
+   data-cms-* bindings (the pattern hideLegacyBody() above uses, and the way
+   js/cms.js legacyBodyNode() finds the same elements): it rewrites only the
+   bound <title> text and the bound description's content="", and only when
+   the engine produced a non-empty value. An empty or unresolved value leaves
+   the template literal exactly as it was, so the no-JS fallback and every
+   unresolved-record case are unchanged.
+
+   It touches NOTHING else -- not canonical, robots, Open Graph, Twitter or
+   JSON-LD -- because it edits only those two bound elements. The value and
+   its precedence are identical to seoTokenValues() (str(tags.title) ||
+   str(page.title); the description likewise), so the baked bytes equal what
+   the generic path bakes and what paintSeo() / paintPageMeta() recompute at
+   runtime from the same record: static and DOM agree. htmlEscape() is the
+   same escaper seoTokenValues() applies. Idempotent: a second pass finds the
+   value already in place and the regexes simply match the current text. */
+function bakeHeadSeo(html, slug, title, desc) {
+    const esc = String(slug).replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+    let out = html;
+    const t = str(title);
+    if (t) {
+        /* The <title> element carrying data-cms-title="pages.<slug>.title".
+           Group 1 is the open tag, group 2 the text to replace. */
+        const titleRe = new RegExp(
+            '(<title\\b(?:[^>]*?\\s)?data-cms-title="pages\\.' + esc + '\\.title"[^>]*>)([\\s\\S]*?)(</title>)');
+        out = out.replace(titleRe, function (whole, open, _text, close) {
+            return open + htmlEscape(t) + close;
+        });
+    }
+    const d = str(desc);
+    if (d) {
+        /* The <meta> carrying data-cms-meta="pages.<slug>.metaDescription";
+           replace ITS content="" only. The binding makes the tag unique, so
+           the content attribute matched is this meta's own. */
+        const metaRe = new RegExp(
+            '(<meta\\b(?:[^>]*?\\s)?data-cms-meta="pages\\.' + esc + '\\.metaDescription"[^>]*?\\scontent=")([^"]*)(")');
+        out = out.replace(metaRe, function (whole, open, _val, close) {
+            return open + htmlEscape(d) + close;
+        });
+    }
+    return out;
+}
+
 const MOUNT_RE = /<div data-cms-sections="([a-z0-9-]+)"\s*>([\s\S]*?)<\/div>/g;
 
 /* Rendering the same section array twice per page (markup, then CSS) would run
@@ -949,7 +1003,43 @@ function planBrand(opts) {
         const r = renderPage(tpl, brand, tplSource, null, liveRecord);
         r.slotsDeclared.forEach(s => slotsUsed.add(s));
         (r.baked || []).forEach(x => bakedPages.push(x));
-        emit(page, r.html, tplSource);
+
+        /* Bake the CMS title + meta description into the raw HTML for a
+           committed page, so a crawler reading no JavaScript sees what the
+           CMS published rather than the template fallback. The slug is read
+           from the page's own data-cms-title binding -- the same identity
+           js/cms.js uses -- so the overlay targets the right page without a
+           filename-to-slug map. Only when the engine resolved the record:
+           no seoSource (no brand.js) leaves every page's literal untouched,
+           which is the documented pre-bake behaviour. The value and its
+           str(tags.title)||str(page.title) precedence mirror seoTokenValues()
+           exactly, so committed and generic pages bake identically.
+
+           NOT on a noindex (staging/review) host. There the baked value is
+           worthless -- the host blocks all crawlers and ships no sitemap --
+           and the CMS-authored title/description can contain the brand's own
+           production domain as literal text (e.g. "...at playzone9.app"),
+           which the assembled-site check forbids anywhere on a review host.
+           Leaving the template literal (its {{brand.domain}} resolves to the
+           review host) keeps that invariant; js/cms.js still repaints the
+           live DOM for a human previewing the page, exactly as before. */
+        let html = r.html;
+        if (seoSource && !brand.noindex) {
+            const m = /data-cms-title="pages\.([a-z0-9-]+)\.title"/.exec(html);
+            const slug = m ? m[1] : '';
+            if (slug) {
+                let tags = null;
+                try { tags = pbbake.seoTags(brand.sharedRoot, seoSource, slug, { breadcrumbNav: true }); }
+                catch (e) { tags = null; }
+                if (tags) {
+                    const pageRec = (liveRecord && liveRecord.pages && liveRecord.pages[slug]) || {};
+                    const title = str(tags.title) || str(pageRec.title);
+                    const desc = str(metaOf(tags, 'description')) || str(pageRec.metaDescription);
+                    html = bakeHeadSeo(html, slug, title, desc);
+                }
+            }
+        }
+        emit(page, html, tplSource);
     }
 
     /* ------------------------------------------------------------
