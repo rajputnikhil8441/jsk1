@@ -303,62 +303,80 @@ body {
     display: none !important;
 }
 
-.nav-list {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: var(--nav-bg);
-    z-index: 500;
-    flex-direction: column;
-    align-items: flex-start;
-    padding-top: 60px;
-    overflow-y: auto;
-}
-
-.nav-list.open {
-    display: flex;
-}
-
-.nav-link {
-    padding: 13px 20px;
-    font-size: 1rem;
-    width: 100%;
-    border-bottom: 1px solid rgba(255,255,255,0.12);
-}
-
+/* The close button is injected by js/main.js for the mobile overlay only;
+   keep it out of the desktop horizontal nav. */
 .nav-close-btn {
-    position: absolute;
-    top: 13px;
-    right: 15px;
-    background: none;
-    border: none;
-    color: var(--nav-active);
-    font-size: 1.5rem;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: none;
+}
+
+/* These turn the nav into a full-screen slide-over and restyle its links as
+   stacked rows. They are MOBILE ONLY: on desktop the base nav in style.css
+   (a horizontal, scrollable bar) must show. Without this media wrapper the
+   rules applied at every width and hid the desktop category nav entirely. */
+@media (max-width: 768px) {
+    .nav-list {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: var(--nav-bg);
+        z-index: 500;
+        flex-direction: column;
+        align-items: flex-start;
+        padding-top: 60px;
+        overflow-y: auto;
+    }
+
+    .nav-list.open {
+        display: flex;
+    }
+
+    .nav-link {
+        padding: 13px 20px;
+        font-size: 1rem;
+        width: 100%;
+        border-bottom: 1px solid rgba(255,255,255,0.12);
+    }
+
+    .nav-close-btn {
+        position: absolute;
+        top: 13px;
+        right: 15px;
+        background: none;
+        border: none;
+        color: var(--nav-active);
+        font-size: 1.5rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
 }
 
 
 /* ---- SIDEBAR — slide in/out ---- */
 
-.left-sidebar {
-    position: fixed;
-    top: 0;
-    left: -220px;
-    height: 100%;
-    z-index: 200;
-    transition: left 0.25s ease;
-    overflow-y: auto;
-    width: var(--sidebar-w);
-}
+/* Off-canvas slide-in sidebar is MOBILE ONLY: on desktop the base sidebar in
+   style.css is an in-flow column inside the flex .content-wrapper. Without
+   this media wrapper the sidebar was pushed off-screen (left:-220px) at every
+   width, so the desktop sidebar never showed. */
+@media (max-width: 768px) {
+    .left-sidebar {
+        position: fixed;
+        top: 0;
+        left: -220px;
+        height: 100%;
+        z-index: 200;
+        transition: left 0.25s ease;
+        overflow-y: auto;
+        width: var(--sidebar-w);
+    }
 
-.left-sidebar.open {
-    left: 0;
+    .left-sidebar.open {
+        left: 0;
+    }
 }
 
 .sidebar-toggle-btn {
