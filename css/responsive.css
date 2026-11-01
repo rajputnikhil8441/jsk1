@@ -390,11 +390,16 @@ body {
 }
 
 
-/* Casino — 4 columns, tight gap */
-
-.casino-grid {
-    grid-template-columns: repeat(4, 1fr);
-    gap: 1px;
+/* Casino — 4 columns on mobile, tight gap. Scoped to <=768px so it no longer
+   masks the desktop (repeat(10), <=1440) and tablet (repeat(8), <=1024) grids
+   defined above. This restores the intended dense desktop/tablet casino grid
+   while preserving the 4-column mobile layout. .casino-grid exists only on the
+   homepage, so this affects the homepage only. */
+@media (max-width: 768px) {
+    .casino-grid {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1px;
+    }
 }
 
 .casino-section {
