@@ -389,7 +389,7 @@ console.log('\n===== THE SAME IDS, AND NEITHER BRAND CAN SEE THE OTHER =====');
   const specs = [
     { id: 'jsk-1.com', base: 'https://jsk-1.com', catName: 'Alpha Cricket',
       tagName: 'Alpha IPL', slug: 'a-one', other: ['Beta Cricket', 'Beta IPL', 'b-one'] },
-    { id: 'playzone9.app', base: 'https://playzone9.app', catName: 'Beta Cricket',
+    { id: 'playzone9.app', base: 'https://www.playzone9.app', catName: 'Beta Cricket',
       tagName: 'Beta IPL', slug: 'b-one', other: ['Alpha Cricket', 'Alpha IPL', 'a-one'] }
   ];
   for (const s of specs) {

@@ -39,7 +39,7 @@ const TEMPLATES = path.join(ROOT, 'templates');
 
 const BRAND = 'playzone9.app';
 const STAGING = 'playzones9.com';
-const PROD = 'playzone9.app';
+const PROD = 'www.playzone9.app';
 const ORIGIN = 'https://' + STAGING;
 
 let pass = 0, fail = 0; const fails = [];

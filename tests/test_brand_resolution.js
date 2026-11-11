@@ -155,7 +155,7 @@ async function serveUnderHost(ctx) {
        stronger property -- that every entry is explained by some brand's
        canonical domain or one of its declared environments. */
     check('exactly the three configured hostnames are registered',
-      JSON.stringify(keys.slice().sort()) === '["jsk-1.com","playzone9.app","playzones9.com"]', keys);
+      JSON.stringify(keys.slice().sort()) === '["jsk-1.com","playzones9.com","www.playzone9.app"]', keys);
     check('no lookalike equals that key', !LOOKALIKES.some(h => keys.indexOf(h) > -1));
   }
 

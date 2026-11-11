@@ -54,7 +54,7 @@ window.CMS_BRAND = {
     },
 
     seo: {
-        baseUrl: 'https://playzone9.app',
+        baseUrl: 'https://www.playzone9.app',
         siteName: 'Playzone9',
         titleTemplate: '%s | Playzone9',
         defaultTitle: 'Playzone9 — Official Site | Playzone9 Login & Online Gaming',

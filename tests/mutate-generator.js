@@ -265,8 +265,8 @@ const MUTANTS = [
 
   { id: 'P9', desc: 'Playzone9 is pointed at JSK1\'s Supabase row',
     file: 'js/cms-config.js', expect: 'test_generator.js',
-    find: "    'playzone9.app': {\n        siteId: 'playzone9app',",
-    repl: "    'playzone9.app': {\n        siteId: 'playzone9'," },
+    find: "    'www.playzone9.app': {\n        siteId: 'playzone9app',",
+    repl: "    'www.playzone9.app': {\n        siteId: 'playzone9'," },
 
   { id: 'P10', desc: 'Playzone9 and JSK1 are given the same media bucket',
     file: 'js/cms-config.js', expect: 'test_generator.js',
@@ -284,7 +284,7 @@ const MUTANTS = [
 
   { id: 'P13', desc: 'Playzone9\'s sitemap is pointed at the other brand\'s domain',
     file: 'brands/playzone9.app/seo-config.json', expect: 'test_assembly.js',
-    find: '"baseUrl": "https://playzone9.app"', repl: '"baseUrl": "https://jsk-1.com"' },
+    find: '"baseUrl": "https://www.playzone9.app"', repl: '"baseUrl": "https://jsk-1.com"' },
 
   { id: 'P14', desc: 'the register slot point is removed from the shared template',
     file: 'templates/pages/register.html', expect: 'test_assembly.js',

@@ -74,26 +74,31 @@ window.CMS_PROJECT = {
        migrating live data for no functional gain. It is left
        exactly as production has always had it.
 
-     playzone9.app -> playzone9app
+     www.playzone9.app -> playzone9app
        Note the difference from the line above: playzone9app,
        not playzone9. The two look almost identical and are
        completely different brands. Giving this brand the row
        called `playzone9` would point it at JSK1's live content.
        If you only read one comment in this file, read this one.
 
+       Playzone9 launches on the www host (www.playzone9.app), so
+       that exact hostname is the registry key. Matching is exact
+       and www is NOT stripped, so the apex playzone9.app is not a
+       configured brand here -- only www.playzone9.app is.
+
      playzones9.com -> playzone9staging
        A STAGING host: the same brand (Playzone9) served
        somewhere else for review, with its OWN row so that
        reviewing it cannot write to the brand's real content.
-       Note the `s`: playzoneS9.com is staging, playzone9.APP is
-       the future production domain. They are one letter and one
+       Note the `s`: playzoneS9.com is staging, www.playzone9.APP
+       is the production domain. They are one letter and one
        suffix apart, which is exactly why each has its own row.
 
        Being listed here is what makes the staging host resolve
        to this brand at all -- it is the only mechanism, and it
        is an exact hostname match like every other entry.
-       playzone9.app is listed too but is NOT deployed anywhere;
-       a registry entry is a mapping, not a deployment.
+       www.playzone9.app is the production host; playzones9.com is
+       only for review. Each is a separate row, never shared.
 
    bucket is the Supabase Storage bucket holding this brand's
    uploaded media. Separate buckets are what make one brand's
@@ -107,7 +112,7 @@ window.CMS_BRANDS = {
         bucket: 'cms-media'
     },
 
-    'playzone9.app': {
+    'www.playzone9.app': {
         siteId: 'playzone9app',
         bucket: 'cms-media-pz9'
     },

@@ -39,7 +39,7 @@ const TEMPLATES = path.join(ROOT, 'templates');
 
 const BRAND = 'playzone9.app';          /* the identity */
 const STAGING_HOST = 'playzones9.com';  /* where it is reviewed */
-const PROD_HOST = 'playzone9.app';      /* reserved, connected to nothing */
+const PROD_HOST = 'www.playzone9.app';  /* the brand's canonical production host */
 const PORT = Number(process.env.STAGING_PORT || 8791);
 
 let pass = 0, fail = 0; const fails = [];
