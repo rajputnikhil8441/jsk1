@@ -109,7 +109,7 @@ check('JSK1 is served from its own domain', jsk1.s.plan.brand.domain === 'jsk-1.
   jsk1.s.plan.brand.domain);
 check('Playzone9 staging is served from playzones9.com', pz9.s.plan.brand.domain === 'playzones9.com',
   pz9.s.plan.brand.domain);
-check('and its canonical domain is NOT what was built', pz9.s.plan.brand.canonicalDomain === 'playzone9.app',
+check('and its canonical domain is NOT what was built', pz9.s.plan.brand.canonicalDomain === 'www.playzone9.app',
   pz9.s.plan.brand.canonicalDomain);
 
 /* ====================================================================

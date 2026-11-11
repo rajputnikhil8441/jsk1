@@ -326,7 +326,7 @@ console.log('\n===== ONE BRAND\'S CONTENT NEVER REACHES ANOTHER\'S BUILD =====')
   const bList = ldOf(bHub, 'data-pb-list');
   check('brand B\'s hub lists only brand B\'s guide',
     bList && bList.itemListElement.length === 1 &&
-    bList.itemListElement[0].url === 'https://playzone9.app/p-one.html',
+    bList.itemListElement[0].url === 'https://www.playzone9.app/p-one.html',
     bList && bList.itemListElement);
   check('brand B\'s author resolves to brand B\'s author',
     (ldOf(read(path.join(bDir, 'p-one.html')), 'data-pb-article') || {}).author.name === 'Bo Playzone');

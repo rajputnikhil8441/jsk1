@@ -188,13 +188,13 @@ console.log('\n===== ONE REGISTERED BRAND =====');
     envPairs === brands.reduce((n, b) => n + KIT.loadBrand(PROD_BRANDS, b).environments.length, 0),
     envPairs);
   check('jsk-1.com keeps its historical siteId', siteIds['jsk-1.com'].siteId === 'playzone9', siteIds);
-  check('playzone9.app does NOT use JSK1\'s row',
-    siteIds['playzone9.app'].siteId !== 'playzone9', siteIds);
-  check('playzone9.app uses its own row', siteIds['playzone9.app'].siteId === 'playzone9app', siteIds);
+  check('www.playzone9.app does NOT use JSK1\'s row',
+    siteIds['www.playzone9.app'].siteId !== 'playzone9', siteIds);
+  check('www.playzone9.app uses its own row', siteIds['www.playzone9.app'].siteId === 'playzone9app', siteIds);
   check('the two brands have different siteIds',
-    siteIds['jsk-1.com'].siteId !== siteIds['playzone9.app'].siteId, siteIds);
+    siteIds['jsk-1.com'].siteId !== siteIds['www.playzone9.app'].siteId, siteIds);
   check('the two brands have different media buckets',
-    siteIds['jsk-1.com'].bucket !== siteIds['playzone9.app'].bucket, siteIds);
+    siteIds['jsk-1.com'].bucket !== siteIds['www.playzone9.app'].bucket, siteIds);
   check('each brand.json agrees with the registry entry for its own domain', (() => {
     return brands.every(b => {
       const x = KIT.loadBrand(PROD_BRANDS, b);

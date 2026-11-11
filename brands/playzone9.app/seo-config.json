@@ -9,7 +9,7 @@
     "A white-label deployment edits baseUrl and the pages below, nothing else."
   ],
   "seo": {
-    "baseUrl": "https://playzone9.app",
+    "baseUrl": "https://www.playzone9.app",
     "robotsExtra": ""
   },
   "pages": {

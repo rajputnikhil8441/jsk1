@@ -243,7 +243,7 @@ console.log('\n===== PLAYZONE9 GETS ITS OWN SITE =====');
     brandJs !== fs.readFileSync(path.join(ROOT, 'js', 'brand.js'), 'utf8'));
   check('its brand.js is byte-identical to what it ships in brands/',
     sha(path.join(pz9.dir, 'js/brand.js')) === sha(path.join(PROD_BRANDS, 'playzone9.app', 'brand.js')));
-  check('it sets its own baseUrl', /https:\/\/playzone9\.app/.test(brandJs));
+  check('it sets its own baseUrl', /https:\/\/www\.playzone9\.app/.test(brandJs));
   /* Parsed, not pattern-matched. The three keys below are present in
      DEFAULTS with EMPTY values, and paintText writes an empty string
      rather than skipping it -- so a brand that supplies the key but
@@ -262,7 +262,7 @@ console.log('\n===== PLAYZONE9 GETS ITS OWN SITE =====');
     !/JSK1|jsk-1/.test(JSON.stringify(B)));
   check('its page titles are its own',
     /Playzone9/.test(B.pages.home.title) && !/JSK1/.test(B.pages.home.title), B.pages.home.title);
-  check('its seo baseUrl is its own domain', B.seo.baseUrl === 'https://playzone9.app', B.seo.baseUrl);
+  check('its seo baseUrl is its own domain', B.seo.baseUrl === 'https://www.playzone9.app', B.seo.baseUrl);
   check('its branding.siteName is its own', B.branding.siteName === 'Playzone9', B.branding.siteName);
 
   const pages = pz9.files.filter(f => /^[a-z0-9-]+\.html$/.test(f));
@@ -285,8 +285,8 @@ console.log('\n===== PLAYZONE9 GETS ITS OWN SITE =====');
      asked for. */
   check('the SEO step reported which brand it resolved',
     /^Brand:\s+\S/m.test(pz9.seoLog), pz9.seoLog.split('\n')[0]);
-  check('and it resolved playzone9.app, not the default brand',
-    /^Brand:\s+playzone9\.app\b/m.test(pz9.seoLog),
+  check('and it resolved www.playzone9.app, not the default brand',
+    /^Brand:\s+www\.playzone9\.app\b/m.test(pz9.seoLog),
     (pz9.seoLog.match(/^Brand:.*$/m) || [''])[0]);
   check('to Playzone9\'s OWN row, not JSK1\'s',
     /^Brand:.*siteId:\s+playzone9app\s*$/m.test(pz9.seoLog),
@@ -298,10 +298,10 @@ console.log('\n===== PLAYZONE9 GETS ITS OWN SITE =====');
     (pz9.seoLog.match(/siteId:\s+(\S+)/) || [])[1] !== (jsk1.seoLog.match(/siteId:\s+(\S+)/) || [])[1]);
 
   const smap = fs.readFileSync(path.join(pz9.dir, 'sitemap.xml'), 'utf8');
-  check('its sitemap points at playzone9.app', smap.includes('https://playzone9.app/'));
+  check('its sitemap points at www.playzone9.app', smap.includes('https://www.playzone9.app/'));
   check('its sitemap does NOT point at jsk-1.com', !smap.includes('jsk-1.com'));
   const rob = fs.readFileSync(path.join(pz9.dir, 'robots.txt'), 'utf8');
-  check('its robots.txt names its own sitemap', rob.includes('https://playzone9.app/sitemap.xml'));
+  check('its robots.txt names its own sitemap', rob.includes('https://www.playzone9.app/sitemap.xml'));
   check('its robots.txt still disallows /admin/', rob.includes('Disallow: /admin/'));
 
   /* The one shared file that legitimately names both brands. */
@@ -350,8 +350,8 @@ console.log('\n===== PLAYZONE9 GETS ITS OWN SITE =====');
    ==================================================================== */
 console.log('\n===== SEO IS PER-BRAND AND DOES NOT CROSS OVER =====');
 {
-  const DOMAIN = { 'jsk-1.com': 'jsk-1.com', 'playzone9.app': 'playzone9.app' };
-  const OTHER = { 'jsk-1.com': 'playzone9.app', 'playzone9.app': 'jsk-1.com' };
+  const DOMAIN = { 'jsk-1.com': 'jsk-1.com', 'playzone9.app': 'www.playzone9.app' };
+  const OTHER = { 'jsk-1.com': 'www.playzone9.app', 'playzone9.app': 'jsk-1.com' };
   const PAGES = ['index.html', 'about.html', 'contact.html', 'login.html', 'register.html',
     'privacy-policy.html', 'responsible-gaming.html', '404.html'];
   /* Which pages a crawler is invited to index, from tools/seo-config.json.
@@ -499,7 +499,7 @@ console.log('\n===== SEO IS PER-BRAND AND DOES NOT CROSS OVER =====');
     jLocs.filter(u => pLocs.includes(u)).length === 0, jLocs.filter(u => pLocs.includes(u)));
   check('and they cover the same page set on different domains',
     JSON.stringify(jLocs.map(u => u.replace('https://jsk-1.com', ''))) ===
-    JSON.stringify(pLocs.map(u => u.replace('https://playzone9.app', ''))));
+    JSON.stringify(pLocs.map(u => u.replace('https://www.playzone9.app', ''))));
   const jTitle = fs.readFileSync(path.join(jsk1.dir, 'index.html'), 'utf8').match(/<title[^>]*>([^<]+)</)[1];
   const pTitle = fs.readFileSync(path.join(pz9.dir, 'index.html'), 'utf8').match(/<title[^>]*>([^<]+)</)[1];
   check('the two home pages have different titles', jTitle !== pTitle, [jTitle, pTitle]);
@@ -511,7 +511,7 @@ console.log('\n===== SEO IS PER-BRAND AND DOES NOT CROSS OVER =====');
   const jc = JSON.parse(fs.readFileSync(path.join(PROD_BRANDS, 'jsk-1.com', 'seo-config.json'), 'utf8'));
   const pc = JSON.parse(fs.readFileSync(path.join(PROD_BRANDS, 'playzone9.app', 'seo-config.json'), 'utf8'));
   check('their baseUrls differ and each is its own domain',
-    jc.seo.baseUrl === 'https://jsk-1.com' && pc.seo.baseUrl === 'https://playzone9.app',
+    jc.seo.baseUrl === 'https://jsk-1.com' && pc.seo.baseUrl === 'https://www.playzone9.app',
     [jc.seo.baseUrl, pc.seo.baseUrl]);
   check('neither config mentions the other brand',
     !JSON.stringify(jc).includes('playzone9.app') && !JSON.stringify(pc).includes('jsk-1.com'));
